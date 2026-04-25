@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "Mudawwarah Restaurant Management System - Backend"
 requires-python = ">=3.10"
 dependencies = [
-    "fastapi>=0.109.0",
+    "fastapi[standard]>=0.109.0",
     "uvicorn[standard]>=0.25.0",
     "sqlalchemy>=2.0.25",
     "python-jose[cryptography]>=3.3.0",
@@ -13,6 +13,7 @@ dependencies = [
     "aiofiles>=23.2.1",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
+    "bcrypt==4.0.1",
 ]
 
 [build-system]

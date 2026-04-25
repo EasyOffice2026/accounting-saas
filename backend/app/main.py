@@ -1,6 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import os
 
 from app.database import Base, engine
@@ -36,6 +37,23 @@ app.include_router(dashboard.router)
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
+
+
+# Serve frontend static files
+FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static_frontend")
+if not os.path.isdir(FRONTEND_DIST):
+    FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "frontend", "dist")
+FRONTEND_DIST = os.path.abspath(FRONTEND_DIST)
+
+if os.path.isdir(FRONTEND_DIST):
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="frontend-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        file_path = os.path.join(FRONTEND_DIST, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
 
 
 @app.on_event("startup")

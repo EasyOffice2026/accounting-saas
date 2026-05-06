@@ -12,6 +12,15 @@ interface SmtpConfig {
   has_password: boolean;
 }
 
+interface PaymentConfig {
+  provider: string;
+  is_sandbox: string;
+  currency: string;
+  secret_key: string;
+  publishable_key: string;
+  has_custom_key: boolean;
+}
+
 export default function SettingsPage() {
   const { t } = useTranslation();
   const [host, setHost] = useState("smtp.gmail.com");
@@ -27,6 +36,16 @@ export default function SettingsPage() {
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState<"success" | "error">("success");
 
+  // Payment gateway state
+  const [pgSecretKey, setPgSecretKey] = useState("");
+  const [pgPublishableKey, setPgPublishableKey] = useState("");
+  const [pgSandbox, setPgSandbox] = useState("true");
+  const [pgCurrency, setPgCurrency] = useState("KWD");
+  const [pgHasKey, setPgHasKey] = useState(false);
+  const [pgSaving, setPgSaving] = useState(false);
+  const [pgMsg, setPgMsg] = useState("");
+  const [pgMsgType, setPgMsgType] = useState<"success" | "error">("success");
+
   useEffect(() => {
     apiGet("/api/email/smtp-settings").then((data: SmtpConfig | null) => {
       if (data) {
@@ -37,6 +56,13 @@ export default function SettingsPage() {
         setFromName(data.from_name);
         setUseTls(data.use_tls);
         setHasPassword(data.has_password);
+      }
+    });
+    apiGet("/api/payment/settings").then((data: PaymentConfig | null) => {
+      if (data) {
+        setPgSandbox(data.is_sandbox);
+        setPgCurrency(data.currency);
+        setPgHasKey(data.has_custom_key);
       }
     });
   }, []);
@@ -169,6 +195,98 @@ export default function SettingsPage() {
             <li>{t("gmail_step2")}</li>
             <li>{t("gmail_step3")}</li>
             <li>{t("gmail_step4")}</li>
+          </ol>
+        </div>
+      </div>
+
+      {/* Payment Gateway Settings */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border max-w-2xl mt-6">
+        <h3 className="text-lg font-semibold mb-4">{t("payment_settings")}</h3>
+        <p className="text-sm text-gray-500 mb-4">{t("payment_settings_desc")}</p>
+
+        {pgMsg && (
+          <div className={`p-3 rounded mb-4 text-sm ${
+            pgMsgType === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+          }`}>{pgMsg}</div>
+        )}
+
+        <div className="p-3 rounded-lg mb-4 text-sm bg-blue-50 text-blue-700 border border-blue-200">
+          {pgSandbox === "true" ? t("sandbox_active") : t("live_mode_active")}
+        </div>
+
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          setPgSaving(true);
+          try {
+            const fd = new URLSearchParams();
+            if (pgSecretKey) fd.append("secret_key", pgSecretKey);
+            if (pgPublishableKey) fd.append("publishable_key", pgPublishableKey);
+            fd.append("is_sandbox", pgSandbox);
+            fd.append("currency", pgCurrency);
+            const res = await fetch("/api/payment/settings", {
+              method: "POST", body: fd,
+              headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            });
+            if (!res.ok) throw new Error("Failed");
+            setPgHasKey(!!pgSecretKey || pgHasKey);
+            setPgSecretKey("");
+            setPgMsg(t("payment_settings_saved"));
+            setPgMsgType("success");
+            setTimeout(() => setPgMsg(""), 5000);
+          } catch {
+            setPgMsg(t("payment_settings_error"));
+            setPgMsgType("error");
+            setTimeout(() => setPgMsg(""), 5000);
+          }
+          setPgSaving(false);
+        }} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                {t("secret_key")} {pgHasKey && <span className="text-green-600 text-xs">({t("configured")})</span>}
+              </label>
+              <input type="password" value={pgSecretKey} onChange={e => setPgSecretKey(e.target.value)}
+                placeholder={pgHasKey ? t("leave_blank_keep") : "sk_test_..."}
+                className="w-full px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">{t("publishable_key")}</label>
+              <input value={pgPublishableKey} onChange={e => setPgPublishableKey(e.target.value)}
+                placeholder="pk_test_..."
+                className="w-full px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">{t("mode")}</label>
+              <select value={pgSandbox} onChange={e => setPgSandbox(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="true">{t("sandbox")}</option>
+                <option value="false">{t("live")}</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">{t("currency")}</label>
+              <select value={pgCurrency} onChange={e => setPgCurrency(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="KWD">KWD</option>
+                <option value="USD">USD</option>
+                <option value="SAR">SAR</option>
+                <option value="AED">AED</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" disabled={pgSaving}
+            className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm">
+            {pgSaving ? "..." : t("save")}
+          </button>
+        </form>
+
+        <div className="mt-6 p-4 bg-cyan-50 rounded-lg border border-cyan-200">
+          <h4 className="font-medium text-cyan-800 text-sm mb-2">{t("tap_setup_title")}</h4>
+          <ol className="text-xs text-cyan-700 space-y-1 list-decimal list-inside">
+            <li>{t("tap_step1")}</li>
+            <li>{t("tap_step2")}</li>
+            <li>{t("tap_step3")}</li>
+            <li>{t("tap_step4")}</li>
           </ol>
         </div>
       </div>

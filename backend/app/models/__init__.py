@@ -10,6 +10,7 @@ from app.models.hr import Employee, Attendance
 from app.models.cash import CashTransaction, CashBalance
 from app.models.item import Item
 from app.models.settings import SmtpSettings
+from app.models.payment import PaymentGatewaySettings, PaymentTransaction
 
 __all__ = [
     "Branch", "User",
@@ -21,4 +22,5 @@ __all__ = [
     "CashTransaction", "CashBalance",
     "Item",
     "SmtpSettings",
+    "PaymentGatewaySettings", "PaymentTransaction",
 ]

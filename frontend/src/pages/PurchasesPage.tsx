@@ -54,6 +54,7 @@ export default function PurchasesPage() {
   // Ledger state
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [expandedSupplier, setExpandedSupplier] = useState<number | null>(null);
+  const [payOnlineLoading, setPayOnlineLoading] = useState<number | null>(null);
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);
@@ -181,6 +182,25 @@ export default function PurchasesPage() {
     setPayingInvoice(null);
     apiGet("/api/purchases/invoices").then(setInvoices);
     apiGet("/api/purchases/orders").then(setOrders);
+  };
+
+  const handlePayOnline = async (invoiceId: number) => {
+    setPayOnlineLoading(invoiceId);
+    try {
+      const res = await fetch(`/api/payment/charge/${invoiceId}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.redirect_url) {
+        window.location.href = data.redirect_url;
+      } else {
+        alert(data.detail || t("payment_error"));
+      }
+    } catch {
+      alert(t("payment_error"));
+    }
+    setPayOnlineLoading(null);
   };
 
   const supplierName = (id: number) => suppliers.find(s => s.id === id)?.name || "";
@@ -657,10 +677,17 @@ export default function PurchasesPage() {
                   </td>
                   <td className="px-4 py-3 text-center">
                     {inv.status === "pending" && (
-                      <button onClick={() => setPayingInvoice(inv)}
-                        className="px-2 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
-                        {t("pay")}
-                      </button>
+                      <div className="flex gap-1 justify-center">
+                        <button onClick={() => setPayingInvoice(inv)}
+                          className="px-2 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
+                          {t("pay")}
+                        </button>
+                        <button onClick={() => handlePayOnline(inv.id)}
+                          disabled={payOnlineLoading === inv.id}
+                          className="px-2 py-1 bg-indigo-500 text-white rounded text-xs hover:bg-indigo-600 disabled:opacity-50">
+                          {payOnlineLoading === inv.id ? "..." : t("pay_online")}
+                        </button>
+                      </div>
                     )}
                     {inv.status === "paid" && inv.paid_date && (
                       <span className="text-xs text-gray-400">{inv.paid_date}</span>

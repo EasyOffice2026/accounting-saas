@@ -25,9 +25,19 @@ export default function DashboardPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
+  const [paymentMsg, setPaymentMsg] = useState("");
 
   useEffect(() => {
     apiGet("/api/dashboard/").then(setData);
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get("payment");
+    if (payment === "success") {
+      setPaymentMsg(t("payment_success"));
+      window.history.replaceState({}, "", "/");
+    } else if (payment === "failed") {
+      setPaymentMsg(t("payment_failed"));
+      window.history.replaceState({}, "", "/");
+    }
   }, []);
 
   const cards = data ? [
@@ -48,6 +58,15 @@ export default function DashboardPage() {
     <div>
       <h2 className="text-xl font-bold text-gray-800 mb-0.5">{t("dashboard")}</h2>
       <p className="text-gray-500 text-sm mb-3">{t("welcome_back")}, {user?.full_name}</p>
+
+      {paymentMsg && (
+        <div className={`p-3 rounded-lg mb-4 text-sm flex justify-between items-center ${
+          paymentMsg.includes("success") || paymentMsg.includes("نجاح") ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"
+        }`}>
+          {paymentMsg}
+          <button onClick={() => setPaymentMsg("")} className="text-xs underline ml-4">{t("close")}</button>
+        </div>
+      )}
 
       {!data ? (
         <div className="text-center py-8 text-gray-400">Loading...</div>

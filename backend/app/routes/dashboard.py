@@ -51,8 +51,12 @@ def dashboard(branch_id: Optional[int] = None, db: Session = Depends(get_db),
         Employee,
     ).scalar() or 0
 
-    # Branch-wise breakdown
-    branches = db.query(Branch).all()
+    # Branch-wise breakdown (staff sees only own branch)
+    staff_bid = branch_id or (user.branch_id if user.role == "staff" else None)
+    if staff_bid:
+        branches = db.query(Branch).filter(Branch.id == staff_bid).all()
+    else:
+        branches = db.query(Branch).all()
     branch_data = []
     for b in branches:
         b_sales = db.query(Sale).filter(Sale.branch_id == b.id).all()

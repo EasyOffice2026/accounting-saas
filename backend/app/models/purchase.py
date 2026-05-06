@@ -43,6 +43,20 @@ class PurchaseItem(Base):
     total = Column(Float, nullable=False)
 
 
+class SupplierItem(Base):
+    __tablename__ = "supplier_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
+    item_name = Column(String, nullable=False)
+    item_name_ar = Column(String, nullable=True)
+    packaging = Column(String, nullable=True)  # e.g. "6x1.5L", "Box of 24", "10kg bag"
+    unit = Column(String, default="pcs")  # pcs, kg, box, carton, pack, liter
+    unit_price = Column(Float, nullable=False, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class DeliveryOrder(Base):
     __tablename__ = "delivery_orders"
 

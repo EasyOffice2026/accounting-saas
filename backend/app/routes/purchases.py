@@ -5,7 +5,7 @@ from typing import Optional
 import os, uuid, json
 
 from app.database import get_db
-from app.models.purchase import Supplier, PurchaseOrder, PurchaseItem, DeliveryOrder
+from app.models.purchase import Supplier, PurchaseOrder, PurchaseItem, SupplierItem, DeliveryOrder
 from app.models.user import User
 from app.utils.auth import get_current_user
 
@@ -28,6 +28,64 @@ def create_supplier(name: str = Form(...), email: str = Form(""),
     db.commit()
     db.refresh(s)
     return s
+
+
+# --- Supplier Items (Catalog) ---
+@router.get("/suppliers/{supplier_id}/items")
+def list_supplier_items(supplier_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return db.query(SupplierItem).filter(
+        SupplierItem.supplier_id == supplier_id, SupplierItem.is_active == True
+    ).order_by(SupplierItem.item_name).all()
+
+
+@router.post("/suppliers/{supplier_id}/items")
+def create_supplier_item(
+    supplier_id: int,
+    item_name: str = Form(...), item_name_ar: str = Form(""),
+    packaging: str = Form(""), unit: str = Form("pcs"),
+    unit_price: float = Form(0),
+    db: Session = Depends(get_db), _=Depends(get_current_user),
+):
+    si = SupplierItem(
+        supplier_id=supplier_id, item_name=item_name,
+        item_name_ar=item_name_ar or None,
+        packaging=packaging or None, unit=unit, unit_price=unit_price,
+    )
+    db.add(si)
+    db.commit()
+    db.refresh(si)
+    return si
+
+
+@router.put("/suppliers/items/{item_id}")
+def update_supplier_item(
+    item_id: int,
+    item_name: str = Form(...), item_name_ar: str = Form(""),
+    packaging: str = Form(""), unit: str = Form("pcs"),
+    unit_price: float = Form(0),
+    db: Session = Depends(get_db), _=Depends(get_current_user),
+):
+    si = db.query(SupplierItem).filter(SupplierItem.id == item_id).first()
+    if not si:
+        raise HTTPException(404, "Item not found")
+    si.item_name = item_name
+    si.item_name_ar = item_name_ar or None
+    si.packaging = packaging or None
+    si.unit = unit
+    si.unit_price = unit_price
+    db.commit()
+    db.refresh(si)
+    return si
+
+
+@router.delete("/suppliers/items/{item_id}")
+def delete_supplier_item(item_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    si = db.query(SupplierItem).filter(SupplierItem.id == item_id).first()
+    if not si:
+        raise HTTPException(404, "Item not found")
+    si.is_active = False
+    db.commit()
+    return {"status": "deleted"}
 
 
 # --- Purchase Orders ---

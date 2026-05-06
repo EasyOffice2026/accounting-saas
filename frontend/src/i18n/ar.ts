@@ -209,4 +209,6 @@ export default {
   dispatch_order: "إرسال الطلب",
   confirm_dispatch: "تأكيد الإرسال",
   no_pending_requests: "لا توجد طلبات تحويل معلقة",
+  select_items: "اختر الأصناف التي تحتاجها",
+  selected: "مختار",
 };

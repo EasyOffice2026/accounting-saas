@@ -210,4 +210,6 @@ export default {
   dispatch_order: "Dispatch Order",
   confirm_dispatch: "Confirm Dispatch",
   no_pending_requests: "No pending transfer requests",
+  select_items: "Select items you need",
+  selected: "selected",
 };

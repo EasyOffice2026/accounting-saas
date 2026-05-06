@@ -27,8 +27,8 @@ export default function TransfersPage() {
   const [showItemForm, setShowItemForm] = useState(false);
   const [editItem, setEditItem] = useState<TItem | null>(null);
 
-  // Request form state
-  const [reqLines, setReqLines] = useState<{ item_id: number; item_name: string; requested_qty: string; unit: string }[]>([]);
+  // Request form state - checklist approach
+  const [checkedItems, setCheckedItems] = useState<Record<number, string>>({});
 
   // Dispatch/Receive modal
   const [actionOrder, setActionOrder] = useState<TOrder | null>(null);
@@ -74,34 +74,42 @@ export default function TransfersPage() {
     reload();
   };
 
-  const addReqLine = () => {
-    if (items.length === 0) return;
-    setReqLines([...reqLines, { item_id: items[0].id, item_name: items[0].name, requested_qty: "1", unit: items[0].unit }]);
-  };
-
-  const updateReqLine = (idx: number, field: string, value: string) => {
-    const updated = [...reqLines];
-    if (field === "item_id") {
-      const item = items.find(i => i.id === Number(value));
-      if (item) {
-        updated[idx] = { ...updated[idx], item_id: item.id, item_name: item.name, unit: item.unit };
+  const toggleItem = (itemId: number) => {
+    setCheckedItems(prev => {
+      const copy = { ...prev };
+      if (copy[itemId] !== undefined) {
+        delete copy[itemId];
+      } else {
+        copy[itemId] = "1";
       }
-    } else if (field === "requested_qty") {
-      updated[idx] = { ...updated[idx], requested_qty: value };
-    }
-    setReqLines(updated);
+      return copy;
+    });
   };
 
-  const removeReqLine = (idx: number) => setReqLines(reqLines.filter((_, i) => i !== idx));
+  const updateItemQty = (itemId: number, qty: string) => {
+    setCheckedItems(prev => ({ ...prev, [itemId]: qty }));
+  };
 
   const handleRequestSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const selectedItems = Object.entries(checkedItems)
+      .filter(([, qty]) => Number(qty) > 0)
+      .map(([id, qty]) => {
+        const item = items.find(i => i.id === Number(id));
+        return {
+          item_id: Number(id),
+          item_name: item?.name || "",
+          requested_qty: qty,
+          unit: item?.unit || "pcs",
+        };
+      });
+    if (selectedItems.length === 0) return;
     const fd = new FormData(e.currentTarget);
-    fd.append("items", JSON.stringify(reqLines));
+    fd.append("items", JSON.stringify(selectedItems));
     if (user?.branch_id) fd.set("requesting_branch_id", String(user.branch_id));
     await apiPost("/api/transfers/orders", fd);
     setShowForm(false);
-    setReqLines([]);
+    setCheckedItems({});
     reload();
   };
 
@@ -140,7 +148,7 @@ export default function TransfersPage() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("internal_transfer")}</h2>
         {tab === "requests" && (
-          <button onClick={() => { setShowForm(!showForm); if (!showForm && reqLines.length === 0) addReqLine(); }}
+          <button onClick={() => { setShowForm(!showForm); if (showForm) setCheckedItems({}); }}
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
             {showForm ? t("cancel") : t("new_request")}
           </button>
@@ -257,25 +265,35 @@ export default function TransfersPage() {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium">{t("items")}</label>
-                  <button type="button" onClick={addReqLine}
-                    className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">+ {t("add_item")}</button>
+                <label className="text-sm font-medium mb-2 block">{t("select_items")}</label>
+                <div className="border rounded-lg divide-y max-h-80 overflow-y-auto">
+                  {items.map(item => {
+                    const isChecked = checkedItems[item.id] !== undefined;
+                    return (
+                      <div key={item.id}
+                        className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition ${
+                          isChecked ? "bg-emerald-50" : "hover:bg-gray-50"
+                        }`}
+                        onClick={() => toggleItem(item.id)}>
+                        <input type="checkbox" checked={isChecked} readOnly
+                          className="w-4 h-4 text-emerald-600 rounded" />
+                        <span className="flex-1 text-sm font-medium">{itemName(item)}</span>
+                        <span className="text-xs text-gray-400 w-12">{item.unit}</span>
+                        {isChecked && (
+                          <input type="number" step="0.01" min="0.01"
+                            value={checkedItems[item.id]}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => updateItemQty(item.id, e.target.value)}
+                            className="w-20 px-2 py-1 border rounded text-sm text-center" />
+                        )}
+                      </div>
+                    );
+                  })}
+                  {items.length === 0 && (
+                    <div className="px-4 py-6 text-center text-gray-400 text-sm">{t("no_data")}</div>
+                  )}
                 </div>
-                {reqLines.map((line, idx) => (
-                  <div key={idx} className="flex gap-2 mb-2 items-center">
-                    <select value={line.item_id} onChange={e => updateReqLine(idx, "item_id", e.target.value)}
-                      className="flex-1 px-3 py-2 border rounded-lg text-sm">
-                      {items.map(it => <option key={it.id} value={it.id}>{itemName(it)}</option>)}
-                    </select>
-                    <input type="number" step="0.01" min="0.01" value={line.requested_qty}
-                      onChange={e => updateReqLine(idx, "requested_qty", e.target.value)}
-                      className="w-24 px-3 py-2 border rounded-lg text-sm" placeholder={t("quantity")} />
-                    <span className="text-sm text-gray-500 w-12">{line.unit}</span>
-                    <button type="button" onClick={() => removeReqLine(idx)}
-                      className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">X</button>
-                  </div>
-                ))}
+                <p className="text-xs text-gray-400 mt-1">{Object.keys(checkedItems).length} {t("items")} {t("selected")}</p>
               </div>
 
               <div>

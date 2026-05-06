@@ -13,7 +13,7 @@ interface Sale {
   attachment_path: string | null;
 }
 
-const channels = ["cash", "knet", "link", "wamd", "talabat", "keeta", "jahez", "other"] as const;
+const channels = ["cash", "knet", "link", "wamd"] as const;
 
 function sumRow(s: Sale, prefix: "foodics" | "physical") {
   return channels.reduce((acc, ch) => acc + ((s as unknown as Record<string, number>)[`${prefix}_${ch}`] || 0), 0);
@@ -178,7 +178,7 @@ export default function SalesPage() {
 
       {/* Spreadsheet-style table */}
       <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-        <table className="text-xs min-w-[1200px] w-full">
+        <table className="text-xs min-w-[900px] w-full">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th rowSpan={2} className="px-2 py-2 text-left border-r sticky left-0 bg-gray-50 z-10">{t("date")}</th>
@@ -204,7 +204,7 @@ export default function SalesPage() {
           </thead>
           <tbody>
             {sales.length === 0 ? (
-              <tr><td colSpan={20} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+              <tr><td colSpan={13} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
             ) : sales.map(s => {
               const foodics = sumRow(s, "foodics");
               const physical = sumRow(s, "physical");

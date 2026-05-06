@@ -32,12 +32,18 @@ export default function HRPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("hr")}</h2>
-        <button onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
-          {showForm ? t("cancel") : t("add_new")}
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => window.open("/api/export/hr/csv", "_blank")}
+            className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
+            {t("export_csv")}
+          </button>
+          <button onClick={() => setShowForm(!showForm)}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
+            {showForm ? t("cancel") : t("add_new")}
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -59,7 +65,8 @@ export default function HRPage() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">{t("civil_id")}</label>
-              <input name="civil_id" className="w-full px-3 py-2 border rounded-lg text-sm" />
+              <input name="civil_id" pattern="\d{12}" maxLength={12} title={t("civil_id_validation")}
+                placeholder="12 digits" className="w-full px-3 py-2 border rounded-lg text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">{t("position")}</label>
@@ -67,7 +74,8 @@ export default function HRPage() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">{t("phone")}</label>
-              <input name="phone" className="w-full px-3 py-2 border rounded-lg text-sm" />
+              <input name="phone" pattern="\d{8}" maxLength={8} title={t("phone_validation")}
+                placeholder="8 digits" className="w-full px-3 py-2 border rounded-lg text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">{t("salary")}</label>

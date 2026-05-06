@@ -1,0 +1,310 @@
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { apiGet, apiFetch } from "../contexts/api";
+import { useAuth } from "../contexts/AuthContext";
+
+interface Branch { id: number; name: string; name_ar: string; }
+interface CashSummary {
+  date: string; branch_id: number;
+  opening_balance: number; cash_sales: number; petty_cash_in: number;
+  cash_purchases: number; cash_expenses: number; cash_withdrawn: number;
+  deposited: number; closing_balance: number; total_in: number; total_out: number;
+}
+interface CashTxn {
+  id: number; branch_id: number; date: string;
+  txn_type: string; category: string; amount: number;
+  reference: string; notes: string;
+}
+
+export default function CashPage() {
+  const { t, i18n } = useTranslation();
+  const { user } = useAuth();
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchId, setBranchId] = useState<string>("");
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [summary, setSummary] = useState<CashSummary | null>(null);
+  const [transactions, setTransactions] = useState<CashTxn[]>([]);
+  const [tab, setTab] = useState<"summary" | "transactions">("summary");
+  const [showTxnForm, setShowTxnForm] = useState(false);
+  const [depositAmount, setDepositAmount] = useState("0");
+
+  useEffect(() => {
+    apiGet("/api/branches/").then((bs: Branch[]) => {
+      setBranches(bs.filter(b => !b.name.includes("Central")));
+      if (user?.branch_id) {
+        setBranchId(String(user.branch_id));
+      } else if (bs.length > 0) {
+        const first = bs.find(b => !b.name.includes("Central"));
+        if (first) setBranchId(String(first.id));
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (branchId) loadData();
+  }, [branchId, selectedDate]);
+
+  const loadData = () => {
+    apiGet(`/api/cash/summary?branch_id=${branchId}&summary_date=${selectedDate}`).then(setSummary);
+    apiGet(`/api/cash/transactions?branch_id=${branchId}&date_from=${selectedDate}&date_to=${selectedDate}`).then(setTransactions);
+  };
+
+  const handleSaveBalance = async () => {
+    const params = new URLSearchParams({
+      branch_id: branchId,
+      balance_date: selectedDate,
+      opening_balance: String(summary?.opening_balance || 0),
+      deposited: depositAmount,
+    });
+    await apiFetch(`/api/cash/save-balance?${params}`, { method: "POST" });
+    loadData();
+  };
+
+  const handleAddTxn = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const params = new URLSearchParams({
+      branch_id: branchId,
+      txn_date: selectedDate,
+      txn_type: fd.get("txn_type") as string,
+      category: fd.get("category") as string,
+      amount: fd.get("amount") as string,
+      reference: fd.get("reference") as string || "",
+      notes: fd.get("notes") as string || "",
+    });
+    await apiFetch(`/api/cash/transactions?${params}`, { method: "POST" });
+    setShowTxnForm(false);
+    loadData();
+  };
+
+  const branchName = (id: number) => {
+    const b = branches.find(br => br.id === id);
+    return b ? (i18n.language === "ar" ? b.name_ar || b.name : b.name) : "";
+  };
+
+  const downloadCSV = () => {
+    window.open(`/api/export/cash/csv?branch_id=${branchId}`, "_blank");
+  };
+
+  const isStaff = user?.role === "staff";
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 className="text-2xl font-bold text-gray-800">{t("cash_management")}</h2>
+        <div className="flex gap-2">
+          <button onClick={downloadCSV}
+            className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
+            {t("export_csv")}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-3 mb-4 flex-wrap items-end">
+        {!isStaff && (
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">{t("branch")}</label>
+            <select value={branchId} onChange={e => setBranchId(e.target.value)}
+              className="px-3 py-2 border rounded-lg text-sm">
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>
+                  {i18n.language === "ar" ? b.name_ar || b.name : b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">{t("date")}</label>
+          <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
+            className="px-3 py-2 border rounded-lg text-sm" />
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-4">
+        <button onClick={() => setTab("summary")}
+          className={`px-4 py-2 text-sm rounded-t-lg ${tab === "summary" ? "bg-emerald-600 text-white" : "bg-gray-200"}`}>
+          {t("summary")}
+        </button>
+        <button onClick={() => setTab("transactions")}
+          className={`px-4 py-2 text-sm rounded-t-lg ${tab === "transactions" ? "bg-emerald-600 text-white" : "bg-gray-200"}`}>
+          {t("transactions")}
+        </button>
+      </div>
+
+      {tab === "summary" && summary && (
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <h3 className="font-semibold text-lg mb-4">
+            {t("cash_sheet")} - {branchName(parseInt(branchId))} - {selectedDate}
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Cash In */}
+            <div className="border rounded-lg p-4 bg-green-50">
+              <h4 className="font-semibold text-green-700 mb-3">{t("total_in")}</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>{t("opening_balance")}</span>
+                  <span className="font-medium">KD {summary.opening_balance.toFixed(3)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>{t("cash_sales")}</span>
+                  <span className="font-medium text-green-600">KD {summary.cash_sales.toFixed(3)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>{t("petty_cash_in")}</span>
+                  <span className="font-medium text-green-600">KD {summary.petty_cash_in.toFixed(3)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2 font-bold">
+                  <span>{t("total_in")}</span>
+                  <span className="text-green-700">KD {summary.total_in.toFixed(3)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Cash Out */}
+            <div className="border rounded-lg p-4 bg-red-50">
+              <h4 className="font-semibold text-red-700 mb-3">{t("total_out")}</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>{t("cash_purchases")}</span>
+                  <span className="font-medium text-red-600">KD {summary.cash_purchases.toFixed(3)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>{t("cash_expenses")}</span>
+                  <span className="font-medium text-red-600">KD {summary.cash_expenses.toFixed(3)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>{t("cash_withdrawn")}</span>
+                  <span className="font-medium text-red-600">KD {summary.cash_withdrawn.toFixed(3)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2 font-bold">
+                  <span>{t("total_out")}</span>
+                  <span className="text-red-700">KD {summary.total_out.toFixed(3)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Closing Balance */}
+          <div className="mt-4 p-4 bg-blue-50 border rounded-lg">
+            <div className="flex justify-between items-center">
+              <span className="font-bold text-lg">{t("closing_balance")}</span>
+              <span className="font-bold text-xl text-blue-700">
+                KD {summary.closing_balance.toFixed(3)}
+              </span>
+            </div>
+          </div>
+
+          {/* Deposit Section */}
+          <div className="mt-4 p-4 bg-yellow-50 border rounded-lg">
+            <h4 className="font-semibold mb-2">{t("deposited")}</h4>
+            <div className="flex gap-3 items-end">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">{t("amount")}</label>
+                <input type="number" step="0.001" value={depositAmount}
+                  onChange={e => setDepositAmount(e.target.value)}
+                  className="px-3 py-2 border rounded-lg text-sm w-40" />
+              </div>
+              <button onClick={handleSaveBalance}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
+                {t("save_balance")}
+              </button>
+            </div>
+            {summary.deposited > 0 && (
+              <p className="text-sm mt-2 text-yellow-700">
+                {t("deposited")}: KD {summary.deposited.toFixed(3)} |{" "}
+                {t("available_balance")}: KD {(summary.closing_balance - summary.deposited).toFixed(3)}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab === "transactions" && (
+        <div>
+          <div className="mb-4">
+            <button onClick={() => setShowTxnForm(!showTxnForm)}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
+              {showTxnForm ? t("cancel") : t("add_transaction")}
+            </button>
+          </div>
+
+          {showTxnForm && (
+            <form onSubmit={handleAddTxn} className="bg-white p-6 rounded-xl shadow-sm border mb-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">{t("cash_in")} / {t("cash_out")}</label>
+                  <select name="txn_type" className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="cash_in">{t("cash_in")}</option>
+                    <option value="cash_out">{t("cash_out")}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">{t("category")}</label>
+                  <select name="category" className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="petty_cash">{t("petty_cash")}</option>
+                    <option value="deposit">{t("deposit")}</option>
+                    <option value="withdrawal">{t("withdrawal")}</option>
+                    <option value="other">{t("other")}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">{t("amount")}</label>
+                  <input type="number" step="0.001" name="amount" required
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">{t("reference")}</label>
+                  <input name="reference" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">{t("notes")}</label>
+                <textarea name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+              </div>
+              <button type="submit"
+                className="px-6 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
+                {t("save")}
+              </button>
+            </form>
+          )}
+
+          <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+            <table className="w-full text-sm min-w-[600px]">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-4 py-3 text-left">{t("date")}</th>
+                  <th className="px-4 py-3 text-left">{t("cash_in")} / {t("cash_out")}</th>
+                  <th className="px-4 py-3 text-left">{t("category")}</th>
+                  <th className="px-4 py-3 text-right">{t("amount")}</th>
+                  <th className="px-4 py-3 text-left">{t("reference")}</th>
+                  <th className="px-4 py-3 text-left">{t("notes")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.length === 0 ? (
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                ) : transactions.map(txn => (
+                  <tr key={txn.id} className="border-b hover:bg-gray-50">
+                    <td className="px-4 py-3">{txn.date}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded text-xs ${txn.txn_type === "cash_in" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                        {txn.txn_type === "cash_in" ? t("cash_in") : t("cash_out")}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">{txn.category}</td>
+                    <td className="px-4 py-3 text-right font-medium">KD {txn.amount.toFixed(3)}</td>
+                    <td className="px-4 py-3">{txn.reference || "-"}</td>
+                    <td className="px-4 py-3">{txn.notes || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

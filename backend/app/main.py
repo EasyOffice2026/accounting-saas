@@ -8,6 +8,7 @@ from app.database import Base, engine
 from app.models import *  # noqa: F401,F403 — register all models
 from app.utils.auth import hash_password
 from app.routes import auth, branches, sales, purchases, expenses, hr, dashboard
+from app.routes import cash, items, export
 
 app = FastAPI(title="Mudawwarah Restaurant Management System")
 
@@ -32,6 +33,9 @@ app.include_router(purchases.router)
 app.include_router(expenses.router)
 app.include_router(hr.router)
 app.include_router(dashboard.router)
+app.include_router(cash.router)
+app.include_router(items.router)
+app.include_router(export.router)
 
 
 @app.get("/healthz")
@@ -94,15 +98,30 @@ def _seed_data():
         )
         db.add(owner)
 
+        # Manager account (all branches)
+        manager = User(
+            username="manager", password_hash=hash_password("manager123"),
+            full_name="Manager", role="manager", branch_id=None,
+        )
+        db.add(manager)
+
         # Branch staff accounts
+        branch_usernames = {
+            "Al Aqeelah": "aqeelah",
+            "Al Aradiya": "aradiya",
+            "Al Jahra": "jahra",
+            "Al Ayoun": "ayoun",
+            "Central Kitchen": "kitchen",
+        }
         for b in branches:
-            if not b.is_central_kitchen:
-                staff = User(
-                    username=b.name.lower().replace(" ", "_"),
-                    password_hash=hash_password("staff123"),
-                    full_name=f"{b.name} Staff", role="staff", branch_id=b.id,
-                )
-                db.add(staff)
+            uname = branch_usernames.get(b.name, b.name.lower().replace(" ", "_"))
+            pwd = f"{uname}123"
+            staff = User(
+                username=uname,
+                password_hash=hash_password(pwd),
+                full_name=f"{b.name} Staff", role="staff", branch_id=b.id,
+            )
+            db.add(staff)
 
         # Expense categories
         for name, name_ar in [

@@ -57,9 +57,13 @@ export default function PurchasesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("purchases")}</h2>
         <div className="flex gap-2">
+          <button onClick={() => window.open("/api/export/purchases/csv", "_blank")}
+            className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
+            {t("export_csv")}
+          </button>
           <button onClick={() => setShowSupplierForm(!showSupplierForm)}
             className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm">
             + {t("supplier")}
@@ -139,7 +143,24 @@ export default function PurchasesPage() {
 
           <div>
             <label className="block text-sm font-medium mb-1">{t("attachment")}</label>
-            <input type="file" name="attachment" className="text-sm" />
+            <div className="flex gap-2">
+              <input type="file" name="attachment" accept="image/*,.pdf" className="text-sm" />
+              <button type="button" onClick={() => {
+                const inp = document.createElement("input");
+                inp.type = "file"; inp.accept = "image/*"; inp.capture = "environment";
+                inp.onchange = () => {
+                  const f = inp.files?.[0];
+                  if (f) {
+                    const dt = new DataTransfer(); dt.items.add(f);
+                    const target = document.querySelector('input[name="attachment"]') as HTMLInputElement;
+                    if (target) target.files = dt.files;
+                  }
+                };
+                inp.click();
+              }} className="px-3 py-1.5 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 whitespace-nowrap">
+                📷 {t("take_picture")}
+              </button>
+            </div>
           </div>
           <button type="submit"
             className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">

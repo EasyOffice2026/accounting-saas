@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
 import {
   LayoutDashboard, ShoppingCart, Package, Receipt,
-  Users, Clock, LogOut, Menu, X,
+  Users, Clock, LogOut, Menu, X, Banknote,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -14,6 +14,7 @@ const navItems = [
   { path: "/expenses", icon: Receipt, key: "expenses" },
   { path: "/hr", icon: Users, key: "hr" },
   { path: "/attendance", icon: Clock, key: "attendance" },
+  { path: "/cash", icon: Banknote, key: "cash_management" },
 ];
 
 export default function Layout() {

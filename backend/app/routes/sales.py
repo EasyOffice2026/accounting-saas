@@ -42,6 +42,14 @@ def create_sale(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # Prevent duplicate date per branch
+    existing = db.query(Sale).filter(
+        Sale.branch_id == branch_id,
+        Sale.date == date.fromisoformat(sale_date),
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Sales data already exists for this date and branch")
+
     attachment_path = None
     if attachment and attachment.filename:
         ext = os.path.splitext(attachment.filename)[1]

@@ -8,10 +8,20 @@ from app.models.sale import Sale
 from app.models.purchase import PurchaseOrder
 from app.models.expense import Expense
 from app.models.hr import Employee
+from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+
+SALES_CHANNELS = ["cash", "knet", "link", "wamd", "talabat", "keeta", "jahez", "other"]
+
+
+def _sum_sales(rows):
+    return sum(
+        sum(getattr(r, f"physical_{ch}", 0) or 0 for ch in SALES_CHANNELS)
+        for r in rows
+    )
 
 
 @router.get("/")
@@ -24,11 +34,7 @@ def dashboard(branch_id: Optional[int] = None, db: Session = Depends(get_db),
         return q
 
     sales = apply_branch(db.query(Sale), Sale).all()
-    total_sales = sum(
-        (r.physical_cash or 0) + (r.physical_knet or 0) + (r.physical_link or 0) +
-        (r.physical_wamd or 0) + (r.physical_talabat or 0) + (r.physical_keeta or 0) +
-        (r.physical_jahez or 0) + (r.physical_other or 0) for r in sales
-    )
+    total_sales = _sum_sales(sales)
 
     total_purchases = apply_branch(
         db.query(func.coalesce(func.sum(PurchaseOrder.total_amount), 0)),
@@ -45,10 +51,30 @@ def dashboard(branch_id: Optional[int] = None, db: Session = Depends(get_db),
         Employee,
     ).scalar() or 0
 
+    # Branch-wise breakdown
+    branches = db.query(Branch).all()
+    branch_data = []
+    for b in branches:
+        b_sales = db.query(Sale).filter(Sale.branch_id == b.id).all()
+        b_purchases = db.query(func.coalesce(func.sum(PurchaseOrder.total_amount), 0)).filter(
+            PurchaseOrder.branch_id == b.id
+        ).scalar() or 0
+        b_expenses = db.query(func.coalesce(func.sum(Expense.amount), 0)).filter(
+            Expense.branch_id == b.id
+        ).scalar() or 0
+        branch_data.append({
+            "branch_id": b.id,
+            "branch_name": b.name,
+            "sales": round(_sum_sales(b_sales), 3),
+            "purchases": round(float(b_purchases), 3),
+            "expenses": round(float(b_expenses), 3),
+        })
+
     return {
         "total_sales": total_sales,
         "total_purchases": float(total_purchases),
         "total_expenses": float(total_expenses),
         "employee_count": employee_count,
         "sales_count": len(sales),
+        "branch_data": branch_data,
     }

@@ -90,15 +90,15 @@ export default function SalesPage() {
         </div>
       </div>
 
-      <div className="mb-4">
-        {!isStaff && (
+      {!isStaff && (
+        <div className="mb-4">
           <select value={branchFilter} onChange={e => handleFilter(e.target.value)}
             className="px-3 py-2 border rounded-lg text-sm">
             <option value="">{t("all_branches")}</option>
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
-        )}
-      </div>
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-300 text-red-700 px-4 py-2 rounded mb-4 text-sm">{error}</div>
@@ -107,7 +107,9 @@ export default function SalesPage() {
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            {!isStaff ? (
+            {user?.branch_id ? (
+              <input type="hidden" name="branch_id" value={user.branch_id} />
+            ) : (
               <div>
                 <label className="block text-sm font-medium mb-1">{t("branch")}</label>
                 <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
@@ -116,8 +118,6 @@ export default function SalesPage() {
                   ))}
                 </select>
               </div>
-            ) : (
-              <input type="hidden" name="branch_id" value={user?.branch_id || ""} />
             )}
             <div>
               <label className="block text-sm font-medium mb-1">{t("date")}</label>

@@ -1,20 +1,33 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost } from "../contexts/api";
+import { useAuth } from "../contexts/AuthContext";
 
 interface Supplier { id: number; name: string; email: string; whatsapp: string; payment_type: string; }
-interface SupplierItem { id: number; supplier_id: number; item_name: string; item_name_ar: string; packaging: string; unit: string; unit_price: number; }
+interface SupplierItemI { id: number; supplier_id: number; item_name: string; item_name_ar: string; packaging: string; unit: string; unit_price: number; }
 interface OrderItem { item_name: string; quantity: number; unit: string; unit_price: number; total: number; }
 interface PurchaseOrder {
   id: number; branch_id: number; supplier_id: number; date: string;
   payment_type: string; total_amount: number; status: string;
 }
 interface Branch { id: number; name: string; }
+interface InvoiceI {
+  id: number; purchase_order_id: number; supplier_id: number; supplier_name: string;
+  branch_id: number; branch_name: string; invoice_number: string; date: string;
+  total_amount: number; status: string; paid_amount: number; paid_date: string | null; notes: string;
+}
+interface LedgerEntry {
+  supplier_id: number; supplier_name: string;
+  total_invoiced: number; total_paid: number; total_pending: number;
+  pending_count: number; paid_count: number;
+  invoices: { id: number; po_id: number; date: string; total_amount: number; status: string; paid_amount: number; paid_date: string | null }[];
+}
 
-type Tab = "orders" | "catalog";
+type Tab = "orders" | "catalog" | "invoices" | "ledger";
 
 export default function PurchasesPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [tab, setTab] = useState<Tab>("orders");
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -26,9 +39,21 @@ export default function PurchasesPage() {
 
   // Catalog state
   const [catalogSupplierId, setCatalogSupplierId] = useState<number | null>(null);
-  const [catalogItems, setCatalogItems] = useState<SupplierItem[]>([]);
+  const [catalogItems, setCatalogItems] = useState<SupplierItemI[]>([]);
   const [showItemForm, setShowItemForm] = useState(false);
-  const [editingItem, setEditingItem] = useState<SupplierItem | null>(null);
+  const [editingItem, setEditingItem] = useState<SupplierItemI | null>(null);
+
+  // Receiving state
+  const [receivingOrder, setReceivingOrder] = useState<PurchaseOrder | null>(null);
+  const [recvItems, setRecvItems] = useState<{ item_name: string; ordered_qty: string; received_qty: string; unit: string; unit_price: string }[]>([]);
+
+  // Invoice state
+  const [invoices, setInvoices] = useState<InvoiceI[]>([]);
+  const [payingInvoice, setPayingInvoice] = useState<InvoiceI | null>(null);
+
+  // Ledger state
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [expandedSupplier, setExpandedSupplier] = useState<number | null>(null);
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);
@@ -36,28 +61,24 @@ export default function PurchasesPage() {
     apiGet("/api/purchases/orders").then(setOrders);
   }, []);
 
-  // Load catalog items when supplier selected
+  useEffect(() => {
+    if (tab === "invoices") apiGet("/api/purchases/invoices").then(setInvoices);
+    if (tab === "ledger") apiGet("/api/purchases/supplier-ledger").then(setLedger);
+  }, [tab]);
+
   const loadCatalog = async (suppId: number) => {
     setCatalogSupplierId(suppId);
-    const items: SupplierItem[] = await apiGet(`/api/purchases/suppliers/${suppId}/items`);
-    setCatalogItems(items);
+    const res: SupplierItemI[] = await apiGet(`/api/purchases/suppliers/${suppId}/items`);
+    setCatalogItems(res);
   };
 
-  useEffect(() => {
-    if (catalogSupplierId) loadCatalog(catalogSupplierId);
-  }, []);
-
-  // Load supplier items when creating order
   const loadSupplierItemsForOrder = async (suppId: number) => {
     setOrderSupplierId(suppId);
-    const catItems: SupplierItem[] = await apiGet(`/api/purchases/suppliers/${suppId}/items`);
+    const catItems: SupplierItemI[] = await apiGet(`/api/purchases/suppliers/${suppId}/items`);
     if (catItems.length > 0) {
       setItems(catItems.map(ci => ({
-        item_name: ci.item_name,
-        quantity: "1",
-        unit: ci.unit,
-        unit_price: ci.unit_price.toFixed(3),
-        total: ci.unit_price.toFixed(3),
+        item_name: ci.item_name, quantity: "1", unit: ci.unit,
+        unit_price: ci.unit_price.toFixed(3), total: ci.unit_price.toFixed(3),
       })));
     } else {
       setItems([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
@@ -75,14 +96,13 @@ export default function PurchasesPage() {
     setItems(updated);
   };
 
-  const removeItem = (i: number) => {
-    if (items.length > 1) setItems(items.filter((_, idx) => idx !== i));
-  };
+  const removeItem = (i: number) => { if (items.length > 1) setItems(items.filter((_, idx) => idx !== i)); };
 
   const handleOrderSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     fd.set("items", JSON.stringify(items));
+    if (user?.branch_id) fd.set("branch_id", String(user.branch_id));
     await apiPost("/api/purchases/orders", fd);
     setShowOrderForm(false);
     setItems([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
@@ -91,8 +111,7 @@ export default function PurchasesPage() {
 
   const handleSupplierSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    await apiPost("/api/purchases/suppliers", fd);
+    await apiPost("/api/purchases/suppliers", new FormData(e.currentTarget));
     setShowSupplierForm(false);
     apiGet("/api/purchases/suppliers").then(setSuppliers);
   };
@@ -109,18 +128,59 @@ export default function PurchasesPage() {
     } else {
       await apiPost(`/api/purchases/suppliers/${catalogSupplierId}/items`, fd);
     }
-    setShowItemForm(false);
-    setEditingItem(null);
+    setShowItemForm(false); setEditingItem(null);
     loadCatalog(catalogSupplierId);
   };
 
   const deleteCatalogItem = async (itemId: number) => {
     if (!confirm(t("confirm_delete"))) return;
     await fetch(`/api/purchases/suppliers/items/${itemId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      method: "DELETE", headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
     });
     if (catalogSupplierId) loadCatalog(catalogSupplierId);
+  };
+
+  // Receiving
+  const startReceiving = async (order: PurchaseOrder) => {
+    setReceivingOrder(order);
+    const poItems: OrderItem[] = await apiGet(`/api/purchases/orders/${order.id}/items`);
+    setRecvItems(poItems.map(i => ({
+      item_name: i.item_name, ordered_qty: String(i.quantity),
+      received_qty: String(i.quantity), unit: i.unit, unit_price: String(i.unit_price),
+    })));
+  };
+
+  const handleReceiveSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!receivingOrder) return;
+    const fd = new FormData(e.currentTarget);
+    fd.set("items", JSON.stringify(recvItems));
+    await fetch(`/api/purchases/orders/${receivingOrder.id}/receive`, {
+      method: "POST", body: fd,
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    });
+    setReceivingOrder(null);
+    apiGet("/api/purchases/orders").then(setOrders);
+  };
+
+  const updateRecvItem = (i: number, field: string, val: string) => {
+    const u = [...recvItems];
+    (u[i] as Record<string, string>)[field] = val;
+    setRecvItems(u);
+  };
+
+  // Pay invoice
+  const handlePaySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!payingInvoice) return;
+    const fd = new FormData(e.currentTarget);
+    await fetch(`/api/purchases/invoices/${payingInvoice.id}/pay`, {
+      method: "POST", body: fd,
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    });
+    setPayingInvoice(null);
+    apiGet("/api/purchases/invoices").then(setInvoices);
+    apiGet("/api/purchases/orders").then(setOrders);
   };
 
   const supplierName = (id: number) => suppliers.find(s => s.id === id)?.name || "";
@@ -129,13 +189,9 @@ export default function PurchasesPage() {
 
   const buildOrderMessage = (order: PurchaseOrder, orderItems: OrderItem[]) => {
     const supplier = getSupplier(order.supplier_id);
-    const branch = branchName(order.branch_id);
     let msg = `*Purchase Order #${order.id}*\n`;
-    msg += `Date: ${order.date}\n`;
-    msg += `Branch: ${branch}\n`;
-    msg += `Supplier: ${supplier?.name || ""}\n`;
-    msg += `Payment: ${order.payment_type}\n\n`;
-    msg += `*Items:*\n`;
+    msg += `Date: ${order.date}\nBranch: ${branchName(order.branch_id)}\n`;
+    msg += `Supplier: ${supplier?.name || ""}\nPayment: ${order.payment_type}\n\n*Items:*\n`;
     orderItems.forEach((item, i) => {
       msg += `${i + 1}. ${item.item_name} - ${item.quantity} ${item.unit} x KD ${item.unit_price.toFixed(3)} = KD ${item.total.toFixed(3)}\n`;
     });
@@ -148,29 +204,30 @@ export default function PurchasesPage() {
     if (!supplier?.whatsapp) { alert(t("no_whatsapp")); return; }
     const orderItems: OrderItem[] = await apiGet(`/api/purchases/orders/${order.id}/items`);
     const msg = buildOrderMessage(order, orderItems);
-    const phone = supplier.whatsapp.replace(/[^0-9]/g, "");
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
+    window.open(`https://wa.me/${supplier.whatsapp.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   const [sendingEmail, setSendingEmail] = useState<number | null>(null);
-
   const sendEmail = async (order: PurchaseOrder) => {
     const supplier = getSupplier(order.supplier_id);
     if (!supplier?.email) { alert(t("no_email")); return; }
     setSendingEmail(order.id);
     try {
       const res = await fetch(`/api/email/send-po/${order.id}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed");
       alert(data.message);
-    } catch (e: unknown) {
-      const err = e as Error;
-      alert(err.message || t("email_send_error"));
-    }
+    } catch (e: unknown) { alert((e as Error).message || t("email_send_error")); }
     setSendingEmail(null);
+  };
+
+  const statusColor = (s: string) => {
+    if (s === "paid") return "bg-green-100 text-green-700";
+    if (s === "invoiced") return "bg-purple-100 text-purple-700";
+    if (s === "received") return "bg-blue-100 text-blue-700";
+    return "bg-yellow-100 text-yellow-700";
   };
 
   return (
@@ -196,17 +253,14 @@ export default function PurchasesPage() {
       </div>
 
       {/* Tab Bar */}
-      <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit">
-        <button onClick={() => setTab("orders")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition ${
-            tab === "orders" ? "bg-white shadow text-emerald-700" : "text-gray-500 hover:text-gray-700"}`}>
-          {t("purchase_orders")}
-        </button>
-        <button onClick={() => setTab("catalog")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition ${
-            tab === "catalog" ? "bg-white shadow text-emerald-700" : "text-gray-500 hover:text-gray-700"}`}>
-          {t("supplier_catalog")}
-        </button>
+      <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
+        {(["orders", "catalog", "invoices", "ledger"] as Tab[]).map(tb => (
+          <button key={tb} onClick={() => setTab(tb)}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition ${
+              tab === tb ? "bg-white shadow text-emerald-700" : "text-gray-500 hover:text-gray-700"}`}>
+            {t(tb === "orders" ? "purchase_orders" : tb === "catalog" ? "supplier_catalog" : tb === "invoices" ? "invoices" : "supplier_ledger")}
+          </button>
+        ))}
       </div>
 
       {showSupplierForm && (
@@ -225,18 +279,101 @@ export default function PurchasesPage() {
         </form>
       )}
 
+      {/* ========== Receiving Modal ========== */}
+      {receivingOrder && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <form onSubmit={handleReceiveSubmit} className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-4">
+            <h3 className="text-lg font-bold">{t("receive_order")} #{receivingOrder.id}</h3>
+            <p className="text-sm text-gray-500">{t("supplier")}: {supplierName(receivingOrder.supplier_id)} | {t("date")}: {receivingOrder.date}</p>
+            <div>
+              <label className="block text-sm font-medium mb-1">{t("receive_date")}</label>
+              <input type="date" name="receive_date" required defaultValue={new Date().toISOString().split("T")[0]}
+                className="px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <h4 className="font-semibold text-sm">{t("items")}</h4>
+            <div className="space-y-2">
+              {recvItems.map((ri, i) => (
+                <div key={i} className="grid grid-cols-5 gap-2 items-center text-sm">
+                  <span className="col-span-1 font-medium truncate">{ri.item_name}</span>
+                  <div className="text-center">
+                    <label className="block text-xs text-gray-400">{t("ordered")}</label>
+                    <span>{ri.ordered_qty} {ri.unit}</span>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400">{t("received")}</label>
+                    <input type="number" step="0.01" value={ri.received_qty}
+                      onChange={e => updateRecvItem(i, "received_qty", e.target.value)}
+                      className="w-full px-2 py-1 border rounded text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400">{t("unit_price")}</label>
+                    <input type="number" step="0.001" value={ri.unit_price}
+                      onChange={e => updateRecvItem(i, "unit_price", e.target.value)}
+                      className="w-full px-2 py-1 border rounded text-sm" />
+                  </div>
+                  <div className="text-right font-mono">
+                    KD {(parseFloat(ri.received_qty || "0") * parseFloat(ri.unit_price || "0")).toFixed(3)}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="text-right font-semibold">
+              {t("total")}: KD {recvItems.reduce((s, ri) => s + parseFloat(ri.received_qty || "0") * parseFloat(ri.unit_price || "0"), 0).toFixed(3)}
+            </div>
+            <textarea name="notes" placeholder={t("notes")} className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+            <div className="flex gap-2">
+              <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm">{t("confirm_receive")}</button>
+              <button type="button" onClick={() => setReceivingOrder(null)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm">{t("cancel")}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ========== Pay Invoice Modal ========== */}
+      {payingInvoice && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <form onSubmit={handlePaySubmit} className="bg-white rounded-xl p-6 max-w-md w-full space-y-4">
+            <h3 className="text-lg font-bold">{t("pay_invoice")} #{payingInvoice.id}</h3>
+            <p className="text-sm text-gray-500">
+              {payingInvoice.supplier_name} | PO #{payingInvoice.purchase_order_id} | KD {payingInvoice.total_amount.toFixed(3)}
+            </p>
+            <div>
+              <label className="block text-sm font-medium mb-1">{t("paid_amount")} (KD)</label>
+              <input type="number" step="0.001" name="paid_amount" required
+                defaultValue={payingInvoice.total_amount} className="w-full px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">{t("paid_date")}</label>
+              <input type="date" name="paid_date" required defaultValue={new Date().toISOString().split("T")[0]}
+                className="w-full px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <textarea name="notes" placeholder={t("notes")} className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+            <div className="flex gap-2">
+              <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm">{t("confirm_payment")}</button>
+              <button type="button" onClick={() => setPayingInvoice(null)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm">{t("cancel")}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* ========== ORDERS TAB ========== */}
       {tab === "orders" && (
         <>
           {showOrderForm && (
             <form onSubmit={handleOrderSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">{t("branch")}</label>
-                  <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
-                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </select>
-                </div>
+                {user?.branch_id ? (
+                  <input type="hidden" name="branch_id" value={user.branch_id} />
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("branch")}</label>
+                    <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                      {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("supplier")}</label>
                   <select name="supplier_id" required className="w-full px-3 py-2 border rounded-lg text-sm"
@@ -244,9 +381,7 @@ export default function PurchasesPage() {
                     <option value="">{t("select_supplier")}</option>
                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
-                  {orderSupplierId && (
-                    <p className="text-xs text-emerald-600 mt-1">{t("catalog_loaded")}</p>
-                  )}
+                  {orderSupplierId && <p className="text-xs text-emerald-600 mt-1">{t("catalog_loaded")}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
@@ -291,7 +426,6 @@ export default function PurchasesPage() {
                   {t("total")}: KD {items.reduce((s, it) => s + parseFloat(it.total || "0"), 0).toFixed(3)}
                 </span>
               </div>
-
               <div>
                 <label className="block text-sm font-medium mb-1">{t("attachment")}</label>
                 <div className="flex gap-2">
@@ -331,7 +465,7 @@ export default function PurchasesPage() {
                   <th className="px-4 py-3 text-left">{t("payment_type")}</th>
                   <th className="px-4 py-3 text-right">{t("total")}</th>
                   <th className="px-4 py-3 text-left">{t("status")}</th>
-                  <th className="px-4 py-3 text-center">{t("send_order")}</th>
+                  <th className="px-4 py-3 text-center">{t("actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -346,12 +480,16 @@ export default function PurchasesPage() {
                     <td className="px-4 py-3">{t(o.payment_type)}</td>
                     <td className="px-4 py-3 text-right font-mono">KD {o.total_amount.toFixed(3)}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs ${
-                        o.status === "received" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
-                      }`}>{t(o.status)}</span>
+                      <span className={`px-2 py-1 rounded-full text-xs ${statusColor(o.status)}`}>{t(o.status)}</span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <div className="flex gap-1 justify-center">
+                      <div className="flex gap-1 justify-center flex-wrap">
+                        {o.status === "pending" && (
+                          <button onClick={() => startReceiving(o)}
+                            className="px-2 py-1 bg-indigo-500 text-white rounded text-xs hover:bg-indigo-600">
+                            {t("receive")}
+                          </button>
+                        )}
                         <button onClick={() => sendWhatsApp(o)} title={t("send_whatsapp")}
                           className="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">
                           {t("whatsapp")}
@@ -382,7 +520,6 @@ export default function PurchasesPage() {
               {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
-
           {catalogSupplierId && (
             <>
               <div className="flex items-center justify-between mb-4">
@@ -395,7 +532,6 @@ export default function PurchasesPage() {
                   + {t("add_item")}
                 </button>
               </div>
-
               {showItemForm && (
                 <form onSubmit={handleCatalogItemSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-4 space-y-3">
                   <h3 className="font-semibold">{editingItem ? t("edit_item") : t("add_item")}</h3>
@@ -439,7 +575,6 @@ export default function PurchasesPage() {
                   </div>
                 </form>
               )}
-
               <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b">
@@ -483,6 +618,118 @@ export default function PurchasesPage() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ========== INVOICES TAB ========== */}
+      {tab === "invoices" && (
+        <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-4 py-3 text-left">#</th>
+                <th className="px-4 py-3 text-left">PO #</th>
+                <th className="px-4 py-3 text-left">{t("date")}</th>
+                <th className="px-4 py-3 text-left">{t("supplier")}</th>
+                <th className="px-4 py-3 text-left">{t("branch")}</th>
+                <th className="px-4 py-3 text-right">{t("total")}</th>
+                <th className="px-4 py-3 text-right">{t("paid_amount")}</th>
+                <th className="px-4 py-3 text-left">{t("status")}</th>
+                <th className="px-4 py-3 text-center">{t("actions")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoices.length === 0 ? (
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{t("no_invoices")}</td></tr>
+              ) : invoices.map(inv => (
+                <tr key={inv.id} className="border-b hover:bg-gray-50">
+                  <td className="px-4 py-3">{inv.id}</td>
+                  <td className="px-4 py-3">{inv.purchase_order_id}</td>
+                  <td className="px-4 py-3">{inv.date}</td>
+                  <td className="px-4 py-3">{inv.supplier_name}</td>
+                  <td className="px-4 py-3">{inv.branch_name}</td>
+                  <td className="px-4 py-3 text-right font-mono">KD {inv.total_amount.toFixed(3)}</td>
+                  <td className="px-4 py-3 text-right font-mono">KD {inv.paid_amount.toFixed(3)}</td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-1 rounded-full text-xs ${inv.status === "paid" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                      {t(inv.status)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {inv.status === "pending" && (
+                      <button onClick={() => setPayingInvoice(inv)}
+                        className="px-2 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
+                        {t("pay")}
+                      </button>
+                    )}
+                    {inv.status === "paid" && inv.paid_date && (
+                      <span className="text-xs text-gray-400">{inv.paid_date}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ========== SUPPLIER LEDGER TAB ========== */}
+      {tab === "ledger" && (
+        <div className="space-y-4">
+          {ledger.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-sm border p-8 text-center text-gray-400">{t("no_data")}</div>
+          ) : ledger.map(entry => (
+            <div key={entry.supplier_id} className="bg-white rounded-xl shadow-sm border">
+              <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                onClick={() => setExpandedSupplier(expandedSupplier === entry.supplier_id ? null : entry.supplier_id)}>
+                <div>
+                  <h3 className="font-semibold text-lg">{entry.supplier_name}</h3>
+                  <p className="text-sm text-gray-500">
+                    {entry.pending_count} {t("pending")} | {entry.paid_count} {t("paid")}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-500">{t("total_invoiced")}: <span className="font-mono">KD {entry.total_invoiced.toFixed(3)}</span></p>
+                  <p className="text-sm text-green-600">{t("total_paid")}: <span className="font-mono">KD {entry.total_paid.toFixed(3)}</span></p>
+                  <p className="text-lg font-bold text-red-600">
+                    {t("balance_due")}: <span className="font-mono">KD {entry.total_pending.toFixed(3)}</span>
+                  </p>
+                </div>
+              </div>
+              {expandedSupplier === entry.supplier_id && entry.invoices.length > 0 && (
+                <div className="border-t overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left">{t("invoice")} #</th>
+                        <th className="px-4 py-2 text-left">PO #</th>
+                        <th className="px-4 py-2 text-left">{t("date")}</th>
+                        <th className="px-4 py-2 text-right">{t("amount")}</th>
+                        <th className="px-4 py-2 text-right">{t("paid_amount")}</th>
+                        <th className="px-4 py-2 text-left">{t("status")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {entry.invoices.map(inv => (
+                        <tr key={inv.id} className="border-b hover:bg-gray-50">
+                          <td className="px-4 py-2">{inv.id}</td>
+                          <td className="px-4 py-2">{inv.po_id}</td>
+                          <td className="px-4 py-2">{inv.date}</td>
+                          <td className="px-4 py-2 text-right font-mono">KD {inv.total_amount.toFixed(3)}</td>
+                          <td className="px-4 py-2 text-right font-mono">KD {inv.paid_amount.toFixed(3)}</td>
+                          <td className="px-4 py-2">
+                            <span className={`px-2 py-1 rounded-full text-xs ${inv.status === "paid" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                              {t(inv.status)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

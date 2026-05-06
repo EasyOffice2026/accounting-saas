@@ -5,7 +5,11 @@ from typing import Optional
 import os, uuid, json
 
 from app.database import get_db
-from app.models.purchase import Supplier, PurchaseOrder, PurchaseItem, SupplierItem, DeliveryOrder
+from app.models.purchase import (
+    Supplier, PurchaseOrder, PurchaseItem, SupplierItem,
+    ReceivingOrder, ReceivingItem, Invoice, DeliveryOrder,
+)
+from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
 
@@ -181,12 +185,171 @@ def create_delivery(
     return do
 
 
+# --- Receiving Orders ---
+@router.post("/orders/{order_id}/receive")
+def receive_order(
+    order_id: int,
+    receive_date: str = Form(...),
+    items: str = Form("[]"),
+    notes: str = Form(""),
+    attachment: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    po = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
+    if not po:
+        raise HTTPException(404, "Order not found")
+    if po.status not in ("pending",):
+        raise HTTPException(400, "Order already received")
+
+    attachment_path = None
+    if attachment and attachment.filename:
+        ext = os.path.splitext(attachment.filename)[1]
+        fname = f"{uuid.uuid4().hex}{ext}"
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        with open(os.path.join(UPLOAD_DIR, fname), "wb") as f:
+            f.write(attachment.file.read())
+        attachment_path = fname
+
+    ro = ReceivingOrder(
+        purchase_order_id=order_id,
+        date=date.fromisoformat(receive_date),
+        notes=notes, attachment_path=attachment_path,
+        created_by=user.id,
+    )
+    db.add(ro)
+    db.commit()
+    db.refresh(ro)
+
+    items_list = json.loads(items)
+    recv_total = 0
+    for item in items_list:
+        qty = float(item["received_qty"])
+        price = float(item["unit_price"])
+        total = qty * price
+        recv_total += total
+        ri = ReceivingItem(
+            receiving_order_id=ro.id,
+            item_name=item["item_name"],
+            ordered_qty=float(item["ordered_qty"]),
+            received_qty=qty,
+            unit=item.get("unit", "pcs"),
+            unit_price=price,
+            total=total,
+        )
+        db.add(ri)
+
+    po.status = "received"
+    db.commit()
+
+    # Auto-create invoice
+    inv = Invoice(
+        purchase_order_id=order_id,
+        supplier_id=po.supplier_id,
+        branch_id=po.branch_id,
+        date=date.fromisoformat(receive_date),
+        total_amount=recv_total,
+        status="pending",
+    )
+    db.add(inv)
+    po.status = "invoiced"
+    db.commit()
+    db.refresh(inv)
+
+    return {"receiving_order": ro.id, "invoice_id": inv.id, "total": recv_total}
+
+
+@router.get("/orders/{order_id}/receiving")
+def get_receiving(order_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    ro = db.query(ReceivingOrder).filter(ReceivingOrder.purchase_order_id == order_id).first()
+    if not ro:
+        return None
+    items = db.query(ReceivingItem).filter(ReceivingItem.receiving_order_id == ro.id).all()
+    return {
+        "id": ro.id, "date": str(ro.date), "notes": ro.notes,
+        "items": [
+            {"item_name": ri.item_name, "ordered_qty": ri.ordered_qty,
+             "received_qty": ri.received_qty, "unit": ri.unit,
+             "unit_price": ri.unit_price, "total": ri.total}
+            for ri in items
+        ],
+    }
+
+
+# --- Invoices ---
+@router.get("/invoices")
+def list_invoices(supplier_id: Optional[int] = None, status: Optional[str] = None,
+                  db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    q = db.query(Invoice)
+    if supplier_id:
+        q = q.filter(Invoice.supplier_id == supplier_id)
+    if status:
+        q = q.filter(Invoice.status == status)
+    invoices = q.order_by(Invoice.date.desc()).all()
+    result = []
+    for inv in invoices:
+        supplier = db.query(Supplier).filter(Supplier.id == inv.supplier_id).first()
+        branch = db.query(Branch).filter(Branch.id == inv.branch_id).first()
+        result.append({
+            "id": inv.id, "purchase_order_id": inv.purchase_order_id,
+            "supplier_id": inv.supplier_id, "supplier_name": supplier.name if supplier else "",
+            "branch_id": inv.branch_id, "branch_name": branch.name if branch else "",
+            "invoice_number": inv.invoice_number, "date": str(inv.date),
+            "total_amount": inv.total_amount, "status": inv.status,
+            "paid_amount": inv.paid_amount, "paid_date": str(inv.paid_date) if inv.paid_date else None,
+            "notes": inv.notes,
+        })
+    return result
+
+
+@router.post("/invoices/{invoice_id}/pay")
+def pay_invoice(
+    invoice_id: int,
+    paid_amount: float = Form(...),
+    paid_date: str = Form(...),
+    notes: str = Form(""),
+    db: Session = Depends(get_db), _=Depends(get_current_user),
+):
+    inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not inv:
+        raise HTTPException(404, "Invoice not found")
+    inv.paid_amount = paid_amount
+    inv.paid_date = date.fromisoformat(paid_date)
+    inv.status = "paid"
+    inv.notes = notes or inv.notes
+
+    po = db.query(PurchaseOrder).filter(PurchaseOrder.id == inv.purchase_order_id).first()
+    if po:
+        po.status = "paid"
+    db.commit()
+    return {"status": "paid"}
+
+
+# --- Supplier Ledger ---
 @router.get("/supplier-ledger")
 def supplier_ledger(supplier_id: Optional[int] = None, db: Session = Depends(get_db),
                     _=Depends(get_current_user)):
-    q = db.query(PurchaseOrder)
+    suppliers_q = db.query(Supplier).filter(Supplier.is_active == True)
     if supplier_id:
-        q = q.filter(PurchaseOrder.supplier_id == supplier_id)
-    orders = q.order_by(PurchaseOrder.date.desc()).all()
-    total = sum(o.total_amount or 0 for o in orders)
-    return {"orders": orders, "total": total}
+        suppliers_q = suppliers_q.filter(Supplier.id == supplier_id)
+    result = []
+    for s in suppliers_q.all():
+        invoices = db.query(Invoice).filter(Invoice.supplier_id == s.id).order_by(Invoice.date.desc()).all()
+        pending = [i for i in invoices if i.status == "pending"]
+        paid = [i for i in invoices if i.status == "paid"]
+        total_invoiced = sum(i.total_amount for i in invoices)
+        total_paid = sum(i.paid_amount or 0 for i in invoices)
+        total_pending = total_invoiced - total_paid
+        result.append({
+            "supplier_id": s.id, "supplier_name": s.name,
+            "total_invoiced": total_invoiced, "total_paid": total_paid,
+            "total_pending": total_pending,
+            "pending_count": len(pending), "paid_count": len(paid),
+            "invoices": [
+                {"id": i.id, "po_id": i.purchase_order_id, "date": str(i.date),
+                 "total_amount": i.total_amount, "status": i.status,
+                 "paid_amount": i.paid_amount or 0,
+                 "paid_date": str(i.paid_date) if i.paid_date else None}
+                for i in invoices
+            ],
+        })
+    return result

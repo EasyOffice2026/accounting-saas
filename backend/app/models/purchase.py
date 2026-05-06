@@ -26,7 +26,7 @@ class PurchaseOrder(Base):
     total_amount = Column(Float, default=0)
     attachment_path = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
-    status = Column(String, default="pending")  # pending, received, partial
+    status = Column(String, default="pending")  # pending, received, invoiced, paid
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -54,6 +54,48 @@ class SupplierItem(Base):
     unit = Column(String, default="pcs")  # pcs, kg, box, carton, pack, liter
     unit_price = Column(Float, nullable=False, default=0)
     is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ReceivingOrder(Base):
+    __tablename__ = "receiving_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    purchase_order_id = Column(Integer, ForeignKey("purchase_orders.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    notes = Column(Text, nullable=True)
+    attachment_path = Column(String, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ReceivingItem(Base):
+    __tablename__ = "receiving_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    receiving_order_id = Column(Integer, ForeignKey("receiving_orders.id"), nullable=False)
+    item_name = Column(String, nullable=False)
+    ordered_qty = Column(Float, nullable=False)
+    received_qty = Column(Float, nullable=False)
+    unit = Column(String, default="pcs")
+    unit_price = Column(Float, nullable=False)
+    total = Column(Float, nullable=False)
+
+
+class Invoice(Base):
+    __tablename__ = "invoices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    purchase_order_id = Column(Integer, ForeignKey("purchase_orders.id"), nullable=False)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
+    branch_id = Column(Integer, ForeignKey("branches.id"), nullable=False)
+    invoice_number = Column(String, nullable=True)
+    date = Column(Date, nullable=False)
+    total_amount = Column(Float, nullable=False, default=0)
+    status = Column(String, default="pending")  # pending, paid
+    paid_amount = Column(Float, default=0)
+    paid_date = Column(Date, nullable=True)
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

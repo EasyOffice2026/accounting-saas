@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost } from "../contexts/api";
+import { useAuth } from "../contexts/AuthContext";
 
 interface Branch { id: number; name: string; }
 interface Category { id: number; name: string; name_ar: string; }
@@ -11,6 +12,7 @@ interface Expense {
 
 export default function ExpensesPage() {
   const { t, i18n } = useTranslation();
+  const { user } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -55,12 +57,16 @@ export default function ExpensesPage() {
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">{t("branch")}</label>
-              <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
-                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </div>
+            {user?.branch_id ? (
+              <input type="hidden" name="branch_id" value={user.branch_id} />
+            ) : (
+              <div>
+                <label className="block text-sm font-medium mb-1">{t("branch")}</label>
+                <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium mb-1">{t("category")}</label>
               <select name="category_id" className="w-full px-3 py-2 border rounded-lg text-sm">

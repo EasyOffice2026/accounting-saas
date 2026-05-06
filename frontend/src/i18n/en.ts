@@ -116,4 +116,9 @@ export default {
   phone_validation: "Mobile number must be exactly 8 digits",
   foodics_total: "Foodics Total",
   physical_total: "Physical Total",
+  send_order: "Send Order",
+  send_whatsapp: "Send via WhatsApp",
+  send_email: "Send via Email",
+  no_whatsapp: "No WhatsApp number configured for this supplier",
+  no_email: "No email configured for this supplier",
 };

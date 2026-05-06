@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiGet, apiPost } from "../contexts/api";
 
 interface Supplier { id: number; name: string; email: string; whatsapp: string; payment_type: string; }
+interface OrderItem { item_name: string; quantity: number; unit: string; unit_price: number; total: number; }
 interface PurchaseOrder {
   id: number; branch_id: number; supplier_id: number; date: string;
   payment_type: string; total_amount: number; status: string;
@@ -54,6 +55,41 @@ export default function PurchasesPage() {
 
   const supplierName = (id: number) => suppliers.find(s => s.id === id)?.name || "";
   const branchName = (id: number) => branches.find(b => b.id === id)?.name || "";
+  const getSupplier = (id: number) => suppliers.find(s => s.id === id);
+
+  const buildOrderMessage = (order: PurchaseOrder, orderItems: OrderItem[]) => {
+    const supplier = getSupplier(order.supplier_id);
+    const branch = branchName(order.branch_id);
+    let msg = `*Purchase Order #${order.id}*\n`;
+    msg += `Date: ${order.date}\n`;
+    msg += `Branch: ${branch}\n`;
+    msg += `Supplier: ${supplier?.name || ""}\n`;
+    msg += `Payment: ${order.payment_type}\n\n`;
+    msg += `*Items:*\n`;
+    orderItems.forEach((item, i) => {
+      msg += `${i + 1}. ${item.item_name} - ${item.quantity} ${item.unit} x KD ${item.unit_price.toFixed(3)} = KD ${item.total.toFixed(3)}\n`;
+    });
+    msg += `\n*Total: KD ${order.total_amount.toFixed(3)}*`;
+    return msg;
+  };
+
+  const sendWhatsApp = async (order: PurchaseOrder) => {
+    const supplier = getSupplier(order.supplier_id);
+    if (!supplier?.whatsapp) { alert(t("no_whatsapp")); return; }
+    const orderItems: OrderItem[] = await apiGet(`/api/purchases/orders/${order.id}/items`);
+    const msg = buildOrderMessage(order, orderItems);
+    const phone = supplier.whatsapp.replace(/[^0-9]/g, "");
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
+  const sendEmail = async (order: PurchaseOrder) => {
+    const supplier = getSupplier(order.supplier_id);
+    if (!supplier?.email) { alert(t("no_email")); return; }
+    const orderItems: OrderItem[] = await apiGet(`/api/purchases/orders/${order.id}/items`);
+    const msg = buildOrderMessage(order, orderItems).replace(/\*/g, "");
+    const subject = `Purchase Order #${order.id} - ${branchName(order.branch_id)} - ${order.date}`;
+    window.open(`mailto:${supplier.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(msg)}`, "_blank");
+  };
 
   return (
     <div>
@@ -180,11 +216,12 @@ export default function PurchasesPage() {
               <th className="px-4 py-3 text-left">{t("payment_type")}</th>
               <th className="px-4 py-3 text-right">{t("total")}</th>
               <th className="px-4 py-3 text-left">{t("status")}</th>
+              <th className="px-4 py-3 text-center">{t("send_order")}</th>
             </tr>
           </thead>
           <tbody>
             {orders.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
             ) : orders.map(o => (
               <tr key={o.id} className="border-b hover:bg-gray-50">
                 <td className="px-4 py-3">{o.id}</td>
@@ -197,6 +234,18 @@ export default function PurchasesPage() {
                   <span className={`px-2 py-1 rounded-full text-xs ${
                     o.status === "received" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
                   }`}>{t(o.status)}</span>
+                </td>
+                <td className="px-4 py-3 text-center">
+                  <div className="flex gap-1 justify-center">
+                    <button onClick={() => sendWhatsApp(o)} title={t("send_whatsapp")}
+                      className="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">
+                      📱 {t("whatsapp")}
+                    </button>
+                    <button onClick={() => sendEmail(o)} title={t("send_email")}
+                      className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
+                      ✉️ {t("email")}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

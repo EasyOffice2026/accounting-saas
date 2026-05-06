@@ -116,4 +116,9 @@ export default {
   phone_validation: "رقم الهاتف يجب أن يكون 8 أرقام",
   foodics_total: "إجمالي فودكس",
   physical_total: "الإجمالي الفعلي",
+  send_order: "إرسال الطلب",
+  send_whatsapp: "إرسال عبر واتساب",
+  send_email: "إرسال عبر البريد",
+  no_whatsapp: "لم يتم إضافة رقم واتساب لهذا المورد",
+  no_email: "لم يتم إضافة بريد إلكتروني لهذا المورد",
 };

@@ -3,11 +3,11 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
 import {
   LayoutDashboard, ShoppingCart, Package, Receipt,
-  Users, Clock, LogOut, Menu, X, Banknote,
+  Users, Clock, LogOut, Menu, X, Banknote, Settings,
 } from "lucide-react";
 import { useState } from "react";
 
-const navItems = [
+const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles?: string[] }[] = [
   { path: "/", icon: LayoutDashboard, key: "dashboard" },
   { path: "/sales", icon: ShoppingCart, key: "sales" },
   { path: "/purchases", icon: Package, key: "purchases" },
@@ -15,6 +15,7 @@ const navItems = [
   { path: "/hr", icon: Users, key: "hr" },
   { path: "/attendance", icon: Clock, key: "attendance" },
   { path: "/cash", icon: Banknote, key: "cash_management" },
+  { path: "/settings", icon: Settings, key: "settings", roles: ["owner", "manager"] },
 ];
 
 export default function Layout() {
@@ -43,7 +44,9 @@ export default function Layout() {
           <p className="text-emerald-200 text-sm mt-1">{t("app_subtitle")}</p>
         </div>
         <nav className="mt-2">
-          {navItems.map(({ path, icon: Icon, key }) => (
+          {navItems
+            .filter(item => !item.roles || item.roles.includes(user?.role || ""))
+            .map(({ path, icon: Icon, key }) => (
             <Link
               key={path}
               to={path}

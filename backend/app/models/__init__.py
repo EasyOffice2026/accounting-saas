@@ -6,6 +6,7 @@ from app.models.expense import ExpenseCategory, Expense
 from app.models.hr import Employee, Attendance
 from app.models.cash import CashTransaction, CashBalance
 from app.models.item import Item
+from app.models.settings import SmtpSettings
 
 __all__ = [
     "Branch", "User",
@@ -15,4 +16,5 @@ __all__ = [
     "Employee", "Attendance",
     "CashTransaction", "CashBalance",
     "Item",
+    "SmtpSettings",
 ]

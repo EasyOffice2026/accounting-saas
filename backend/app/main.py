@@ -8,7 +8,7 @@ from app.database import Base, engine
 from app.models import *  # noqa: F401,F403 — register all models
 from app.utils.auth import hash_password
 from app.routes import auth, branches, sales, purchases, expenses, hr, dashboard
-from app.routes import cash, items, export
+from app.routes import cash, items, export, email
 
 app = FastAPI(title="Mudawwarah Restaurant Management System")
 
@@ -36,6 +36,7 @@ app.include_router(dashboard.router)
 app.include_router(cash.router)
 app.include_router(items.router)
 app.include_router(export.router)
+app.include_router(email.router)
 
 
 @app.get("/healthz")

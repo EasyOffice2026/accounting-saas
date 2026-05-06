@@ -82,13 +82,25 @@ export default function PurchasesPage() {
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
+  const [sendingEmail, setSendingEmail] = useState<number | null>(null);
+
   const sendEmail = async (order: PurchaseOrder) => {
     const supplier = getSupplier(order.supplier_id);
     if (!supplier?.email) { alert(t("no_email")); return; }
-    const orderItems: OrderItem[] = await apiGet(`/api/purchases/orders/${order.id}/items`);
-    const msg = buildOrderMessage(order, orderItems).replace(/\*/g, "");
-    const subject = `Purchase Order #${order.id} - ${branchName(order.branch_id)} - ${order.date}`;
-    window.open(`mailto:${supplier.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(msg)}`, "_blank");
+    setSendingEmail(order.id);
+    try {
+      const res = await fetch(`/api/email/send-po/${order.id}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed");
+      alert(data.message);
+    } catch (e: unknown) {
+      const err = e as Error;
+      alert(err.message || t("email_send_error"));
+    }
+    setSendingEmail(null);
   };
 
   return (
@@ -242,8 +254,9 @@ export default function PurchasesPage() {
                       📱 {t("whatsapp")}
                     </button>
                     <button onClick={() => sendEmail(o)} title={t("send_email")}
-                      className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
-                      ✉️ {t("email")}
+                      disabled={sendingEmail === o.id}
+                      className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 disabled:opacity-50">
+                      {sendingEmail === o.id ? "..." : `✉️ ${t("email")}`}
                     </button>
                   </div>
                 </td>

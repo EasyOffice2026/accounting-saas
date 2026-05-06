@@ -9,6 +9,7 @@ import ExpensesPage from "./pages/ExpensesPage";
 import HRPage from "./pages/HRPage";
 import AttendancePage from "./pages/AttendancePage";
 import CashPage from "./pages/CashPage";
+import SettingsPage from "./pages/SettingsPage";
 import "./i18n";
 
 function ProtectedRoutes() {
@@ -24,6 +25,7 @@ function ProtectedRoutes() {
         <Route path="/hr" element={<HRPage />} />
         <Route path="/attendance" element={<AttendancePage />} />
         <Route path="/cash" element={<CashPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   );

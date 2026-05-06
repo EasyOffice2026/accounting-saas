@@ -6,6 +6,8 @@ import os, uuid
 
 from app.database import get_db
 from app.models.expense import ExpenseCategory, Expense
+from app.models.purchase import Supplier
+from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
 
@@ -43,7 +45,7 @@ def list_expenses(branch_id: Optional[int] = None, db: Session = Depends(get_db)
 def create_expense(
     branch_id: int = Form(...), expense_date: str = Form(...),
     description: str = Form(...), amount: float = Form(...),
-    category_id: Optional[int] = Form(None),
+    category_id: Optional[int] = Form(None), supplier_id: Optional[int] = Form(None),
     payment_method: str = Form("cash"), notes: str = Form(""),
     attachment: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
@@ -59,6 +61,7 @@ def create_expense(
 
     exp = Expense(
         branch_id=branch_id, category_id=category_id,
+        supplier_id=supplier_id if supplier_id else None,
         date=date.fromisoformat(expense_date),
         description=description, amount=amount,
         payment_method=payment_method, notes=notes,
@@ -68,3 +71,36 @@ def create_expense(
     db.commit()
     db.refresh(exp)
     return exp
+
+
+@router.get("/supplier-ledger")
+def expense_supplier_ledger(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    suppliers = db.query(Supplier).order_by(Supplier.name).all()
+    branches = {b.id: b.name for b in db.query(Branch).all()}
+    result = []
+    for s in suppliers:
+        q = db.query(Expense).filter(Expense.supplier_id == s.id)
+        if user.role == "staff" and user.branch_id:
+            q = q.filter(Expense.branch_id == user.branch_id)
+        expenses = q.order_by(Expense.date.desc()).all()
+        if not expenses:
+            continue
+        total_cash = sum(e.amount for e in expenses if e.payment_method == "cash")
+        total_credit = sum(e.amount for e in expenses if e.payment_method == "credit")
+        total_amount = sum(e.amount for e in expenses)
+        result.append({
+            "supplier_id": s.id,
+            "supplier_name": s.name,
+            "total_amount": total_amount,
+            "total_cash": total_cash,
+            "total_credit": total_credit,
+            "expenses": [{
+                "id": e.id,
+                "date": str(e.date),
+                "description": e.description,
+                "amount": e.amount,
+                "payment_method": e.payment_method,
+                "branch_name": branches.get(e.branch_id, ""),
+            } for e in expenses],
+        })
+    return result

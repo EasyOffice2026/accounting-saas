@@ -23,6 +23,7 @@ class Expense(Base):
     amount = Column(Float, nullable=False)
     payment_method = Column(String, default="cash")
     attachment_path = Column(String, nullable=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     notes = Column(Text, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

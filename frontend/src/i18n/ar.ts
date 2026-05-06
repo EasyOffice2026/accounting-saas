@@ -172,4 +172,7 @@ export default {
   total_paid: "إجمالي المدفوع",
   balance_due: "الرصيد المستحق",
   branch_performance: "أداء الفروع",
+  expense_ledger: "دفتر الموردين",
+  no_supplier: "بدون مورد",
+  no_expense_ledger: "لا توجد مصروفات مرتبطة بموردين. أضف مصروفات مع مورد لرؤية الدفتر.",
 };

@@ -172,4 +172,7 @@ export default {
   total_paid: "Total Paid",
   balance_due: "Balance Due",
   branch_performance: "Branch Performance",
+  expense_ledger: "Supplier Ledger",
+  no_supplier: "No Supplier",
+  no_expense_ledger: "No supplier expenses found. Add expenses with a supplier to see the ledger.",
 };

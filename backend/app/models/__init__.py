@@ -11,6 +11,7 @@ from app.models.cash import CashTransaction, CashBalance
 from app.models.item import Item
 from app.models.settings import SmtpSettings
 from app.models.payment import PaymentGatewaySettings, PaymentTransaction
+from app.models.transfer import TransferItem, TransferOrder, TransferOrderLine
 
 __all__ = [
     "Branch", "User",
@@ -23,4 +24,5 @@ __all__ = [
     "Item",
     "SmtpSettings",
     "PaymentGatewaySettings", "PaymentTransaction",
+    "TransferItem", "TransferOrder", "TransferOrderLine",
 ]

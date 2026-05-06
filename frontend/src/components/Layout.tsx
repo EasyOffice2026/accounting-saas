@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
 import {
   LayoutDashboard, ShoppingCart, Package, Receipt,
-  Users, Clock, LogOut, Menu, X, Banknote, Settings,
+  Users, Clock, LogOut, Menu, X, Banknote, Settings, ArrowLeftRight,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -15,6 +15,7 @@ const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles
   { path: "/hr", icon: Users, key: "hr" },
   { path: "/attendance", icon: Clock, key: "attendance" },
   { path: "/cash", icon: Banknote, key: "cash_management" },
+  { path: "/transfers", icon: ArrowLeftRight, key: "internal_transfer" },
   { path: "/settings", icon: Settings, key: "settings", roles: ["owner", "manager"] },
 ];
 

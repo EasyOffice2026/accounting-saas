@@ -21,6 +21,12 @@ interface PaymentConfig {
   has_custom_key: boolean;
 }
 
+interface WhatsAppConfig {
+  instance_id: string;
+  default_phone: string;
+  has_token: boolean;
+}
+
 export default function SettingsPage() {
   const { t } = useTranslation();
   const [host, setHost] = useState("smtp.gmail.com");
@@ -46,6 +52,15 @@ export default function SettingsPage() {
   const [pgMsg, setPgMsg] = useState("");
   const [pgMsgType, setPgMsgType] = useState<"success" | "error">("success");
 
+  // WhatsApp state
+  const [waInstanceId, setWaInstanceId] = useState("");
+  const [waApiToken, setWaApiToken] = useState("");
+  const [waPhone, setWaPhone] = useState("");
+  const [waHasToken, setWaHasToken] = useState(false);
+  const [waSaving, setWaSaving] = useState(false);
+  const [waMsg, setWaMsg] = useState("");
+  const [waMsgType, setWaMsgType] = useState<"success" | "error">("success");
+
   useEffect(() => {
     apiGet("/api/email/smtp-settings").then((data: SmtpConfig | null) => {
       if (data) {
@@ -63,6 +78,13 @@ export default function SettingsPage() {
         setPgSandbox(data.is_sandbox);
         setPgCurrency(data.currency);
         setPgHasKey(data.has_custom_key);
+      }
+    });
+    apiGet("/api/whatsapp/settings").then((data: WhatsAppConfig | null) => {
+      if (data) {
+        setWaInstanceId(data.instance_id);
+        setWaPhone(data.default_phone);
+        setWaHasToken(data.has_token);
       }
     });
   }, []);
@@ -287,6 +309,82 @@ export default function SettingsPage() {
             <li>{t("tap_step2")}</li>
             <li>{t("tap_step3")}</li>
             <li>{t("tap_step4")}</li>
+          </ol>
+        </div>
+      </div>
+
+      {/* WhatsApp Integration Settings */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border max-w-2xl mt-6">
+        <h3 className="text-lg font-semibold mb-4">{t("whatsapp_settings")}</h3>
+        <p className="text-sm text-gray-500 mb-4">{t("whatsapp_description")}</p>
+
+        {waMsg && (
+          <div className={`p-3 rounded mb-4 text-sm ${
+            waMsgType === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+          }`}>{waMsg}</div>
+        )}
+
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          setWaSaving(true);
+          try {
+            const fd = new URLSearchParams();
+            if (waInstanceId) fd.append("instance_id", waInstanceId);
+            if (waApiToken) fd.append("api_token", waApiToken);
+            if (waPhone) fd.append("default_phone", waPhone);
+            const res = await fetch("/api/whatsapp/settings", {
+              method: "POST", body: fd,
+              headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            });
+            if (!res.ok) throw new Error("Failed");
+            setWaHasToken(!!waApiToken || waHasToken);
+            setWaApiToken("");
+            setWaMsg(t("whatsapp_saved"));
+            setWaMsgType("success");
+            setTimeout(() => setWaMsg(""), 5000);
+          } catch {
+            setWaMsg(t("whatsapp_save_error"));
+            setWaMsgType("error");
+            setTimeout(() => setWaMsg(""), 5000);
+          }
+          setWaSaving(false);
+        }} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">{t("instance_id")}</label>
+              <input value={waInstanceId} onChange={e => setWaInstanceId(e.target.value)}
+                placeholder="1101234567"
+                className="w-full px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                {t("api_token")} {waHasToken && <span className="text-green-600 text-xs">({t("configured")})</span>}
+              </label>
+              <input type="password" value={waApiToken} onChange={e => setWaApiToken(e.target.value)}
+                placeholder={waHasToken ? t("leave_blank_keep") : "abc123..."}
+                className="w-full px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium mb-1">{t("default_phone")}</label>
+              <input value={waPhone} onChange={e => setWaPhone(e.target.value)}
+                placeholder="96551414302"
+                className="w-full px-3 py-2 border rounded-lg text-sm" />
+              <p className="text-xs text-gray-400 mt-1">Include country code (e.g. 965 for Kuwait)</p>
+            </div>
+          </div>
+          <button type="submit" disabled={waSaving}
+            className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm">
+            {waSaving ? "..." : t("save")}
+          </button>
+        </form>
+
+        <div className="mt-6 p-4 bg-green-50 rounded-lg border border-green-200">
+          <h4 className="font-medium text-green-800 text-sm mb-2">{t("greenapi_setup_title")}</h4>
+          <ol className="text-xs text-green-700 space-y-1 list-decimal list-inside">
+            <li>{t("greenapi_step1")}</li>
+            <li>{t("greenapi_step2")}</li>
+            <li>{t("greenapi_step3")}</li>
+            <li>{t("greenapi_step4")}</li>
           </ol>
         </div>
       </div>

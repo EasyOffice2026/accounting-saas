@@ -31,6 +31,40 @@ export default function SalesPage() {
   const cameraRef = useRef<HTMLInputElement>(null);
 
   const isStaff = user?.role === "staff";
+  const isOwnerManager = user?.role === "owner" || user?.role === "manager";
+
+  // WhatsApp report state
+  const [showReport, setShowReport] = useState(false);
+  const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
+  const [reportPhone, setReportPhone] = useState("");
+  const [reportPreview, setReportPreview] = useState("");
+  const [sending, setSending] = useState(false);
+  const [reportMsg, setReportMsg] = useState("");
+  const [reportMsgType, setReportMsgType] = useState<"success" | "error">("success");
+
+  const previewReport = async () => {
+    const data = await apiGet(`/api/whatsapp/preview-report?report_date=${reportDate}`);
+    setReportPreview(data.report || "");
+  };
+
+  const sendWhatsAppReport = async () => {
+    setSending(true);
+    setReportMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("report_date", reportDate);
+      if (reportPhone) fd.append("phone", reportPhone);
+      const res = await apiPost("/api/whatsapp/send-daily-report", fd);
+      if (res.detail) throw new Error(res.detail);
+      setReportMsg(t("report_sent"));
+      setReportMsgType("success");
+    } catch (e: unknown) {
+      const err = e as Error;
+      setReportMsg(err.message || t("report_send_error"));
+      setReportMsgType("error");
+    }
+    setSending(false);
+  };
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);
@@ -79,6 +113,12 @@ export default function SalesPage() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("sales")}</h2>
         <div className="flex gap-2">
+          {isOwnerManager && (
+            <button onClick={() => { setShowReport(!showReport); if (!showReport) previewReport(); }}
+              className="px-3 py-1.5 bg-green-700 text-white rounded text-xs hover:bg-green-800 flex items-center gap-1">
+              📱 {t("send_daily_report")}
+            </button>
+          )}
           <button onClick={downloadCSV}
             className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
             {t("export_csv")}
@@ -89,6 +129,48 @@ export default function SalesPage() {
           </button>
         </div>
       </div>
+
+      {/* WhatsApp Daily Report Panel */}
+      {showReport && isOwnerManager && (
+        <div className="bg-white p-5 rounded-xl shadow-sm border mb-4">
+          <h3 className="font-semibold text-sm mb-3">📱 {t("send_daily_report")}</h3>
+
+          {reportMsg && (
+            <div className={`p-2 rounded mb-3 text-sm ${
+              reportMsgType === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+            }`}>{reportMsg}</div>
+          )}
+
+          <div className="flex gap-3 items-end mb-3 flex-wrap">
+            <div>
+              <label className="block text-xs font-medium mb-1">{t("date")}</label>
+              <input type="date" value={reportDate}
+                onChange={e => { setReportDate(e.target.value); setReportPreview(""); }}
+                className="px-3 py-1.5 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">{t("phone_number")}</label>
+              <input value={reportPhone} onChange={e => setReportPhone(e.target.value)}
+                placeholder="51414302"
+                className="px-3 py-1.5 border rounded-lg text-sm w-40" />
+            </div>
+            <button onClick={previewReport}
+              className="px-3 py-1.5 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
+              {t("preview_report")}
+            </button>
+            <button onClick={sendWhatsAppReport} disabled={sending}
+              className="px-3 py-1.5 bg-green-700 text-white rounded text-xs hover:bg-green-800 disabled:opacity-50">
+              {sending ? t("sending") : t("send_whatsapp")}
+            </button>
+          </div>
+
+          {reportPreview && (
+            <pre className="bg-gray-50 p-3 rounded-lg text-xs whitespace-pre-wrap border max-h-64 overflow-y-auto font-mono">
+              {reportPreview}
+            </pre>
+          )}
+        </div>
+      )}
 
       {!isStaff && (
         <div className="mb-4">

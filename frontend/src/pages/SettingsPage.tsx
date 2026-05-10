@@ -23,6 +23,7 @@ interface PaymentConfig {
 
 interface WhatsAppConfig {
   instance_id: string;
+  api_url: string;
   default_phone: string;
   has_token: boolean;
 }
@@ -55,6 +56,7 @@ export default function SettingsPage() {
   // WhatsApp state
   const [waInstanceId, setWaInstanceId] = useState("");
   const [waApiToken, setWaApiToken] = useState("");
+  const [waApiUrl, setWaApiUrl] = useState("");
   const [waPhone, setWaPhone] = useState("");
   const [waHasToken, setWaHasToken] = useState(false);
   const [waSaving, setWaSaving] = useState(false);
@@ -83,6 +85,7 @@ export default function SettingsPage() {
     apiGet("/api/whatsapp/settings").then((data: WhatsAppConfig | null) => {
       if (data) {
         setWaInstanceId(data.instance_id);
+        setWaApiUrl(data.api_url);
         setWaPhone(data.default_phone);
         setWaHasToken(data.has_token);
       }
@@ -331,6 +334,7 @@ export default function SettingsPage() {
             const fd = new URLSearchParams();
             if (waInstanceId) fd.append("instance_id", waInstanceId);
             if (waApiToken) fd.append("api_token", waApiToken);
+            if (waApiUrl) fd.append("api_url", waApiUrl);
             if (waPhone) fd.append("default_phone", waPhone);
             const res = await fetch("/api/whatsapp/settings", {
               method: "POST", body: fd,
@@ -363,6 +367,13 @@ export default function SettingsPage() {
               <input type="password" value={waApiToken} onChange={e => setWaApiToken(e.target.value)}
                 placeholder={waHasToken ? t("leave_blank_keep") : "abc123..."}
                 className="w-full px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium mb-1">API URL</label>
+              <input value={waApiUrl} onChange={e => setWaApiUrl(e.target.value)}
+                placeholder="https://7107.api.greenapi.com"
+                className="w-full px-3 py-2 border rounded-lg text-sm" />
+              <p className="text-xs text-gray-400 mt-1">From Green API dashboard (e.g. https://7107.api.greenapi.com)</p>
             </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium mb-1">{t("default_phone")}</label>

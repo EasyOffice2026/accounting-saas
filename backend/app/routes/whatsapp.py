@@ -24,6 +24,7 @@ def get_settings(db: Session = Depends(get_db), user: User = Depends(get_current
     return {
         "provider": s.provider or "greenapi",
         "instance_id": s.instance_id or "",
+        "api_url": s.api_url or "",
         "default_phone": s.default_phone or "",
         "has_token": bool(s.api_token),
     }
@@ -33,6 +34,7 @@ def get_settings(db: Session = Depends(get_db), user: User = Depends(get_current
 def save_settings(
     instance_id: str = Form(""),
     api_token: str = Form(""),
+    api_url: str = Form(""),
     default_phone: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -47,6 +49,8 @@ def save_settings(
         s.instance_id = instance_id
     if api_token:
         s.api_token = api_token
+    if api_url:
+        s.api_url = api_url
     if default_phone:
         s.default_phone = default_phone
     db.commit()
@@ -111,9 +115,10 @@ def _build_daily_sales_report(db: Session, report_date: date) -> str:
     return "\n".join(lines)
 
 
-def _send_whatsapp_message(instance_id: str, api_token: str, phone: str, message: str) -> dict:
+def _send_whatsapp_message(instance_id: str, api_token: str, phone: str, message: str, api_url: str = "") -> dict:
     """Send a WhatsApp message via Green API."""
-    url = f"https://api.green-api.com/waInstance{instance_id}/sendMessage/{api_token}"
+    base = api_url.rstrip("/") if api_url else "https://api.green-api.com"
+    url = f"{base}/waInstance{instance_id}/sendMessage/{api_token}"
     # Ensure phone has country code, default to Kuwait (+965)
     phone = phone.strip().replace("+", "").replace(" ", "").replace("-", "")
     if len(phone) == 8:
@@ -146,7 +151,7 @@ def send_daily_report(
         raise HTTPException(400, "No phone number provided")
 
     report = _build_daily_sales_report(db, target_date)
-    result = _send_whatsapp_message(settings.instance_id, settings.api_token, target_phone, report)
+    result = _send_whatsapp_message(settings.instance_id, settings.api_token, target_phone, report, settings.api_url or "")
 
     if "idMessage" in result:
         return {"message": "Report sent successfully", "id": result["idMessage"]}

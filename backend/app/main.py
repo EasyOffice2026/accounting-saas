@@ -67,7 +67,21 @@ if os.path.isdir(FRONTEND_DIST):
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
+    _migrate_columns()
     _seed_data()
+
+
+def _migrate_columns():
+    """Add missing columns to existing tables (lightweight migration)."""
+    from sqlalchemy import text, inspect
+    with engine.connect() as conn:
+        insp = inspect(engine)
+        # Add api_url to whatsapp_settings if missing
+        if "whatsapp_settings" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("whatsapp_settings")]
+            if "api_url" not in cols:
+                conn.execute(text("ALTER TABLE whatsapp_settings ADD COLUMN api_url TEXT"))
+                conn.commit()
 
 
 def _seed_data():

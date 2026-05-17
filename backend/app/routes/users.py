@@ -1,0 +1,112 @@
+from fastapi import APIRouter, Depends, HTTPException, Form
+from sqlalchemy.orm import Session
+from typing import Optional
+
+from app.database import get_db
+from app.models.user import User
+from app.utils.auth import get_current_user, hash_password
+
+router = APIRouter(prefix="/api/users", tags=["users"])
+
+
+@router.get("/")
+def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    users = db.query(User).order_by(User.id).all()
+    return [
+        {
+            "id": u.id,
+            "username": u.username,
+            "full_name": u.full_name,
+            "role": u.role,
+            "branch_id": u.branch_id,
+            "is_active": u.is_active,
+        }
+        for u in users
+    ]
+
+
+@router.post("/")
+def create_user(
+    username: str = Form(...),
+    password: str = Form(...),
+    full_name: str = Form(...),
+    role: str = Form("staff"),
+    branch_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "owner":
+        raise HTTPException(403, "Only owner can create users")
+    existing = db.query(User).filter(User.username == username).first()
+    if existing:
+        raise HTTPException(400, "Username already exists")
+    new_user = User(
+        username=username,
+        password_hash=hash_password(password),
+        full_name=full_name,
+        role=role,
+        branch_id=branch_id if role == "staff" else None,
+        is_active=True,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return {"id": new_user.id, "username": new_user.username, "message": "User created"}
+
+
+@router.put("/{user_id}")
+def update_user(
+    user_id: int,
+    username: str = Form(None),
+    password: str = Form(None),
+    full_name: str = Form(None),
+    role: str = Form(None),
+    branch_id: Optional[str] = Form(None),
+    is_active: str = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "owner":
+        raise HTTPException(403, "Only owner can edit users")
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(404, "User not found")
+    if username:
+        dup = db.query(User).filter(User.username == username, User.id != user_id).first()
+        if dup:
+            raise HTTPException(400, "Username already exists")
+        target.username = username
+    if password:
+        target.password_hash = hash_password(password)
+    if full_name:
+        target.full_name = full_name
+    if role:
+        target.role = role
+        if role != "staff":
+            target.branch_id = None
+    if branch_id is not None:
+        target.branch_id = int(branch_id) if branch_id and branch_id != "null" else None
+    if is_active is not None:
+        target.is_active = is_active.lower() in ("true", "1", "yes")
+    db.commit()
+    return {"message": "User updated"}
+
+
+@router.delete("/{user_id}")
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "owner":
+        raise HTTPException(403, "Only owner can delete users")
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(404, "User not found")
+    if target.id == user.id:
+        raise HTTPException(400, "Cannot delete yourself")
+    db.delete(target)
+    db.commit()
+    return {"message": "User deleted"}

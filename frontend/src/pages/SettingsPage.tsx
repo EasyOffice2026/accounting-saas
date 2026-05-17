@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet } from "../contexts/api";
+import { apiGet, apiFetch } from "../contexts/api";
 
 interface SmtpConfig {
   smtp_host: string;
@@ -26,6 +26,21 @@ interface WhatsAppConfig {
   api_url: string;
   default_phone: string;
   has_token: boolean;
+}
+
+interface UserItem {
+  id: number;
+  username: string;
+  full_name: string;
+  role: string;
+  branch_id: number | null;
+  is_active: boolean;
+}
+
+interface BranchItem {
+  id: number;
+  name: string;
+  name_ar: string;
 }
 
 export default function SettingsPage() {
@@ -63,6 +78,25 @@ export default function SettingsPage() {
   const [waMsg, setWaMsg] = useState("");
   const [waMsgType, setWaMsgType] = useState<"success" | "error">("success");
 
+  // User Management state
+  const [users, setUsers] = useState<UserItem[]>([]);
+  const [branchesList, setBranchesList] = useState<BranchItem[]>([]);
+  const [showUserForm, setShowUserForm] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserItem | null>(null);
+  const [uUsername, setUUsername] = useState("");
+  const [uPassword, setUPassword] = useState("");
+  const [uFullName, setUFullName] = useState("");
+  const [uRole, setURole] = useState("staff");
+  const [uBranchId, setUBranchId] = useState<string>("");
+  const [uMsg, setUMsg] = useState("");
+  const [uMsgType, setUMsgType] = useState<"success" | "error">("success");
+
+  const loadUsers = () => {
+    apiGet("/api/users/").then((data) => {
+      if (Array.isArray(data)) setUsers(data);
+    });
+  };
+
   useEffect(() => {
     apiGet("/api/email/smtp-settings").then((data: SmtpConfig | null) => {
       if (data) {
@@ -89,6 +123,10 @@ export default function SettingsPage() {
         setWaPhone(data.default_phone);
         setWaHasToken(data.has_token);
       }
+    });
+    loadUsers();
+    apiGet("/api/branches/").then((data) => {
+      if (Array.isArray(data)) setBranchesList(data);
     });
   }, []);
 
@@ -142,9 +180,197 @@ export default function SettingsPage() {
     setTesting(false);
   };
 
+  const resetUserForm = () => {
+    setUUsername("");
+    setUPassword("");
+    setUFullName("");
+    setURole("staff");
+    setUBranchId("");
+    setEditingUser(null);
+    setShowUserForm(false);
+  };
+
+  const handleEditUser = (u: UserItem) => {
+    setEditingUser(u);
+    setUUsername(u.username);
+    setUFullName(u.full_name);
+    setURole(u.role);
+    setUBranchId(u.branch_id ? String(u.branch_id) : "");
+    setUPassword("");
+    setShowUserForm(true);
+  };
+
+  const handleSaveUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const fd = new URLSearchParams();
+    fd.append("username", uUsername);
+    fd.append("full_name", uFullName);
+    fd.append("role", uRole);
+    if (uPassword) fd.append("password", uPassword);
+    fd.append("branch_id", uRole === "staff" ? (uBranchId || "") : "");
+
+    try {
+      if (editingUser) {
+        const res = await apiFetch(`/api/users/${editingUser.id}`, { method: "PUT", body: fd });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Error"); }
+        setUMsg(t("user_updated")); setUMsgType("success");
+      } else {
+        if (!uPassword) { setUMsg("Password required"); setUMsgType("error"); setTimeout(() => setUMsg(""), 4000); return; }
+        const res = await apiFetch("/api/users/", { method: "POST", body: fd });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Error"); }
+        setUMsg(t("user_created")); setUMsgType("success");
+      }
+      loadUsers();
+      resetUserForm();
+    } catch (err: unknown) {
+      setUMsg((err as Error).message || t("user_create_error"));
+      setUMsgType("error");
+    }
+    setTimeout(() => setUMsg(""), 5000);
+  };
+
+  const handleDeleteUser = async (uid: number) => {
+    if (!confirm(t("confirm_delete_user"))) return;
+    try {
+      const res = await apiFetch(`/api/users/${uid}`, { method: "DELETE" });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Error"); }
+      setUMsg(t("user_deleted")); setUMsgType("success");
+      loadUsers();
+    } catch (err: unknown) {
+      setUMsg((err as Error).message || t("user_delete_error"));
+      setUMsgType("error");
+    }
+    setTimeout(() => setUMsg(""), 5000);
+  };
+
+  const getBranchName = (bid: number | null) => {
+    if (!bid) return t("no_branch");
+    const b = branchesList.find(x => x.id === bid);
+    return b ? b.name : "-";
+  };
+
   return (
     <div>
       <h2 className="text-2xl font-bold text-gray-800 mb-6">{t("settings")}</h2>
+
+      {/* User Management */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border max-w-4xl mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold">{t("user_management")}</h3>
+            <p className="text-sm text-gray-500">{t("user_management_desc")}</p>
+          </div>
+          <button onClick={() => { resetUserForm(); setShowUserForm(true); }}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
+            + {t("add_user")}
+          </button>
+        </div>
+
+        {uMsg && (
+          <div className={`p-3 rounded mb-4 text-sm ${
+            uMsgType === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+          }`}>{uMsg}</div>
+        )}
+
+        {showUserForm && (
+          <form onSubmit={handleSaveUser} className="bg-gray-50 p-4 rounded-lg mb-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">{t("username")}</label>
+                <input value={uUsername} onChange={e => setUUsername(e.target.value)} required
+                  className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="username" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  {editingUser ? t("new_password") : t("password")}
+                </label>
+                <input type="password" value={uPassword} onChange={e => setUPassword(e.target.value)}
+                  required={!editingUser}
+                  placeholder={editingUser ? t("leave_blank_password") : t("password")}
+                  className="w-full px-3 py-2 border rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">{t("full_name")}</label>
+                <input value={uFullName} onChange={e => setUFullName(e.target.value)} required
+                  className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Full Name" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">{t("role")}</label>
+                <select value={uRole} onChange={e => setURole(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <option value="owner">{t("owner")}</option>
+                  <option value="manager">{t("manager")}</option>
+                  <option value="staff">{t("staff")}</option>
+                </select>
+              </div>
+              {uRole === "staff" && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("branch")}</label>
+                  <select value={uBranchId} onChange={e => setUBranchId(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">-- {t("branch")} --</option>
+                    {branchesList.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button type="submit"
+                className="px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
+                {editingUser ? t("save") : t("add_user")}
+              </button>
+              <button type="button" onClick={resetUserForm}
+                className="px-5 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm">
+                {t("cancel")}
+              </button>
+            </div>
+          </form>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-2 text-left">{t("username")}</th>
+                <th className="px-3 py-2 text-left">{t("full_name")}</th>
+                <th className="px-3 py-2 text-left">{t("role")}</th>
+                <th className="px-3 py-2 text-left">{t("branch")}</th>
+                <th className="px-3 py-2 text-left">{t("status")}</th>
+                <th className="px-3 py-2 text-left">{t("actions")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(u => (
+                <tr key={u.id} className="border-t">
+                  <td className="px-3 py-2 font-medium">{u.username}</td>
+                  <td className="px-3 py-2">{u.full_name}</td>
+                  <td className="px-3 py-2">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      u.role === "owner" ? "bg-purple-100 text-purple-700" :
+                      u.role === "manager" ? "bg-blue-100 text-blue-700" :
+                      "bg-gray-100 text-gray-700"
+                    }`}>{t(u.role)}</span>
+                  </td>
+                  <td className="px-3 py-2">{getBranchName(u.branch_id)}</td>
+                  <td className="px-3 py-2">
+                    <span className={`px-2 py-0.5 rounded text-xs ${
+                      u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                    }`}>{u.is_active ? t("active") : t("inactive")}</span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <button onClick={() => handleEditUser(u)}
+                      className="text-blue-600 hover:underline text-xs mr-3">{t("edit")}</button>
+                    <button onClick={() => handleDeleteUser(u.id)}
+                      className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border max-w-2xl">
         <h3 className="text-lg font-semibold mb-4">{t("email_settings")}</h3>

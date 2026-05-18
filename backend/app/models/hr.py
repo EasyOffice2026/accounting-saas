@@ -29,3 +29,22 @@ class Attendance(Base):
     check_out = Column(Time, nullable=True)
     status = Column(String, default="present")  # present, absent, late, leave
     notes = Column(Text, nullable=True)
+
+
+class SalaryPayment(Base):
+    __tablename__ = "salary_payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    branch_id = Column(Integer, ForeignKey("branches.id"), nullable=False)
+    month = Column(String, nullable=False)  # YYYY-MM format
+    basic_salary = Column(Float, default=0)
+    allowances = Column(Float, default=0)
+    deductions = Column(Float, default=0)
+    advance = Column(Float, default=0)
+    net_salary = Column(Float, default=0)
+    payment_method = Column(String, default="cash")  # cash, bank_transfer
+    status = Column(String, default="pending")  # pending, paid
+    notes = Column(Text, nullable=True)
+    paid_date = Column(Date, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

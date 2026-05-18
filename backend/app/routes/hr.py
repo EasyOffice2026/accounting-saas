@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, Form
+from fastapi import APIRouter, Depends, Form, HTTPException
 from sqlalchemy.orm import Session
 from datetime import date, time
 from typing import Optional
 
 from app.database import get_db
-from app.models.hr import Employee, Attendance
+from app.models.hr import Employee, Attendance, SalaryPayment
 from app.models.user import User
 from app.utils.auth import get_current_user
 
@@ -72,3 +72,124 @@ def mark_attendance(
     db.commit()
     db.refresh(att)
     return att
+
+
+# --- Salary Payments ---
+@router.get("/salary")
+def list_salary_payments(
+    month: Optional[str] = None,
+    employee_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    q = db.query(SalaryPayment)
+    if month:
+        q = q.filter(SalaryPayment.month == month)
+    if employee_id:
+        q = q.filter(SalaryPayment.employee_id == employee_id)
+    if user.role == "staff" and user.branch_id:
+        q = q.filter(SalaryPayment.branch_id == user.branch_id)
+    rows = q.order_by(SalaryPayment.month.desc(), SalaryPayment.id).all()
+    return [
+        {
+            "id": r.id, "employee_id": r.employee_id,
+            "branch_id": r.branch_id, "month": r.month,
+            "basic_salary": r.basic_salary, "allowances": r.allowances,
+            "deductions": r.deductions, "advance": r.advance,
+            "net_salary": r.net_salary, "payment_method": r.payment_method,
+            "status": r.status, "notes": r.notes,
+            "paid_date": str(r.paid_date) if r.paid_date else None,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/salary/generate")
+def generate_monthly_payroll(
+    month: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    employees = db.query(Employee).filter(Employee.is_active == True).all()
+    created = 0
+    for emp in employees:
+        exists = db.query(SalaryPayment).filter(
+            SalaryPayment.employee_id == emp.id,
+            SalaryPayment.month == month,
+        ).first()
+        if exists:
+            continue
+        sp = SalaryPayment(
+            employee_id=emp.id,
+            branch_id=emp.branch_id,
+            month=month,
+            basic_salary=emp.salary,
+            allowances=0, deductions=0, advance=0,
+            net_salary=emp.salary,
+            status="pending",
+        )
+        db.add(sp)
+        created += 1
+    db.commit()
+    return {"message": f"Generated {created} salary records for {month}"}
+
+
+@router.put("/salary/{payment_id}")
+def update_salary_payment(
+    payment_id: int,
+    allowances: float = Form(0),
+    deductions: float = Form(0),
+    advance: float = Form(0),
+    payment_method: str = Form("cash"),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
+    if not sp:
+        raise HTTPException(404, "Salary record not found")
+    sp.allowances = allowances
+    sp.deductions = deductions
+    sp.advance = advance
+    sp.net_salary = sp.basic_salary + allowances - deductions - advance
+    sp.payment_method = payment_method
+    sp.notes = notes
+    db.commit()
+    return {"message": "Updated"}
+
+
+@router.post("/salary/{payment_id}/pay")
+def mark_salary_paid(
+    payment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
+    if not sp:
+        raise HTTPException(404, "Salary record not found")
+    sp.status = "paid"
+    sp.paid_date = date.today()
+    db.commit()
+    return {"message": "Marked as paid"}
+
+
+@router.delete("/salary/{payment_id}")
+def delete_salary_payment(
+    payment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
+    if not sp:
+        raise HTTPException(404, "Salary record not found")
+    db.delete(sp)
+    db.commit()
+    return {"message": "Deleted"}

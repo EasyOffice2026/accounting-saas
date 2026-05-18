@@ -10,7 +10,11 @@ interface Employee {
 }
 interface SalaryRecord {
   id: number; employee_id: number; branch_id: number; month: string;
-  basic_salary: number; allowances: number; deductions: number;
+  basic_salary: number; total_days: number; days_worked: number;
+  housing_allowance: number; transport_allowance: number;
+  food_allowance: number; other_allowance: number; allowances: number;
+  absence_deduction: number; late_deduction: number;
+  other_deduction: number; deductions: number;
   advance: number; net_salary: number; payment_method: string;
   status: string; notes: string | null; paid_date: string | null;
 }
@@ -31,8 +35,18 @@ export default function HRPage() {
   const [salaryMsg, setSalaryMsg] = useState("");
   const [salaryMsgType, setSalaryMsgType] = useState<"success" | "error">("success");
   const [editingRecord, setEditingRecord] = useState<SalaryRecord | null>(null);
-  const [editAllowances, setEditAllowances] = useState("0");
-  const [editDeductions, setEditDeductions] = useState("0");
+
+  // Edit fields
+  const [editBasicSalary, setEditBasicSalary] = useState("0");
+  const [editTotalDays, setEditTotalDays] = useState("30");
+  const [editDaysWorked, setEditDaysWorked] = useState("30");
+  const [editHousing, setEditHousing] = useState("0");
+  const [editTransport, setEditTransport] = useState("0");
+  const [editFood, setEditFood] = useState("0");
+  const [editOtherAllow, setEditOtherAllow] = useState("0");
+  const [editAbsence, setEditAbsence] = useState("0");
+  const [editLate, setEditLate] = useState("0");
+  const [editOtherDed, setEditOtherDed] = useState("0");
   const [editAdvance, setEditAdvance] = useState("0");
   const [editMethod, setEditMethod] = useState("cash");
   const [editNotes, setEditNotes] = useState("");
@@ -88,18 +102,49 @@ export default function HRPage() {
 
   const handleEditSalary = (r: SalaryRecord) => {
     setEditingRecord(r);
-    setEditAllowances(String(r.allowances));
-    setEditDeductions(String(r.deductions));
+    setEditBasicSalary(String(r.basic_salary));
+    setEditTotalDays(String(r.total_days));
+    setEditDaysWorked(String(r.days_worked));
+    setEditHousing(String(r.housing_allowance));
+    setEditTransport(String(r.transport_allowance));
+    setEditFood(String(r.food_allowance));
+    setEditOtherAllow(String(r.other_allowance));
+    setEditAbsence(String(r.absence_deduction));
+    setEditLate(String(r.late_deduction));
+    setEditOtherDed(String(r.other_deduction));
     setEditAdvance(String(r.advance));
     setEditMethod(r.payment_method);
     setEditNotes(r.notes || "");
   };
 
+  const calcNet = () => {
+    const basic = Number(editBasicSalary);
+    const tDays = Number(editTotalDays) || 30;
+    const dWorked = Number(editDaysWorked);
+    const perDay = basic / tDays;
+    const earned = perDay * dWorked;
+    const totalAllow = Number(editHousing) + Number(editTransport) + Number(editFood) + Number(editOtherAllow);
+    const totalDed = Number(editAbsence) + Number(editLate) + Number(editOtherDed);
+    return earned + totalAllow - totalDed - Number(editAdvance);
+  };
+
+  const calcDailyRate = () => {
+    return Number(editBasicSalary) / (Number(editTotalDays) || 30);
+  };
+
   const handleSaveSalary = async () => {
     if (!editingRecord) return;
     const fd = new URLSearchParams();
-    fd.append("allowances", editAllowances);
-    fd.append("deductions", editDeductions);
+    fd.append("basic_salary", editBasicSalary);
+    fd.append("total_days", editTotalDays);
+    fd.append("days_worked", editDaysWorked);
+    fd.append("housing_allowance", editHousing);
+    fd.append("transport_allowance", editTransport);
+    fd.append("food_allowance", editFood);
+    fd.append("other_allowance", editOtherAllow);
+    fd.append("absence_deduction", editAbsence);
+    fd.append("late_deduction", editLate);
+    fd.append("other_deduction", editOtherDed);
     fd.append("advance", editAdvance);
     fd.append("payment_method", editMethod);
     fd.append("notes", editNotes);
@@ -128,6 +173,9 @@ export default function HRPage() {
   const totalPayroll = salaryRecords.reduce((s, r) => s + r.net_salary, 0);
   const totalPaid = salaryRecords.filter(r => r.status === "paid").reduce((s, r) => s + r.net_salary, 0);
   const totalPending = salaryRecords.filter(r => r.status === "pending").reduce((s, r) => s + r.net_salary, 0);
+
+  const recDailyRate = (r: SalaryRecord) => r.basic_salary / (r.total_days || 30);
+  const recEarned = (r: SalaryRecord) => recDailyRate(r) * r.days_worked;
 
   return (
     <div>
@@ -284,32 +332,103 @@ export default function HRPage() {
 
           {/* Edit Modal */}
           {editingRecord && (
-            <div className="bg-gray-50 p-4 rounded-xl border mb-4 space-y-3">
-              <h4 className="font-semibold text-sm">{t("edit")} — {empName(editingRecord.employee_id)} ({editingRecord.month})</h4>
+            <div className="bg-gray-50 p-5 rounded-xl border mb-4 space-y-4">
+              <h4 className="font-semibold text-sm text-gray-800">{t("edit")} — {empName(editingRecord.employee_id)} ({editingRecord.month})</h4>
+
+              {/* Salary & Days Section */}
+              <div>
+                <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">{t("salary_details")}</h5>
+                <div className="grid grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t("basic_salary")}</label>
+                    <input type="number" step="0.001" value={editBasicSalary}
+                      onChange={e => setEditBasicSalary(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t("total_days")}</label>
+                    <input type="number" min="1" max="31" value={editTotalDays}
+                      onChange={e => setEditTotalDays(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t("days_worked")}</label>
+                    <input type="number" min="0" max="31" value={editDaysWorked}
+                      onChange={e => setEditDaysWorked(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t("daily_rate")}</label>
+                    <input disabled value={`KD ${calcDailyRate().toFixed(3)}`}
+                      className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-100" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Allowances Section */}
+              <div>
+                <h5 className="text-xs font-semibold text-green-600 uppercase mb-2">{t("allowance_details")}</h5>
+                <div className="grid grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t("housing_allowance")}</label>
+                    <input type="number" step="0.001" value={editHousing}
+                      onChange={e => setEditHousing(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t("transport_allowance")}</label>
+                    <input type="number" step="0.001" value={editTransport}
+                      onChange={e => setEditTransport(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t("food_allowance")}</label>
+                    <input type="number" step="0.001" value={editFood}
+                      onChange={e => setEditFood(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t("other_allowance")}</label>
+                    <input type="number" step="0.001" value={editOtherAllow}
+                      onChange={e => setEditOtherAllow(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Deductions Section */}
+              <div>
+                <h5 className="text-xs font-semibold text-red-600 uppercase mb-2">{t("deduction_details")}</h5>
+                <div className="grid grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t("absence_deduction")}</label>
+                    <input type="number" step="0.001" value={editAbsence}
+                      onChange={e => setEditAbsence(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t("late_deduction")}</label>
+                    <input type="number" step="0.001" value={editLate}
+                      onChange={e => setEditLate(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t("other_deduction")}</label>
+                    <input type="number" step="0.001" value={editOtherDed}
+                      onChange={e => setEditOtherDed(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t("advance")}</label>
+                    <input type="number" step="0.001" value={editAdvance}
+                      onChange={e => setEditAdvance(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment & Notes */}
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium mb-1">{t("basic_salary")}</label>
-                  <input disabled value={editingRecord.basic_salary.toFixed(3)}
-                    className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-100" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1">{t("allowances")}</label>
-                  <input type="number" step="0.001" value={editAllowances}
-                    onChange={e => setEditAllowances(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1">{t("deductions")}</label>
-                  <input type="number" step="0.001" value={editDeductions}
-                    onChange={e => setEditDeductions(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1">{t("advance")}</label>
-                  <input type="number" step="0.001" value={editAdvance}
-                    onChange={e => setEditAdvance(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
-                </div>
                 <div>
                   <label className="block text-xs font-medium mb-1">{t("payment_method")}</label>
                   <select value={editMethod} onChange={e => setEditMethod(e.target.value)}
@@ -324,11 +443,31 @@ export default function HRPage() {
                     className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
               </div>
-              <div className="text-sm font-medium text-gray-700">
-                {t("net_salary")}: KD {(
-                  editingRecord.basic_salary + Number(editAllowances) - Number(editDeductions) - Number(editAdvance)
-                ).toFixed(3)}
+
+              {/* Net Salary Calculation Display */}
+              <div className="bg-white p-3 rounded-lg border text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span>{t("earned_basic")} ({t("daily_rate")} {calcDailyRate().toFixed(3)} × {editDaysWorked} {t("days_worked").toLowerCase()})</span>
+                  <span className="font-mono">KD {(calcDailyRate() * Number(editDaysWorked)).toFixed(3)}</span>
+                </div>
+                <div className="flex justify-between text-green-600">
+                  <span>+ {t("allowances")} ({t("housing_allowance")}: {Number(editHousing).toFixed(3)} + {t("transport_allowance")}: {Number(editTransport).toFixed(3)} + {t("food_allowance")}: {Number(editFood).toFixed(3)} + {t("other_allowance")}: {Number(editOtherAllow).toFixed(3)})</span>
+                  <span className="font-mono">+{(Number(editHousing) + Number(editTransport) + Number(editFood) + Number(editOtherAllow)).toFixed(3)}</span>
+                </div>
+                <div className="flex justify-between text-red-600">
+                  <span>- {t("deductions")} ({t("absence_deduction")}: {Number(editAbsence).toFixed(3)} + {t("late_deduction")}: {Number(editLate).toFixed(3)} + {t("other_deduction")}: {Number(editOtherDed).toFixed(3)})</span>
+                  <span className="font-mono">-{(Number(editAbsence) + Number(editLate) + Number(editOtherDed)).toFixed(3)}</span>
+                </div>
+                <div className="flex justify-between text-orange-600">
+                  <span>- {t("advance")}</span>
+                  <span className="font-mono">-{Number(editAdvance).toFixed(3)}</span>
+                </div>
+                <div className="border-t pt-1 flex justify-between font-bold text-base">
+                  <span>{t("net_salary")}</span>
+                  <span className="font-mono">KD {calcNet().toFixed(3)}</span>
+                </div>
               </div>
+
               <div className="flex gap-2">
                 <button onClick={handleSaveSalary}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
@@ -344,52 +483,58 @@ export default function HRPage() {
 
           {/* Salary Table */}
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="px-3 py-3 text-left">{t("employee")}</th>
-                  <th className="px-3 py-3 text-left">{t("branch")}</th>
-                  <th className="px-3 py-3 text-right">{t("basic_salary")}</th>
-                  <th className="px-3 py-3 text-right">{t("allowances")}</th>
-                  <th className="px-3 py-3 text-right">{t("deductions")}</th>
-                  <th className="px-3 py-3 text-right">{t("advance")}</th>
-                  <th className="px-3 py-3 text-right">{t("net_salary")}</th>
-                  <th className="px-3 py-3 text-left">{t("payment_method")}</th>
-                  <th className="px-3 py-3 text-left">{t("status")}</th>
-                  {isManager && <th className="px-3 py-3 text-left">{t("actions")}</th>}
+                  <th className="px-2 py-3 text-left">{t("employee")}</th>
+                  <th className="px-2 py-3 text-left">{t("branch")}</th>
+                  <th className="px-2 py-3 text-right">{t("basic_salary")}</th>
+                  <th className="px-2 py-3 text-center">{t("days_worked")}</th>
+                  <th className="px-2 py-3 text-right">{t("daily_rate")}</th>
+                  <th className="px-2 py-3 text-right">{t("earned_basic")}</th>
+                  <th className="px-2 py-3 text-right text-green-600">{t("allowances")}</th>
+                  <th className="px-2 py-3 text-right text-red-600">{t("deductions")}</th>
+                  <th className="px-2 py-3 text-right text-orange-600">{t("advance")}</th>
+                  <th className="px-2 py-3 text-right font-bold">{t("net_salary")}</th>
+                  <th className="px-2 py-3 text-left">{t("status")}</th>
+                  {isManager && <th className="px-2 py-3 text-left">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {salaryRecords.length === 0 ? (
-                  <tr><td colSpan={isManager ? 10 : 9} className="px-4 py-8 text-center text-gray-400">
+                  <tr><td colSpan={isManager ? 12 : 11} className="px-4 py-8 text-center text-gray-400">
                     {t("no_data")} — {t("generate_payroll")}
                   </td></tr>
                 ) : salaryRecords.map(r => (
                   <tr key={r.id} className="border-b hover:bg-gray-50">
-                    <td className="px-3 py-3 font-medium">{empName(r.employee_id)}</td>
-                    <td className="px-3 py-3">{branchName(r.branch_id)}</td>
-                    <td className="px-3 py-3 text-right font-mono">{r.basic_salary.toFixed(3)}</td>
-                    <td className="px-3 py-3 text-right font-mono text-green-600">
+                    <td className="px-2 py-3 font-medium">{empName(r.employee_id)}</td>
+                    <td className="px-2 py-3">{branchName(r.branch_id)}</td>
+                    <td className="px-2 py-3 text-right font-mono">{r.basic_salary.toFixed(3)}</td>
+                    <td className="px-2 py-3 text-center">
+                      <span className={r.days_worked < r.total_days ? "text-orange-600 font-semibold" : ""}>
+                        {r.days_worked}/{r.total_days}
+                      </span>
+                    </td>
+                    <td className="px-2 py-3 text-right font-mono text-gray-500">{recDailyRate(r).toFixed(3)}</td>
+                    <td className="px-2 py-3 text-right font-mono">{recEarned(r).toFixed(3)}</td>
+                    <td className="px-2 py-3 text-right font-mono text-green-600">
                       {r.allowances > 0 ? `+${r.allowances.toFixed(3)}` : "-"}
                     </td>
-                    <td className="px-3 py-3 text-right font-mono text-red-600">
+                    <td className="px-2 py-3 text-right font-mono text-red-600">
                       {r.deductions > 0 ? `-${r.deductions.toFixed(3)}` : "-"}
                     </td>
-                    <td className="px-3 py-3 text-right font-mono text-orange-600">
+                    <td className="px-2 py-3 text-right font-mono text-orange-600">
                       {r.advance > 0 ? `-${r.advance.toFixed(3)}` : "-"}
                     </td>
-                    <td className="px-3 py-3 text-right font-mono font-bold">{r.net_salary.toFixed(3)}</td>
-                    <td className="px-3 py-3">
-                      <span className="text-xs">{r.payment_method === "bank_transfer" ? t("bank_transfer") : t("cash")}</span>
-                    </td>
-                    <td className="px-3 py-3">
+                    <td className="px-2 py-3 text-right font-mono font-bold">{r.net_salary.toFixed(3)}</td>
+                    <td className="px-2 py-3">
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                         r.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
                       }`}>{r.status === "paid" ? t("paid") : t("pending")}</span>
                       {r.paid_date && <span className="text-xs text-gray-400 ml-1">{r.paid_date}</span>}
                     </td>
                     {isManager && (
-                      <td className="px-3 py-3">
+                      <td className="px-2 py-3">
                         <div className="flex gap-2">
                           {r.status === "pending" && (
                             <>

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException
 from sqlalchemy.orm import Session
 from datetime import date, time
 from typing import Optional
+import calendar
 
 from app.database import get_db
 from app.models.hr import Employee, Attendance, SalaryPayment
@@ -74,6 +75,17 @@ def mark_attendance(
     return att
 
 
+def _calc_net(basic, total_days, days_worked,
+              housing, transport, food, other_allow,
+              absence_ded, late_ded, other_ded, advance):
+    per_day = basic / total_days if total_days > 0 else 0
+    earned_basic = round(per_day * days_worked, 3)
+    total_allow = housing + transport + food + other_allow
+    total_deduct = absence_ded + late_ded + other_ded
+    net = earned_basic + total_allow - total_deduct - advance
+    return earned_basic, total_allow, total_deduct, round(net, 3)
+
+
 # --- Salary Payments ---
 @router.get("/salary")
 def list_salary_payments(
@@ -94,9 +106,21 @@ def list_salary_payments(
         {
             "id": r.id, "employee_id": r.employee_id,
             "branch_id": r.branch_id, "month": r.month,
-            "basic_salary": r.basic_salary, "allowances": r.allowances,
-            "deductions": r.deductions, "advance": r.advance,
-            "net_salary": r.net_salary, "payment_method": r.payment_method,
+            "basic_salary": r.basic_salary,
+            "total_days": r.total_days or 30,
+            "days_worked": r.days_worked or 30,
+            "housing_allowance": r.housing_allowance or 0,
+            "transport_allowance": r.transport_allowance or 0,
+            "food_allowance": r.food_allowance or 0,
+            "other_allowance": r.other_allowance or 0,
+            "allowances": r.allowances,
+            "absence_deduction": r.absence_deduction or 0,
+            "late_deduction": r.late_deduction or 0,
+            "other_deduction": r.other_deduction or 0,
+            "deductions": r.deductions,
+            "advance": r.advance,
+            "net_salary": r.net_salary,
+            "payment_method": r.payment_method,
             "status": r.status, "notes": r.notes,
             "paid_date": str(r.paid_date) if r.paid_date else None,
         }
@@ -112,6 +136,10 @@ def generate_monthly_payroll(
 ):
     if user.role not in ("owner", "manager"):
         raise HTTPException(403, "Not authorized")
+    # Calculate total days in the month
+    year, mon = int(month.split("-")[0]), int(month.split("-")[1])
+    total_days = calendar.monthrange(year, mon)[1]
+
     employees = db.query(Employee).filter(Employee.is_active == True).all()
     created = 0
     for emp in employees:
@@ -126,7 +154,14 @@ def generate_monthly_payroll(
             branch_id=emp.branch_id,
             month=month,
             basic_salary=emp.salary,
-            allowances=0, deductions=0, advance=0,
+            total_days=total_days,
+            days_worked=total_days,
+            housing_allowance=0, transport_allowance=0,
+            food_allowance=0, other_allowance=0,
+            allowances=0,
+            absence_deduction=0, late_deduction=0, other_deduction=0,
+            deductions=0,
+            advance=0,
             net_salary=emp.salary,
             status="pending",
         )
@@ -139,8 +174,16 @@ def generate_monthly_payroll(
 @router.put("/salary/{payment_id}")
 def update_salary_payment(
     payment_id: int,
-    allowances: float = Form(0),
-    deductions: float = Form(0),
+    basic_salary: float = Form(None),
+    total_days: int = Form(None),
+    days_worked: int = Form(None),
+    housing_allowance: float = Form(0),
+    transport_allowance: float = Form(0),
+    food_allowance: float = Form(0),
+    other_allowance: float = Form(0),
+    absence_deduction: float = Form(0),
+    late_deduction: float = Form(0),
+    other_deduction: float = Form(0),
     advance: float = Form(0),
     payment_method: str = Form("cash"),
     notes: str = Form(""),
@@ -152,12 +195,34 @@ def update_salary_payment(
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
         raise HTTPException(404, "Salary record not found")
-    sp.allowances = allowances
-    sp.deductions = deductions
+
+    if basic_salary is not None:
+        sp.basic_salary = basic_salary
+    if total_days is not None:
+        sp.total_days = total_days
+    if days_worked is not None:
+        sp.days_worked = days_worked
+
+    sp.housing_allowance = housing_allowance
+    sp.transport_allowance = transport_allowance
+    sp.food_allowance = food_allowance
+    sp.other_allowance = other_allowance
+    sp.absence_deduction = absence_deduction
+    sp.late_deduction = late_deduction
+    sp.other_deduction = other_deduction
     sp.advance = advance
-    sp.net_salary = sp.basic_salary + allowances - deductions - advance
     sp.payment_method = payment_method
     sp.notes = notes
+
+    earned, total_allow, total_deduct, net = _calc_net(
+        sp.basic_salary, sp.total_days, sp.days_worked,
+        housing_allowance, transport_allowance, food_allowance, other_allowance,
+        absence_deduction, late_deduction, other_deduction, advance,
+    )
+    sp.allowances = total_allow
+    sp.deductions = total_deduct
+    sp.net_salary = net
+
     db.commit()
     return {"message": "Updated"}
 

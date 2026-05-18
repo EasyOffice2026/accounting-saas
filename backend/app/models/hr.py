@@ -39,8 +39,20 @@ class SalaryPayment(Base):
     branch_id = Column(Integer, ForeignKey("branches.id"), nullable=False)
     month = Column(String, nullable=False)  # YYYY-MM format
     basic_salary = Column(Float, default=0)
-    allowances = Column(Float, default=0)
-    deductions = Column(Float, default=0)
+    # Days-based calculation
+    total_days = Column(Integer, default=30)
+    days_worked = Column(Integer, default=30)
+    # Itemized allowances
+    housing_allowance = Column(Float, default=0)
+    transport_allowance = Column(Float, default=0)
+    food_allowance = Column(Float, default=0)
+    other_allowance = Column(Float, default=0)
+    allowances = Column(Float, default=0)  # total allowances
+    # Itemized deductions
+    absence_deduction = Column(Float, default=0)
+    late_deduction = Column(Float, default=0)
+    other_deduction = Column(Float, default=0)
+    deductions = Column(Float, default=0)  # total deductions
     advance = Column(Float, default=0)
     net_salary = Column(Float, default=0)
     payment_method = Column(String, default="cash")  # cash, bank_transfer

@@ -280,4 +280,10 @@ export default {
   salary_details: "تفاصيل الراتب",
   allowance_details: "تفاصيل البدلات",
   deduction_details: "تفاصيل الخصومات",
+  purchase_categories: "الفئات",
+  select_category: "اختر الفئة",
+  add_category: "إضافة فئة",
+  edit_category: "تعديل فئة",
+  category_exists: "الفئة موجودة بالفعل",
+  saved: "تم الحفظ بنجاح",
 };

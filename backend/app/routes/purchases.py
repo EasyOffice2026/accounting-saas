@@ -6,7 +6,7 @@ import os, uuid, json
 
 from app.database import get_db
 from app.models.purchase import (
-    Supplier, PurchaseOrder, PurchaseItem, SupplierItem,
+    PurchaseCategory, Supplier, PurchaseOrder, PurchaseItem, SupplierItem,
     ReceivingOrder, ReceivingItem, Invoice, DeliveryOrder,
 )
 from app.models.branch import Branch
@@ -15,6 +15,62 @@ from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/api/purchases", tags=["purchases"])
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
+
+
+# --- Purchase Categories ---
+@router.get("/categories")
+def list_categories(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return db.query(PurchaseCategory).filter(PurchaseCategory.is_active == True).order_by(PurchaseCategory.name).all()
+
+
+@router.post("/categories")
+def create_category(name: str = Form(...), name_ar: str = Form(""),
+                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    existing = db.query(PurchaseCategory).filter(
+        PurchaseCategory.name == name.strip(), PurchaseCategory.is_active == True
+    ).first()
+    if existing:
+        raise HTTPException(400, "Category already exists")
+    cat = PurchaseCategory(name=name.strip(), name_ar=name_ar.strip() if name_ar else None)
+    db.add(cat)
+    db.commit()
+    db.refresh(cat)
+    return cat
+
+
+@router.put("/categories/{cat_id}")
+def update_category(cat_id: int, name: str = Form(...), name_ar: str = Form(""),
+                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    cat = db.query(PurchaseCategory).filter(PurchaseCategory.id == cat_id).first()
+    if not cat:
+        raise HTTPException(404, "Category not found")
+    dup = db.query(PurchaseCategory).filter(
+        PurchaseCategory.name == name.strip(), PurchaseCategory.is_active == True,
+        PurchaseCategory.id != cat_id,
+    ).first()
+    if dup:
+        raise HTTPException(400, "Category already exists")
+    cat.name = name.strip()
+    cat.name_ar = name_ar.strip() if name_ar else None
+    db.commit()
+    db.refresh(cat)
+    return cat
+
+
+@router.delete("/categories/{cat_id}")
+def delete_category(cat_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    cat = db.query(PurchaseCategory).filter(PurchaseCategory.id == cat_id).first()
+    if not cat:
+        raise HTTPException(404, "Category not found")
+    cat.is_active = False
+    db.commit()
+    return {"status": "deleted"}
 
 
 # --- Suppliers ---
@@ -47,13 +103,14 @@ def create_supplier_item(
     supplier_id: int,
     item_name: str = Form(...), item_name_ar: str = Form(""),
     packaging: str = Form(""), unit: str = Form("pcs"),
-    unit_price: float = Form(0),
+    unit_price: float = Form(0), category_id: Optional[int] = Form(None),
     db: Session = Depends(get_db), _=Depends(get_current_user),
 ):
     si = SupplierItem(
         supplier_id=supplier_id, item_name=item_name,
         item_name_ar=item_name_ar or None,
         packaging=packaging or None, unit=unit, unit_price=unit_price,
+        category_id=category_id if category_id else None,
     )
     db.add(si)
     db.commit()
@@ -107,6 +164,7 @@ def list_orders(branch_id: Optional[int] = None, db: Session = Depends(get_db),
 @router.post("/orders")
 def create_order(
     branch_id: int = Form(...), supplier_id: int = Form(...),
+    category_id: Optional[int] = Form(None),
     order_date: str = Form(...), payment_type: str = Form("cash"),
     items: str = Form("[]"), notes: str = Form(""),
     attachment: Optional[UploadFile] = File(None),
@@ -126,6 +184,7 @@ def create_order(
 
     po = PurchaseOrder(
         branch_id=branch_id, supplier_id=supplier_id,
+        category_id=category_id if category_id else None,
         date=date.fromisoformat(order_date), payment_type=payment_type,
         total_amount=total, attachment_path=attachment_path,
         notes=notes, created_by=user.id,

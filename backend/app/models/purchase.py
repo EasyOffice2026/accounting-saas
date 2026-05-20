@@ -3,6 +3,16 @@ from datetime import datetime, timezone
 from app.database import Base
 
 
+class PurchaseCategory(Base):
+    __tablename__ = "purchase_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True)
+    name_ar = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class Supplier(Base):
     __tablename__ = "suppliers"
 
@@ -21,6 +31,7 @@ class PurchaseOrder(Base):
     id = Column(Integer, primary_key=True, index=True)
     branch_id = Column(Integer, ForeignKey("branches.id"), nullable=False)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
+    category_id = Column(Integer, ForeignKey("purchase_categories.id"), nullable=True)
     date = Column(Date, nullable=False)
     payment_type = Column(String, default="cash")  # cash, credit
     total_amount = Column(Float, default=0)
@@ -48,6 +59,7 @@ class SupplierItem(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
+    category_id = Column(Integer, ForeignKey("purchase_categories.id"), nullable=True)
     item_name = Column(String, nullable=False)
     item_name_ar = Column(String, nullable=True)
     packaging = Column(String, nullable=True)  # e.g. "6x1.5L", "Box of 24", "10kg bag"

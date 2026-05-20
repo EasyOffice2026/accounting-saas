@@ -151,5 +151,29 @@ def _seed_data():
             db.add(ExpenseCategory(name=name, name_ar=name_ar))
 
         db.commit()
+
+        # Seed purchase categories
+        _seed_purchase_categories(db)
     finally:
         db.close()
+
+    # Also seed categories on existing DBs
+    db2 = SessionLocal()
+    try:
+        _seed_purchase_categories(db2)
+    finally:
+        db2.close()
+
+
+def _seed_purchase_categories(db):
+    from app.models.purchase import PurchaseCategory
+    if db.query(PurchaseCategory).count() > 0:
+        return
+    for name, name_ar in [
+        ("Food Items", "مواد غذائية"),
+        ("Packaging", "تغليف"),
+        ("Consumables Items", "مواد استهلاكية"),
+        ("Vegetables", "خضروات"),
+    ]:
+        db.add(PurchaseCategory(name=name, name_ar=name_ar))
+    db.commit()

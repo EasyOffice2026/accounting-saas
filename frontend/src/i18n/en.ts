@@ -281,4 +281,10 @@ export default {
   salary_details: "Salary Details",
   allowance_details: "Allowance Details",
   deduction_details: "Deduction Details",
+  purchase_categories: "Categories",
+  select_category: "Select Category",
+  add_category: "Add Category",
+  edit_category: "Edit Category",
+  category_exists: "Category already exists",
+  saved: "Saved successfully",
 };

@@ -3,11 +3,12 @@ import { useTranslation } from "react-i18next";
 import { apiGet, apiPost } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
+interface PurchaseCategoryI { id: number; name: string; name_ar: string | null; is_active: boolean; }
 interface Supplier { id: number; name: string; email: string; whatsapp: string; payment_type: string; }
-interface SupplierItemI { id: number; supplier_id: number; item_name: string; item_name_ar: string; packaging: string; unit: string; unit_price: number; }
+interface SupplierItemI { id: number; supplier_id: number; category_id: number | null; item_name: string; item_name_ar: string; packaging: string; unit: string; unit_price: number; }
 interface OrderItem { item_name: string; quantity: number; unit: string; unit_price: number; total: number; }
 interface PurchaseOrder {
-  id: number; branch_id: number; supplier_id: number; date: string;
+  id: number; branch_id: number; supplier_id: number; category_id: number | null; date: string;
   payment_type: string; total_amount: number; status: string;
 }
 interface Branch { id: number; name: string; }
@@ -23,7 +24,7 @@ interface LedgerEntry {
   invoices: { id: number; po_id: number; date: string; total_amount: number; status: string; paid_amount: number; paid_date: string | null }[];
 }
 
-type Tab = "orders" | "catalog" | "invoices" | "ledger";
+type Tab = "orders" | "catalog" | "categories" | "invoices" | "ledger";
 
 export default function PurchasesPage() {
   const { t } = useTranslation();
@@ -56,16 +57,67 @@ export default function PurchasesPage() {
   const [expandedSupplier, setExpandedSupplier] = useState<number | null>(null);
   const [payOnlineLoading, setPayOnlineLoading] = useState<number | null>(null);
 
+  // Category state
+  const [categories, setCategories] = useState<PurchaseCategoryI[]>([]);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<PurchaseCategoryI | null>(null);
+  const [catMsg, setCatMsg] = useState("");
+  const [catMsgType, setCatMsgType] = useState<"success" | "error">("success");
+
+  const isManager = user?.role === "owner" || user?.role === "manager";
+
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);
     apiGet("/api/purchases/suppliers").then(setSuppliers);
     apiGet("/api/purchases/orders").then(setOrders);
+    apiGet("/api/purchases/categories").then(setCategories);
   }, []);
 
   useEffect(() => {
     if (tab === "invoices") apiGet("/api/purchases/invoices").then(setInvoices);
     if (tab === "ledger") apiGet("/api/purchases/supplier-ledger").then(setLedger);
+    if (tab === "categories") apiGet("/api/purchases/categories").then(setCategories);
   }, [tab]);
+
+  const categoryName = (id: number | null) => {
+    if (!id) return "—";
+    const cat = categories.find(c => c.id === id);
+    return cat?.name || "—";
+  };
+
+  const handleCategorySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    try {
+      if (editingCategory) {
+        const res = await fetch(`/api/purchases/categories/${editingCategory.id}`, {
+          method: "PUT", body: fd,
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Error"); }
+      } else {
+        const res = await fetch("/api/purchases/categories", {
+          method: "POST", body: fd,
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Error"); }
+      }
+      setCatMsg(t("saved")); setCatMsgType("success");
+      setShowCategoryForm(false); setEditingCategory(null);
+      apiGet("/api/purchases/categories").then(setCategories);
+    } catch (err: unknown) {
+      setCatMsg((err as Error).message); setCatMsgType("error");
+    }
+    setTimeout(() => setCatMsg(""), 4000);
+  };
+
+  const deleteCategory = async (catId: number) => {
+    if (!confirm(t("confirm_delete"))) return;
+    await fetch(`/api/purchases/categories/${catId}`, {
+      method: "DELETE", headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    });
+    apiGet("/api/purchases/categories").then(setCategories);
+  };
 
   const loadCatalog = async (suppId: number) => {
     setCatalogSupplierId(suppId);
@@ -274,11 +326,11 @@ export default function PurchasesPage() {
 
       {/* Tab Bar */}
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
-        {(["orders", "catalog", "invoices", "ledger"] as Tab[]).map(tb => (
+        {(["orders", "catalog", "categories", "invoices", "ledger"] as Tab[]).map(tb => (
           <button key={tb} onClick={() => setTab(tb)}
             className={`px-4 py-2 rounded-md text-sm font-medium transition ${
               tab === tb ? "bg-white shadow text-emerald-700" : "text-gray-500 hover:text-gray-700"}`}>
-            {t(tb === "orders" ? "purchase_orders" : tb === "catalog" ? "supplier_catalog" : tb === "invoices" ? "invoices" : "supplier_ledger")}
+            {t(tb === "orders" ? "purchase_orders" : tb === "catalog" ? "supplier_catalog" : tb === "categories" ? "purchase_categories" : tb === "invoices" ? "invoices" : "supplier_ledger")}
           </button>
         ))}
       </div>
@@ -414,6 +466,13 @@ export default function PurchasesPage() {
                     <option value="credit">{t("credit")}</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("category")}</label>
+                  <select name="category_id" className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">{t("select_category")}</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
               </div>
 
               <h3 className="font-semibold">{t("items")}</h3>
@@ -482,6 +541,7 @@ export default function PurchasesPage() {
                   <th className="px-4 py-3 text-left">{t("date")}</th>
                   <th className="px-4 py-3 text-left">{t("branch")}</th>
                   <th className="px-4 py-3 text-left">{t("supplier")}</th>
+                  <th className="px-4 py-3 text-left">{t("category")}</th>
                   <th className="px-4 py-3 text-left">{t("payment_type")}</th>
                   <th className="px-4 py-3 text-right">{t("total")}</th>
                   <th className="px-4 py-3 text-left">{t("status")}</th>
@@ -490,13 +550,14 @@ export default function PurchasesPage() {
               </thead>
               <tbody>
                 {orders.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : orders.map(o => (
                   <tr key={o.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{o.id}</td>
                     <td className="px-4 py-3">{o.date}</td>
                     <td className="px-4 py-3">{branchName(o.branch_id)}</td>
                     <td className="px-4 py-3">{supplierName(o.supplier_id)}</td>
+                    <td className="px-4 py-3">{categoryName(o.category_id)}</td>
                     <td className="px-4 py-3">{t(o.payment_type)}</td>
                     <td className="px-4 py-3 text-right font-mono">KD {o.total_amount.toFixed(3)}</td>
                     <td className="px-4 py-3">
@@ -638,6 +699,87 @@ export default function PurchasesPage() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ========== CATEGORIES TAB ========== */}
+      {tab === "categories" && (
+        <div>
+          {catMsg && (
+            <div className={`p-3 rounded mb-4 text-sm ${
+              catMsgType === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+            }`}>{catMsg}</div>
+          )}
+
+          {isManager && (
+            <div className="flex justify-end mb-4">
+              <button onClick={() => { setEditingCategory(null); setShowCategoryForm(!showCategoryForm); }}
+                className="px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
+                {showCategoryForm ? t("cancel") : `+ ${t("add_category")}`}
+              </button>
+            </div>
+          )}
+
+          {showCategoryForm && (
+            <form onSubmit={handleCategorySubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-4 space-y-3">
+              <h3 className="font-semibold">{editingCategory ? t("edit_category") : t("add_category")}</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1">{t("name")} (EN)</label>
+                  <input name="name" defaultValue={editingCategory?.name || ""} required
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">{t("name")} (AR)</label>
+                  <input name="name_ar" defaultValue={editingCategory?.name_ar || ""} dir="rtl"
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm">{t("save")}</button>
+                <button type="button" onClick={() => { setShowCategoryForm(false); setEditingCategory(null); }}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm">{t("cancel")}</button>
+              </div>
+            </form>
+          )}
+
+          <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-4 py-3 text-left">#</th>
+                  <th className="px-4 py-3 text-left">{t("name")} (EN)</th>
+                  <th className="px-4 py-3 text-left">{t("name")} (AR)</th>
+                  {isManager && <th className="px-4 py-3 text-center">{t("actions")}</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {categories.length === 0 ? (
+                  <tr><td colSpan={isManager ? 4 : 3} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                ) : categories.map((cat, idx) => (
+                  <tr key={cat.id} className="border-b hover:bg-gray-50">
+                    <td className="px-4 py-3">{idx + 1}</td>
+                    <td className="px-4 py-3 font-medium">{cat.name}</td>
+                    <td className="px-4 py-3 text-gray-500" dir="rtl">{cat.name_ar || "—"}</td>
+                    {isManager && (
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex gap-1 justify-center">
+                          <button onClick={() => { setEditingCategory(cat); setShowCategoryForm(true); }}
+                            className="px-2 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600">
+                            {t("edit")}
+                          </button>
+                          <button onClick={() => deleteCategory(cat.id)}
+                            className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">
+                            {t("delete")}
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

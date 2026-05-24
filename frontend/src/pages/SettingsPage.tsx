@@ -28,6 +28,39 @@ interface WhatsAppConfig {
   has_token: boolean;
 }
 
+interface FoodicsConfig {
+  has_token: boolean;
+  base_url: string;
+  is_sandbox: boolean;
+  last_sync_at: string | null;
+}
+
+interface FoodicsBranch {
+  id: string;
+  name: string;
+  name_localized: string;
+}
+
+interface FoodicsBranchMap {
+  id: number;
+  foodics_branch_id: string;
+  foodics_branch_name: string;
+  local_branch_id: number | null;
+}
+
+interface FoodicsPaymentMethod {
+  id: string;
+  name: string;
+  name_localized: string;
+}
+
+interface FoodicsPaymentMap {
+  id: number;
+  foodics_payment_id: string;
+  foodics_payment_name: string;
+  local_channel: string | null;
+}
+
 interface UserItem {
   id: number;
   username: string;
@@ -78,6 +111,25 @@ export default function SettingsPage() {
   const [waMsg, setWaMsg] = useState("");
   const [waMsgType, setWaMsgType] = useState<"success" | "error">("success");
 
+  // Foodics state
+  const [fcApiToken, setFcApiToken] = useState("");
+  const [fcBaseUrl, setFcBaseUrl] = useState("https://api.foodics.com/v5");
+  const [fcSandbox, setFcSandbox] = useState(false);
+  const [fcHasToken, setFcHasToken] = useState(false);
+  const [fcLastSync, setFcLastSync] = useState<string | null>(null);
+  const [fcSaving, setFcSaving] = useState(false);
+  const [fcTesting, setFcTesting] = useState(false);
+  const [fcMsg, setFcMsg] = useState("");
+  const [fcMsgType, setFcMsgType] = useState<"success" | "error">("success");
+  const [fcBranches, setFcBranches] = useState<FoodicsBranch[]>([]);
+  const [fcBranchMaps, setFcBranchMaps] = useState<FoodicsBranchMap[]>([]);
+  const [fcPaymentMethods, setFcPaymentMethods] = useState<FoodicsPaymentMethod[]>([]);
+  const [fcPaymentMaps, setFcPaymentMaps] = useState<FoodicsPaymentMap[]>([]);
+  const [fcLoadingBranches, setFcLoadingBranches] = useState(false);
+  const [fcLoadingPayments, setFcLoadingPayments] = useState(false);
+  const [fcAutoMapping, setFcAutoMapping] = useState(false);
+  const [fcBusinessName, setFcBusinessName] = useState("");
+
   // User Management state
   const [users, setUsers] = useState<UserItem[]>([]);
   const [branchesList, setBranchesList] = useState<BranchItem[]>([]);
@@ -123,6 +175,20 @@ export default function SettingsPage() {
         setWaPhone(data.default_phone);
         setWaHasToken(data.has_token);
       }
+    });
+    apiGet("/api/foodics/settings").then((data: FoodicsConfig | null) => {
+      if (data) {
+        setFcBaseUrl(data.base_url);
+        setFcSandbox(data.is_sandbox);
+        setFcHasToken(data.has_token);
+        setFcLastSync(data.last_sync_at);
+      }
+    });
+    apiGet("/api/foodics/branch-mappings").then((data) => {
+      if (Array.isArray(data)) setFcBranchMaps(data);
+    });
+    apiGet("/api/foodics/payment-mappings").then((data) => {
+      if (Array.isArray(data)) setFcPaymentMaps(data);
     });
     loadUsers();
     apiGet("/api/branches/").then((data) => {
@@ -622,6 +688,258 @@ export default function SettingsPage() {
             <li>{t("greenapi_step2")}</li>
             <li>{t("greenapi_step3")}</li>
             <li>{t("greenapi_step4")}</li>
+          </ol>
+        </div>
+      </div>
+
+      {/* Foodics Integration */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border max-w-4xl mb-6">
+        <h3 className="text-lg font-semibold mb-1">{t("foodics_integration")}</h3>
+        <p className="text-sm text-gray-500 mb-4">{t("foodics_integration_desc")}</p>
+
+        {fcMsg && (
+          <div className={`p-3 rounded mb-4 text-sm ${
+            fcMsgType === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+          }`}>{fcMsg}</div>
+        )}
+
+        {fcBusinessName && (
+          <div className="p-3 rounded mb-4 text-sm bg-blue-50 text-blue-700">
+            {t("connected_to")}: <strong>{fcBusinessName}</strong>
+          </div>
+        )}
+
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          setFcSaving(true);
+          try {
+            const fd = new URLSearchParams();
+            if (fcApiToken) fd.append("api_token", fcApiToken);
+            fd.append("base_url", fcBaseUrl);
+            fd.append("is_sandbox", String(fcSandbox));
+            const res = await apiFetch("/api/foodics/settings", { method: "POST", body: fd });
+            if (!res.ok) throw new Error("Failed to save");
+            setFcHasToken(true);
+            setFcApiToken("");
+            setFcMsg(t("saved")); setFcMsgType("success");
+          } catch {
+            setFcMsg(t("save_error")); setFcMsgType("error");
+          }
+          setFcSaving(false);
+          setTimeout(() => setFcMsg(""), 5000);
+        }} className="space-y-4 mb-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <label className="block text-sm font-medium mb-1">
+                {t("api_token")} {fcHasToken && <span className="text-green-600 text-xs">({t("configured")})</span>}
+              </label>
+              <input type="password" value={fcApiToken} onChange={e => setFcApiToken(e.target.value)}
+                placeholder={fcHasToken ? t("leave_blank_keep") : "eyJ0eXAiOiJKV1Qi..."}
+                className="w-full px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">{t("api_base_url")}</label>
+              <input value={fcBaseUrl} onChange={e => setFcBaseUrl(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <div className="flex items-end gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={fcSandbox} onChange={e => setFcSandbox(e.target.checked)} />
+                {t("sandbox_mode")}
+              </label>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button type="submit" disabled={fcSaving}
+              className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm">
+              {fcSaving ? "..." : t("save")}
+            </button>
+            <button type="button" disabled={fcTesting || !fcHasToken} onClick={async () => {
+              setFcTesting(true);
+              try {
+                const res = await apiFetch("/api/foodics/test", { method: "POST" });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || "Test failed");
+                setFcBusinessName(data.business || "");
+                setFcMsg(t("foodics_connected")); setFcMsgType("success");
+              } catch (e: unknown) {
+                setFcMsg((e as Error).message || t("foodics_test_error")); setFcMsgType("error");
+              }
+              setFcTesting(false);
+              setTimeout(() => setFcMsg(""), 5000);
+            }}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm">
+              {fcTesting ? "..." : t("test_connection")}
+            </button>
+          </div>
+        </form>
+
+        {fcHasToken && (
+          <>
+            {/* Branch Mapping */}
+            <div className="border-t pt-4 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-semibold text-sm">{t("branch_mapping")}</h4>
+                <button onClick={async () => {
+                  setFcLoadingBranches(true);
+                  try {
+                    const data = await apiGet("/api/foodics/branches");
+                    if (Array.isArray(data)) setFcBranches(data);
+                  } catch { /* ignore */ }
+                  setFcLoadingBranches(false);
+                }} disabled={fcLoadingBranches}
+                  className="px-3 py-1 bg-gray-100 text-gray-700 rounded text-xs hover:bg-gray-200 disabled:opacity-50">
+                  {fcLoadingBranches ? "..." : t("fetch_foodics_branches")}
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">{t("branch_mapping_desc")}</p>
+
+              {fcBranches.length > 0 && (
+                <div className="space-y-2">
+                  {fcBranches.map(fb => {
+                    const existing = fcBranchMaps.find(m => m.foodics_branch_id === fb.id);
+                    return (
+                      <div key={fb.id} className="flex items-center gap-3 bg-gray-50 p-2 rounded">
+                        <span className="text-sm flex-1">
+                          <strong>{fb.name}</strong>
+                          {fb.name_localized && <span className="text-gray-400 ml-1">({fb.name_localized})</span>}
+                        </span>
+                        <span className="text-gray-400 text-xs">→</span>
+                        <select
+                          value={existing?.local_branch_id || ""}
+                          onChange={async (e) => {
+                            const localId = e.target.value;
+                            if (!localId) return;
+                            const fd = new URLSearchParams();
+                            fd.append("foodics_branch_id", fb.id);
+                            fd.append("foodics_branch_name", fb.name);
+                            fd.append("local_branch_id", localId);
+                            await apiFetch("/api/foodics/branch-mappings", { method: "POST", body: fd });
+                            const updated = await apiGet("/api/foodics/branch-mappings");
+                            if (Array.isArray(updated)) setFcBranchMaps(updated);
+                          }}
+                          className="px-2 py-1 border rounded text-sm min-w-[160px]">
+                          <option value="">-- {t("select_branch")} --</option>
+                          {branchesList.map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </select>
+                        {existing && <span className="text-green-500 text-xs">✓</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {fcBranchMaps.length > 0 && fcBranches.length === 0 && (
+                <div className="text-xs text-gray-500">
+                  {fcBranchMaps.length} {t("mappings_saved")}
+                </div>
+              )}
+            </div>
+
+            {/* Payment Method Mapping */}
+            <div className="border-t pt-4 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-semibold text-sm">{t("payment_mapping")}</h4>
+                <div className="flex gap-2">
+                  <button onClick={async () => {
+                    setFcAutoMapping(true);
+                    try {
+                      const res = await apiFetch("/api/foodics/auto-map-payments", { method: "POST" });
+                      const data = await res.json();
+                      if (!res.ok) throw new Error(data.detail);
+                      setFcMsg(`${t("auto_mapped")} ${data.mapped}/${data.total}`); setFcMsgType("success");
+                      const updated = await apiGet("/api/foodics/payment-mappings");
+                      if (Array.isArray(updated)) setFcPaymentMaps(updated);
+                    } catch (e: unknown) {
+                      setFcMsg((e as Error).message); setFcMsgType("error");
+                    }
+                    setFcAutoMapping(false);
+                    setTimeout(() => setFcMsg(""), 5000);
+                  }} disabled={fcAutoMapping}
+                    className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded text-xs hover:bg-emerald-200 disabled:opacity-50">
+                    {fcAutoMapping ? "..." : t("auto_map")}
+                  </button>
+                  <button onClick={async () => {
+                    setFcLoadingPayments(true);
+                    try {
+                      const data = await apiGet("/api/foodics/payment-methods");
+                      if (Array.isArray(data)) setFcPaymentMethods(data);
+                    } catch { /* ignore */ }
+                    setFcLoadingPayments(false);
+                  }} disabled={fcLoadingPayments}
+                    className="px-3 py-1 bg-gray-100 text-gray-700 rounded text-xs hover:bg-gray-200 disabled:opacity-50">
+                    {fcLoadingPayments ? "..." : t("fetch_payment_methods")}
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">{t("payment_mapping_desc")}</p>
+
+              {fcPaymentMethods.length > 0 && (
+                <div className="space-y-2">
+                  {fcPaymentMethods.map(pm => {
+                    const existing = fcPaymentMaps.find(m => m.foodics_payment_id === pm.id);
+                    return (
+                      <div key={pm.id} className="flex items-center gap-3 bg-gray-50 p-2 rounded">
+                        <span className="text-sm flex-1">
+                          <strong>{pm.name}</strong>
+                          {pm.name_localized && <span className="text-gray-400 ml-1">({pm.name_localized})</span>}
+                        </span>
+                        <span className="text-gray-400 text-xs">→</span>
+                        <select
+                          value={existing?.local_channel || ""}
+                          onChange={async (e) => {
+                            const channel = e.target.value;
+                            if (!channel) return;
+                            const fd = new URLSearchParams();
+                            fd.append("foodics_payment_id", pm.id);
+                            fd.append("foodics_payment_name", pm.name);
+                            fd.append("local_channel", channel);
+                            await apiFetch("/api/foodics/payment-mappings", { method: "POST", body: fd });
+                            const updated = await apiGet("/api/foodics/payment-mappings");
+                            if (Array.isArray(updated)) setFcPaymentMaps(updated);
+                          }}
+                          className="px-2 py-1 border rounded text-sm min-w-[120px]">
+                          <option value="">-- {t("select_channel")} --</option>
+                          <option value="cash">Cash</option>
+                          <option value="knet">KNET</option>
+                          <option value="link">Link/Card</option>
+                          <option value="wamd">WAMD</option>
+                        </select>
+                        {existing && <span className="text-green-500 text-xs">✓</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {fcPaymentMaps.length > 0 && fcPaymentMethods.length === 0 && (
+                <div className="text-xs text-gray-500">
+                  {fcPaymentMaps.length} {t("mappings_saved")}
+                </div>
+              )}
+            </div>
+
+            {/* Last Sync Info */}
+            {fcLastSync && (
+              <div className="border-t pt-4">
+                <p className="text-xs text-gray-500">
+                  {t("last_sync")}: {new Date(fcLastSync).toLocaleString()}
+                </p>
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="mt-6 p-4 bg-orange-50 rounded-lg border border-orange-200">
+          <h4 className="font-medium text-orange-800 text-sm mb-2">{t("foodics_setup_title")}</h4>
+          <ol className="text-xs text-orange-700 space-y-1 list-decimal list-inside">
+            <li>{t("foodics_step1")}</li>
+            <li>{t("foodics_step2")}</li>
+            <li>{t("foodics_step3")}</li>
+            <li>{t("foodics_step4")}</li>
+            <li>{t("foodics_step5")}</li>
           </ol>
         </div>
       </div>

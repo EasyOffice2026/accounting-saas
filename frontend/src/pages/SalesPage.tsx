@@ -33,6 +33,15 @@ export default function SalesPage() {
   const isStaff = user?.role === "staff";
   const isOwnerManager = user?.role === "owner" || user?.role === "manager";
 
+  // Foodics sync state
+  const [showFoodicsSync, setShowFoodicsSync] = useState(false);
+  const [syncDate, setSyncDate] = useState(new Date().toISOString().slice(0, 10));
+  const [syncEndDate, setSyncEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
+  const [syncMsgType, setSyncMsgType] = useState<"success" | "error">("success");
+  const [syncRange, setSyncRange] = useState(false);
+
   // WhatsApp report state
   const [showReport, setShowReport] = useState(false);
   const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
@@ -114,6 +123,12 @@ export default function SalesPage() {
         <h2 className="text-2xl font-bold text-gray-800">{t("sales")}</h2>
         <div className="flex gap-2">
           {isOwnerManager && (
+            <button onClick={() => setShowFoodicsSync(!showFoodicsSync)}
+              className="px-3 py-1.5 bg-orange-600 text-white rounded text-xs hover:bg-orange-700 flex items-center gap-1">
+              🔄 {t("sync_foodics")}
+            </button>
+          )}
+          {isOwnerManager && (
             <button onClick={() => { setShowReport(!showReport); if (!showReport) previewReport(); }}
               className="px-3 py-1.5 bg-green-700 text-white rounded text-xs hover:bg-green-800 flex items-center gap-1">
               📱 {t("send_daily_report")}
@@ -129,6 +144,77 @@ export default function SalesPage() {
           </button>
         </div>
       </div>
+
+      {/* Foodics Sync Panel */}
+      {showFoodicsSync && isOwnerManager && (
+        <div className="bg-white p-5 rounded-xl shadow-sm border mb-4">
+          <h3 className="font-semibold text-sm mb-3">🔄 {t("sync_foodics")}</h3>
+          <p className="text-xs text-gray-500 mb-3">{t("sync_foodics_desc")}</p>
+
+          {syncMsg && (
+            <div className={`p-2 rounded mb-3 text-sm ${
+              syncMsgType === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+            }`}>{syncMsg}</div>
+          )}
+
+          <div className="flex gap-3 items-end mb-3 flex-wrap">
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={syncRange} onChange={e => setSyncRange(e.target.checked)} />
+              {t("date_range")}
+            </label>
+            <div>
+              <label className="block text-xs font-medium mb-1">{syncRange ? t("start_date") : t("date")}</label>
+              <input type="date" value={syncDate} onChange={e => setSyncDate(e.target.value)}
+                className="px-3 py-1.5 border rounded-lg text-sm" />
+            </div>
+            {syncRange && (
+              <div>
+                <label className="block text-xs font-medium mb-1">{t("end_date")}</label>
+                <input type="date" value={syncEndDate} onChange={e => setSyncEndDate(e.target.value)}
+                  className="px-3 py-1.5 border rounded-lg text-sm" />
+              </div>
+            )}
+            <button onClick={async () => {
+              setSyncing(true);
+              setSyncMsg("");
+              try {
+                let res;
+                if (syncRange) {
+                  const fd = new FormData();
+                  fd.append("start_date", syncDate);
+                  fd.append("end_date", syncEndDate);
+                  res = await apiPost("/api/foodics/sync-range", fd);
+                } else {
+                  const fd = new FormData();
+                  fd.append("sync_date", syncDate);
+                  res = await apiPost("/api/foodics/sync", fd);
+                }
+                if (res.detail) throw new Error(res.detail);
+                if (syncRange) {
+                  const ok = res.results?.filter((r: Record<string, unknown>) => !r.error).length || 0;
+                  setSyncMsg(`${t("sync_complete")}: ${ok} ${t("days_synced")}`);
+                } else {
+                  setSyncMsg(
+                    `${t("sync_complete")}: ${res.orders_fetched} ${t("orders_fetched")}, ` +
+                    `${res.branches_created} ${t("created")}, ${res.branches_updated} ${t("updated")}` +
+                    (res.unmapped_branches?.length ? ` | ${res.unmapped_branches.length} ${t("unmapped_branches")}` : "") +
+                    (res.unmapped_payments?.length ? ` | ${res.unmapped_payments.length} ${t("unmapped_payments")}` : "")
+                  );
+                }
+                setSyncMsgType("success");
+                loadSales(branchFilter);
+              } catch (e: unknown) {
+                setSyncMsg((e as Error).message || t("sync_error"));
+                setSyncMsgType("error");
+              }
+              setSyncing(false);
+            }} disabled={syncing}
+              className="px-4 py-1.5 bg-orange-600 text-white rounded text-xs hover:bg-orange-700 disabled:opacity-50">
+              {syncing ? t("syncing") : t("sync_now")}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* WhatsApp Daily Report Panel */}
       {showReport && isOwnerManager && (

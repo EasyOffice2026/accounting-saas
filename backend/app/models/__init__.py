@@ -13,6 +13,7 @@ from app.models.settings import SmtpSettings
 from app.models.payment import PaymentGatewaySettings, PaymentTransaction
 from app.models.transfer import TransferItem, TransferOrder, TransferOrderLine
 from app.models.whatsapp import WhatsAppSettings
+from app.models.foodics import FoodicsSettings, FoodicsBranchMapping, FoodicsPaymentMapping
 
 __all__ = [
     "Branch", "User",
@@ -27,4 +28,5 @@ __all__ = [
     "PaymentGatewaySettings", "PaymentTransaction",
     "TransferItem", "TransferOrder", "TransferOrderLine",
     "WhatsAppSettings",
+    "FoodicsSettings", "FoodicsBranchMapping", "FoodicsPaymentMapping",
 ]

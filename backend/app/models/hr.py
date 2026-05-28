@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, Text, Boolean, Time
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, Text, Boolean, Time, UniqueConstraint
 from datetime import datetime, timezone
 from app.database import Base
 
@@ -7,6 +7,7 @@ class Employee(Base):
     __tablename__ = "employees"
 
     id = Column(Integer, primary_key=True, index=True)
+    staff_no = Column(String, nullable=True)
     branch_id = Column(Integer, ForeignKey("branches.id"), nullable=False)
     name = Column(String, nullable=False)
     name_ar = Column(String, nullable=True)
@@ -14,6 +15,10 @@ class Employee(Base):
     position = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     salary = Column(Float, default=0)
+    iban = Column(String, nullable=True)
+    bank_name = Column(String, nullable=True)
+    salary_transfer_method = Column(String, default="cash")  # cash, bank
+    employer = Column(String, default="mudawwarah")  # mudawwarah, other
     join_date = Column(Date, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -54,9 +59,62 @@ class SalaryPayment(Base):
     other_deduction = Column(Float, default=0)
     deductions = Column(Float, default=0)  # total deductions
     advance = Column(Float, default=0)
+    overtime = Column(Float, default=0)
+    bonus = Column(Float, default=0)
+    incentive = Column(Float, default=0)
+    leave_salary = Column(Float, default=0)
+    ticket_payment = Column(Float, default=0)
+    loan_deduction = Column(Float, default=0)
+    penalty = Column(Float, default=0)
+    period_start = Column(Date, nullable=True)
+    period_end = Column(Date, nullable=True)
+    last_workplace = Column(String, nullable=True)
     net_salary = Column(Float, default=0)
     payment_method = Column(String, default="cash")  # cash, bank_transfer
     status = Column(String, default="pending")  # pending, paid
     notes = Column(Text, nullable=True)
     paid_date = Column(Date, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class StaffTransfer(Base):
+    __tablename__ = "staff_transfers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    from_branch_id = Column(Integer, ForeignKey("branches.id"), nullable=False)
+    to_branch_id = Column(Integer, ForeignKey("branches.id"), nullable=False)
+    transfer_date = Column(Date, nullable=False)
+    requested_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status = Column(String, default="pending")  # pending, approved, rejected
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class AdvanceLoan(Base):
+    __tablename__ = "advance_loans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    loan_type = Column(String, default="advance")  # advance, loan
+    amount = Column(Float, nullable=False)
+    balance = Column(Float, nullable=False)
+    monthly_deduction = Column(Float, default=0)
+    date = Column(Date, nullable=False)
+    notes = Column(Text, nullable=True)
+    status = Column(String, default="active")  # active, paid_off
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class StaffBenefitDeduction(Base):
+    __tablename__ = "staff_benefits_deductions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    category = Column(String, nullable=False)  # incentive, bonus, leave_salary, ticket, fine, penalty, other_benefit, other_deduction
+    amount = Column(Float, nullable=False)
+    date = Column(Date, nullable=False)
+    month = Column(String, nullable=True)  # YYYY-MM to link to salary period
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

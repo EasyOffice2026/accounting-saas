@@ -36,6 +36,7 @@ class PurchaseOrder(Base):
     payment_type = Column(String, default="cash")  # cash, credit
     total_amount = Column(Float, default=0)
     attachment_path = Column(String, nullable=True)
+    delivery_location = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     status = Column(String, default="pending")  # pending, received, invoiced, paid
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)

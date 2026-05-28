@@ -9,7 +9,7 @@ interface SupplierItemI { id: number; supplier_id: number; category_id: number |
 interface OrderItem { item_name: string; quantity: number; unit: string; unit_price: number; total: number; }
 interface PurchaseOrder {
   id: number; branch_id: number; supplier_id: number; category_id: number | null; date: string;
-  payment_type: string; total_amount: number; status: string;
+  payment_type: string; total_amount: number; status: string; delivery_location: string | null;
 }
 interface Branch { id: number; name: string; }
 interface InvoiceI {
@@ -473,6 +473,10 @@ export default function PurchasesPage() {
                     {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("delivery_location")}</label>
+                  <input name="delivery_location" placeholder={t("delivery_location")} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
               </div>
 
               <h3 className="font-semibold">{t("items")}</h3>
@@ -542,6 +546,7 @@ export default function PurchasesPage() {
                   <th className="px-4 py-3 text-left">{t("branch")}</th>
                   <th className="px-4 py-3 text-left">{t("supplier")}</th>
                   <th className="px-4 py-3 text-left">{t("category")}</th>
+                  <th className="px-4 py-3 text-left">{t("delivery_location")}</th>
                   <th className="px-4 py-3 text-left">{t("payment_type")}</th>
                   <th className="px-4 py-3 text-right">{t("total")}</th>
                   <th className="px-4 py-3 text-left">{t("status")}</th>
@@ -550,7 +555,7 @@ export default function PurchasesPage() {
               </thead>
               <tbody>
                 {orders.length === 0 ? (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : orders.map(o => (
                   <tr key={o.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{o.id}</td>
@@ -558,6 +563,7 @@ export default function PurchasesPage() {
                     <td className="px-4 py-3">{branchName(o.branch_id)}</td>
                     <td className="px-4 py-3">{supplierName(o.supplier_id)}</td>
                     <td className="px-4 py-3">{categoryName(o.category_id)}</td>
+                    <td className="px-4 py-3">{o.delivery_location || "—"}</td>
                     <td className="px-4 py-3">{t(o.payment_type)}</td>
                     <td className="px-4 py-3 text-right font-mono">KD {o.total_amount.toFixed(3)}</td>
                     <td className="px-4 py-3">

@@ -86,6 +86,36 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE whatsapp_settings ADD COLUMN api_url TEXT"))
                 conn.commit()
 
+        # Purchase orders: add delivery_location
+        if "purchase_orders" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("purchase_orders")]
+            if "delivery_location" not in cols:
+                conn.execute(text("ALTER TABLE purchase_orders ADD COLUMN delivery_location TEXT"))
+                conn.commit()
+
+        # Employees: add new fields
+        if "employees" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("employees")]
+            for col in ["staff_no", "iban", "bank_name", "salary_transfer_method", "employer"]:
+                if col not in cols:
+                    default = " DEFAULT 'cash'" if col == "salary_transfer_method" else " DEFAULT 'mudawwarah'" if col == "employer" else ""
+                    conn.execute(text(f"ALTER TABLE employees ADD COLUMN {col} TEXT{default}"))
+            conn.commit()
+
+        # Salary payments: add new fields
+        if "salary_payments" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("salary_payments")]
+            float_cols = ["overtime", "bonus", "incentive", "leave_salary", "ticket_payment", "loan_deduction", "penalty"]
+            for col in float_cols:
+                if col not in cols:
+                    conn.execute(text(f"ALTER TABLE salary_payments ADD COLUMN {col} REAL DEFAULT 0"))
+            for col in ["period_start", "period_end"]:
+                if col not in cols:
+                    conn.execute(text(f"ALTER TABLE salary_payments ADD COLUMN {col} DATE"))
+            if "last_workplace" not in cols:
+                conn.execute(text("ALTER TABLE salary_payments ADD COLUMN last_workplace TEXT"))
+            conn.commit()
+
 
 def _seed_data():
     from app.database import SessionLocal

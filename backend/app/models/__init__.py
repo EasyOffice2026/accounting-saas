@@ -6,7 +6,7 @@ from app.models.purchase import (
     ReceivingOrder, ReceivingItem, Invoice, DeliveryOrder,
 )
 from app.models.expense import ExpenseCategory, Expense
-from app.models.hr import Employee, Attendance, SalaryPayment
+from app.models.hr import Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction
 from app.models.cash import CashTransaction, CashBalance
 from app.models.item import Item
 from app.models.settings import SmtpSettings
@@ -21,7 +21,7 @@ __all__ = [
     "PurchaseCategory", "Supplier", "PurchaseOrder", "PurchaseItem", "SupplierItem",
     "ReceivingOrder", "ReceivingItem", "Invoice", "DeliveryOrder",
     "ExpenseCategory", "Expense",
-    "Employee", "Attendance", "SalaryPayment",
+    "Employee", "Attendance", "SalaryPayment", "StaffTransfer", "AdvanceLoan", "StaffBenefitDeduction",
     "CashTransaction", "CashBalance",
     "Item",
     "SmtpSettings",

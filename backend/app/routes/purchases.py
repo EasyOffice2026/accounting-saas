@@ -166,6 +166,7 @@ def create_order(
     branch_id: int = Form(...), supplier_id: int = Form(...),
     category_id: Optional[int] = Form(None),
     order_date: str = Form(...), payment_type: str = Form("cash"),
+    delivery_location: str = Form(""),
     items: str = Form("[]"), notes: str = Form(""),
     attachment: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
@@ -186,6 +187,7 @@ def create_order(
         branch_id=branch_id, supplier_id=supplier_id,
         category_id=category_id if category_id else None,
         date=date.fromisoformat(order_date), payment_type=payment_type,
+        delivery_location=delivery_location or None,
         total_amount=total, attachment_path=attachment_path,
         notes=notes, created_by=user.id,
     )

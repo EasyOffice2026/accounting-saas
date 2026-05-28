@@ -23,7 +23,9 @@ PAYMENT_CHANNEL_KEYWORDS = {
     "credit": "link",
     "debit": "link",
     "card": "link",
-    "wamd": "wamd",
+    "talabat": "talabat",
+    "jahez": "jahez",
+    "keeta": "keeta",
 }
 
 
@@ -343,7 +345,7 @@ async def sync_sales(
             continue
 
         if local_bid not in aggregated:
-            aggregated[local_bid] = {"cash": 0, "knet": 0, "link": 0, "wamd": 0}
+            aggregated[local_bid] = {"cash": 0, "knet": 0, "link": 0, "talabat": 0, "jahez": 0, "keeta": 0}
 
         payments = order.get("payments", [])
         if isinstance(payments, dict):
@@ -370,7 +372,9 @@ async def sync_sales(
             existing.foodics_cash = totals.get("cash", 0)
             existing.foodics_knet = totals.get("knet", 0)
             existing.foodics_link = totals.get("link", 0)
-            existing.foodics_wamd = totals.get("wamd", 0)
+            existing.foodics_talabat = totals.get("talabat", 0)
+            existing.foodics_jahez = totals.get("jahez", 0)
+            existing.foodics_keeta = totals.get("keeta", 0)
             updated += 1
         else:
             sale = Sale(
@@ -379,7 +383,9 @@ async def sync_sales(
                 foodics_cash=totals.get("cash", 0),
                 foodics_knet=totals.get("knet", 0),
                 foodics_link=totals.get("link", 0),
-                foodics_wamd=totals.get("wamd", 0),
+                foodics_talabat=totals.get("talabat", 0),
+                foodics_jahez=totals.get("jahez", 0),
+                foodics_keeta=totals.get("keeta", 0),
                 notes=f"Auto-synced from Foodics on {datetime.now(timezone.utc).isoformat()[:10]}",
                 created_by=user.id,
             )

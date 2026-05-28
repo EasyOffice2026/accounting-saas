@@ -905,7 +905,9 @@ export default function SettingsPage() {
                           <option value="cash">Cash</option>
                           <option value="knet">KNET</option>
                           <option value="link">Link/Card</option>
-                          <option value="wamd">WAMD</option>
+                          <option value="talabat">Talabat</option>
+                          <option value="jahez">Jahez</option>
+                          <option value="keeta">Keeta</option>
                         </select>
                         {existing && <span className="text-green-500 text-xs">✓</span>}
                       </div>

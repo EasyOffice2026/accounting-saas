@@ -231,10 +231,11 @@ def generate_monthly_payroll(
         if exists:
             continue
 
-        # Auto-calculate loan deduction from active loans
+        # Auto-calculate loan deduction from active loans with matching deduction_month
         active_loans = db.query(AdvanceLoan).filter(
             AdvanceLoan.employee_id == emp.id,
             AdvanceLoan.status == "active",
+            AdvanceLoan.deduction_month == month,
         ).all()
         loan_ded = sum(l.monthly_deduction for l in active_loans)
 
@@ -479,6 +480,7 @@ def create_loan(
     loan_type: str = Form("advance"),
     amount: float = Form(...),
     monthly_deduction: float = Form(0),
+    deduction_month: str = Form(""),
     loan_date: str = Form(...),
     notes: str = Form(""),
     db: Session = Depends(get_db),
@@ -492,6 +494,7 @@ def create_loan(
         amount=amount,
         balance=amount,
         monthly_deduction=monthly_deduction,
+        deduction_month=deduction_month or None,
         date=date.fromisoformat(loan_date),
         notes=notes,
     )

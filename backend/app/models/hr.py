@@ -101,6 +101,7 @@ class AdvanceLoan(Base):
     amount = Column(Float, nullable=False)
     balance = Column(Float, nullable=False)
     monthly_deduction = Column(Float, default=0)
+    deduction_month = Column(String, nullable=True)  # YYYY-MM; if null, no auto-deduction
     date = Column(Date, nullable=False)
     notes = Column(Text, nullable=True)
     status = Column(String, default="active")  # active, paid_off

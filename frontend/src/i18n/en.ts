@@ -375,4 +375,10 @@ export default {
   period_start: "Period Start",
   period_end: "Period End",
   last_workplace: "Last Workplace",
+  benefits_tab: "Benefits",
+  deductions_tab: "Deductions",
+  total_allowances: "Total Allowances",
+  total_deductions: "Total Deductions",
+  for_deduction: "for deduction",
+  no_month_no_deduction: "Leave empty for no auto-deduction",
 };

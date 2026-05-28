@@ -374,4 +374,10 @@ export default {
   period_start: "بداية الفترة",
   period_end: "نهاية الفترة",
   last_workplace: "آخر مكان عمل",
+  benefits_tab: "المزايا",
+  deductions_tab: "الخصومات",
+  total_allowances: "إجمالي البدلات",
+  total_deductions: "إجمالي الخصومات",
+  for_deduction: "للخصم",
+  no_month_no_deduction: "اتركه فارغاً لعدم الخصم التلقائي",
 };

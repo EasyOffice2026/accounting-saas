@@ -31,6 +31,7 @@ interface Transfer {
 interface Loan {
   id: number; employee_id: number; loan_type: string;
   amount: number; balance: number; monthly_deduction: number;
+  deduction_month: string | null;
   date: string; notes: string | null; status: string;
 }
 interface BenefitDeduction {
@@ -38,7 +39,7 @@ interface BenefitDeduction {
   amount: number; date: string; month: string | null; notes: string | null;
 }
 
-type Tab = "employees" | "salary" | "transfers" | "loans" | "benefits";
+type Tab = "employees" | "salary" | "transfers" | "loans" | "benefits" | "deductions";
 
 export default function HRPage() {
   const { t } = useTranslation();
@@ -91,9 +92,13 @@ export default function HRPage() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [showLoanForm, setShowLoanForm] = useState(false);
 
-  // Benefits/Deductions state
+  // Benefits state (incentive, bonus, leave_salary, ticket)
   const [benefits, setBenefits] = useState<BenefitDeduction[]>([]);
   const [showBenefitForm, setShowBenefitForm] = useState(false);
+
+  // Deductions state (fine, penalty)
+  const [deductionItems, setDeductionItems] = useState<BenefitDeduction[]>([]);
+  const [showDeductionForm, setShowDeductionForm] = useState(false);
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager = currentUser.role === "owner" || currentUser.role === "manager";
@@ -107,7 +112,12 @@ export default function HRPage() {
     if (tab === "salary") loadSalary();
     if (tab === "transfers") apiGet("/api/hr/transfers").then(setTransfers);
     if (tab === "loans") apiGet("/api/hr/loans").then(setLoans);
-    if (tab === "benefits") apiGet("/api/hr/benefits-deductions").then(setBenefits);
+    if (tab === "benefits") apiGet("/api/hr/benefits-deductions").then((data: BenefitDeduction[]) => {
+      setBenefits(data.filter(d => ["incentive", "bonus", "leave_salary", "ticket", "other_benefit"].includes(d.category)));
+    });
+    if (tab === "deductions") apiGet("/api/hr/benefits-deductions").then((data: BenefitDeduction[]) => {
+      setDeductionItems(data.filter(d => ["fine", "penalty", "other_deduction"].includes(d.category)));
+    });
   }, [tab, salaryMonth]);
 
   const loadSalary = () => {
@@ -279,13 +289,26 @@ export default function HRPage() {
     apiGet("/api/hr/loans").then(setLoans);
   };
 
-  // Benefit/Deduction handlers
+  // Benefit handlers
   const handleBenefitSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     await apiPost("/api/hr/benefits-deductions", fd);
     setShowBenefitForm(false);
-    apiGet("/api/hr/benefits-deductions").then(setBenefits);
+    apiGet("/api/hr/benefits-deductions").then((data: BenefitDeduction[]) => {
+      setBenefits(data.filter(d => ["incentive", "bonus", "leave_salary", "ticket", "other_benefit"].includes(d.category)));
+    });
+  };
+
+  // Deduction handlers
+  const handleDeductionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await apiPost("/api/hr/benefits-deductions", fd);
+    setShowDeductionForm(false);
+    apiGet("/api/hr/benefits-deductions").then((data: BenefitDeduction[]) => {
+      setDeductionItems(data.filter(d => ["fine", "penalty", "other_deduction"].includes(d.category)));
+    });
   };
 
   return (
@@ -308,12 +331,15 @@ export default function HRPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
-        {(["employees", "salary", "transfers", "loans", "benefits"] as Tab[]).map(tb => (
-          <button key={tb} onClick={() => setTab(tb)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-              tab === tb ? "bg-white shadow text-emerald-700" : "text-gray-600 hover:text-gray-800"
-            }`}>{t(tb === "benefits" ? "benefits_deductions" : tb === "loans" ? "advance_loan" : tb === "transfers" ? "staff_transfers" : tb)}</button>
-        ))}
+        {(["employees", "salary", "transfers", "loans", "benefits", "deductions"] as Tab[]).map(tb => {
+          const label = tb === "benefits" ? "benefits_tab" : tb === "deductions" ? "deductions_tab" : tb === "loans" ? "advance_loan" : tb === "transfers" ? "staff_transfers" : tb;
+          return (
+            <button key={tb} onClick={() => setTab(tb)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                tab === tb ? "bg-white shadow text-emerald-700" : "text-gray-600 hover:text-gray-800"
+              }`}>{t(label)}</button>
+          );
+        })}
       </div>
 
       {/* Employees Tab */}
@@ -701,89 +727,71 @@ export default function HRPage() {
             </div>
           )}
 
-          {/* Salary Sheet Table */}
+          {/* Salary Summary Table */}
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="px-2 py-3 text-left">{t("staff_no")}</th>
-                  <th className="px-2 py-3 text-left">{t("name")}</th>
-                  <th className="px-2 py-3 text-left">{t("position")}</th>
-                  <th className="px-2 py-3 text-center">{t("days_worked")}</th>
-                  <th className="px-2 py-3 text-left">{t("period")}</th>
-                  <th className="px-2 py-3 text-left">{t("last_workplace")}</th>
-                  <th className="px-2 py-3 text-right">{t("basic_salary")}</th>
-                  <th className="px-2 py-3 text-right text-green-600">{t("allowances")}</th>
-                  <th className="px-2 py-3 text-right text-blue-600">{t("overtime")}</th>
-                  <th className="px-2 py-3 text-right text-blue-600">{t("bonus_label")}</th>
-                  <th className="px-2 py-3 text-right text-red-600">{t("advance")}/{t("loan_short")}</th>
-                  <th className="px-2 py-3 text-right text-red-600">{t("penalty_label")}/{t("absent")}</th>
-                  <th className="px-2 py-3 text-right text-red-600">{t("other")}</th>
-                  <th className="px-2 py-3 text-right font-bold">{t("net_salary")}</th>
-                  <th className="px-2 py-3 text-left">{t("salary_transfer")}</th>
-                  <th className="px-2 py-3 text-left">{t("status")}</th>
-                  {isManager && <th className="px-2 py-3 text-left">{t("actions")}</th>}
+                  <th className="px-3 py-3 text-left">{t("staff_no")}</th>
+                  <th className="px-3 py-3 text-left">{t("name")}</th>
+                  <th className="px-3 py-3 text-left">{t("position")}</th>
+                  <th className="px-3 py-3 text-center">{t("days_worked")}</th>
+                  <th className="px-3 py-3 text-right">{t("basic_salary")}</th>
+                  <th className="px-3 py-3 text-right text-green-600">{t("total_allowances")}</th>
+                  <th className="px-3 py-3 text-right text-red-600">{t("total_deductions")}</th>
+                  <th className="px-3 py-3 text-right font-bold">{t("net_salary")}</th>
+                  <th className="px-3 py-3 text-left">{t("status")}</th>
+                  {isManager && <th className="px-3 py-3 text-left">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {salaryRecords.length === 0 ? (
-                  <tr><td colSpan={isManager ? 17 : 16} className="px-4 py-8 text-center text-gray-400">
+                  <tr><td colSpan={isManager ? 10 : 9} className="px-4 py-8 text-center text-gray-400">
                     {t("no_data")} — {t("generate_payroll")}
                   </td></tr>
-                ) : salaryRecords.map(r => (
-                  <tr key={r.id} className="border-b hover:bg-gray-50">
-                    <td className="px-2 py-3">{r.staff_no || empStaffNo(r.employee_id) || "—"}</td>
-                    <td className="px-2 py-3 font-medium">{empName(r.employee_id)}</td>
-                    <td className="px-2 py-3">{r.designation || "—"}</td>
-                    <td className="px-2 py-3 text-center">
-                      <span className={r.days_worked < r.total_days ? "text-orange-600 font-semibold" : ""}>
-                        {r.days_worked}/{r.total_days}
-                      </span>
-                    </td>
-                    <td className="px-2 py-3 text-xs">{r.period_start && r.period_end ? `${r.period_start} - ${r.period_end}` : "—"}</td>
-                    <td className="px-2 py-3">{r.last_workplace || "—"}</td>
-                    <td className="px-2 py-3 text-right font-mono">{r.basic_salary.toFixed(3)}</td>
-                    <td className="px-2 py-3 text-right font-mono text-green-600">
-                      {r.allowances > 0 ? `+${r.allowances.toFixed(3)}` : "—"}
-                    </td>
-                    <td className="px-2 py-3 text-right font-mono text-blue-600">
-                      {r.overtime > 0 ? r.overtime.toFixed(3) : "—"}
-                    </td>
-                    <td className="px-2 py-3 text-right font-mono text-blue-600">
-                      {(r.bonus + r.incentive + r.leave_salary + r.ticket_payment) > 0 ? (r.bonus + r.incentive + r.leave_salary + r.ticket_payment).toFixed(3) : "—"}
-                    </td>
-                    <td className="px-2 py-3 text-right font-mono text-red-600">
-                      {(r.advance + r.loan_deduction) > 0 ? `-${(r.advance + r.loan_deduction).toFixed(3)}` : "—"}
-                    </td>
-                    <td className="px-2 py-3 text-right font-mono text-red-600">
-                      {(r.penalty + r.absence_deduction) > 0 ? `-${(r.penalty + r.absence_deduction).toFixed(3)}` : "—"}
-                    </td>
-                    <td className="px-2 py-3 text-right font-mono text-red-600">
-                      {(r.late_deduction + r.other_deduction) > 0 ? `-${(r.late_deduction + r.other_deduction).toFixed(3)}` : "—"}
-                    </td>
-                    <td className="px-2 py-3 text-right font-mono font-bold">{r.net_salary.toFixed(3)}</td>
-                    <td className="px-2 py-3">{t(r.payment_method === "bank_transfer" ? "bank_transfer" : "cash")}</td>
-                    <td className="px-2 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        r.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                      }`}>{r.status === "paid" ? t("paid") : t("pending")}</span>
-                    </td>
-                    {isManager && (
-                      <td className="px-2 py-3">
-                        <div className="flex gap-2">
-                          {r.status === "pending" && (
-                            <>
-                              <button onClick={() => handleEditSalary(r)}
-                                className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
-                              <button onClick={() => handleMarkPaid(r.id)}
-                                className="text-green-600 hover:underline text-xs">{t("mark_paid")}</button>
-                            </>
-                          )}
-                        </div>
+                ) : salaryRecords.map(r => {
+                  const totalAllowances = r.allowances + r.overtime + r.bonus + r.incentive + r.leave_salary + r.ticket_payment;
+                  const totalDeductions = r.deductions + r.advance + r.loan_deduction + r.penalty;
+                  return (
+                    <tr key={r.id} className="border-b hover:bg-gray-50">
+                      <td className="px-3 py-3">{r.staff_no || empStaffNo(r.employee_id) || "—"}</td>
+                      <td className="px-3 py-3 font-medium">{empName(r.employee_id)}</td>
+                      <td className="px-3 py-3">{r.designation || "—"}</td>
+                      <td className="px-3 py-3 text-center">
+                        <span className={r.days_worked < r.total_days ? "text-orange-600 font-semibold" : ""}>
+                          {r.days_worked}/{r.total_days}
+                        </span>
                       </td>
-                    )}
-                  </tr>
-                ))}
+                      <td className="px-3 py-3 text-right font-mono">{r.basic_salary.toFixed(3)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-green-600">
+                        {totalAllowances > 0 ? `+${totalAllowances.toFixed(3)}` : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono text-red-600">
+                        {totalDeductions > 0 ? `-${totalDeductions.toFixed(3)}` : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono font-bold">{r.net_salary.toFixed(3)}</td>
+                      <td className="px-3 py-3">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          r.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                        }`}>{r.status === "paid" ? t("paid") : t("pending")}</span>
+                      </td>
+                      {isManager && (
+                        <td className="px-3 py-3">
+                          <div className="flex gap-2">
+                            {r.status === "pending" && (
+                              <>
+                                <button onClick={() => handleEditSalary(r)}
+                                  className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
+                                <button onClick={() => handleMarkPaid(r.id)}
+                                  className="text-green-600 hover:underline text-xs">{t("mark_paid")}</button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -927,6 +935,11 @@ export default function HRPage() {
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
                   <input type="date" name="loan_date" required className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("salary_month")} ({t("for_deduction")})</label>
+                  <input type="month" name="deduction_month" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <p className="text-xs text-gray-400 mt-1">{t("no_month_no_deduction")}</p>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">{t("notes")}</label>
@@ -949,13 +962,14 @@ export default function HRPage() {
                   <th className="px-4 py-3 text-right">{t("amount")}</th>
                   <th className="px-4 py-3 text-right">{t("balance")}</th>
                   <th className="px-4 py-3 text-right">{t("monthly_deduction")}</th>
+                  <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("date")}</th>
                   <th className="px-4 py-3 text-left">{t("status")}</th>
                 </tr>
               </thead>
               <tbody>
                 {loans.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : loans.map(l => (
                   <tr key={l.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(l.employee_id) || "—"}</td>
@@ -964,6 +978,7 @@ export default function HRPage() {
                     <td className="px-4 py-3 text-right font-mono">KD {l.amount.toFixed(3)}</td>
                     <td className="px-4 py-3 text-right font-mono font-bold">{l.balance > 0 ? `KD ${l.balance.toFixed(3)}` : "—"}</td>
                     <td className="px-4 py-3 text-right font-mono">{l.monthly_deduction > 0 ? `KD ${l.monthly_deduction.toFixed(3)}` : "—"}</td>
+                    <td className="px-4 py-3">{l.deduction_month || "—"}</td>
                     <td className="px-4 py-3">{l.date}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${
@@ -978,7 +993,7 @@ export default function HRPage() {
         </div>
       )}
 
-      {/* Benefits & Deductions Tab */}
+      {/* Benefits Tab (Incentive, Bonus, Leave Salary, Ticket) */}
       {tab === "benefits" && (
         <div>
           {isManager && (
@@ -1005,10 +1020,7 @@ export default function HRPage() {
                     <option value="bonus">{t("bonus_label")}</option>
                     <option value="leave_salary">{t("leave_salary_label")}</option>
                     <option value="ticket">{t("ticket_payment_label")}</option>
-                    <option value="fine">{t("fine_label")}</option>
-                    <option value="penalty">{t("penalty_label")}</option>
                     <option value="other_benefit">{t("other_benefit")}</option>
-                    <option value="other_deduction">{t("other_deduction")}</option>
                   </select>
                 </div>
                 <div>
@@ -1056,15 +1068,103 @@ export default function HRPage() {
                     <td className="px-4 py-3">{empStaffNo(b.employee_id) || "—"}</td>
                     <td className="px-4 py-3">{empName(b.employee_id)}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        ["incentive", "bonus", "leave_salary", "ticket", "other_benefit"].includes(b.category)
-                          ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                      }`}>{t(b.category + "_label") || b.category}</span>
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
+                        {t(b.category + "_label") || b.category}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-right font-mono">KD {b.amount.toFixed(3)}</td>
                     <td className="px-4 py-3">{b.date}</td>
                     <td className="px-4 py-3">{b.month || "—"}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{b.notes || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Deductions Tab (Fine, Penalty) */}
+      {tab === "deductions" && (
+        <div>
+          {isManager && (
+            <button onClick={() => setShowDeductionForm(!showDeductionForm)}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
+              {showDeductionForm ? t("cancel") : t("add_new")}
+            </button>
+          )}
+
+          {showDeductionForm && (
+            <form onSubmit={handleDeductionSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("employee")}</label>
+                  <select name="employee_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">{t("select_employee")}</option>
+                    {employees.map(e => <option key={e.id} value={e.id}>{e.staff_no ? `${e.staff_no} - ` : ""}{e.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("category")}</label>
+                  <select name="category" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="fine">{t("fine_label")}</option>
+                    <option value="penalty">{t("penalty_label")}</option>
+                    <option value="other_deduction">{t("other_deduction")}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("amount")}</label>
+                  <input type="number" step="0.001" name="amount" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("date")}</label>
+                  <input type="date" name="bd_date" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("salary_month")}</label>
+                  <input type="month" name="month" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">{t("notes")}</label>
+                <textarea name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+              </div>
+              <button type="submit"
+                className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">
+                {t("save")}
+              </button>
+            </form>
+          )}
+
+          <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-4 py-3 text-left">{t("staff_no")}</th>
+                  <th className="px-4 py-3 text-left">{t("employee")}</th>
+                  <th className="px-4 py-3 text-left">{t("category")}</th>
+                  <th className="px-4 py-3 text-right">{t("amount")}</th>
+                  <th className="px-4 py-3 text-left">{t("date")}</th>
+                  <th className="px-4 py-3 text-left">{t("salary_month")}</th>
+                  <th className="px-4 py-3 text-left">{t("notes")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deductionItems.length === 0 ? (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                ) : deductionItems.map(d => (
+                  <tr key={d.id} className="border-b hover:bg-gray-50">
+                    <td className="px-4 py-3">{empStaffNo(d.employee_id) || "—"}</td>
+                    <td className="px-4 py-3">{empName(d.employee_id)}</td>
+                    <td className="px-4 py-3">
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+                        {t(d.category + "_label") || d.category}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono">KD {d.amount.toFixed(3)}</td>
+                    <td className="px-4 py-3">{d.date}</td>
+                    <td className="px-4 py-3">{d.month || "—"}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500">{d.notes || "—"}</td>
                   </tr>
                 ))}
               </tbody>

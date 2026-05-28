@@ -116,6 +116,13 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE salary_payments ADD COLUMN last_workplace TEXT"))
             conn.commit()
 
+        # Advance loans: add deduction_month
+        if "advance_loans" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("advance_loans")]
+            if "deduction_month" not in cols:
+                conn.execute(text("ALTER TABLE advance_loans ADD COLUMN deduction_month TEXT"))
+                conn.commit()
+
 
 def _seed_data():
     from app.database import SessionLocal

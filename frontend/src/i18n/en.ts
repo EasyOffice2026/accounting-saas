@@ -425,4 +425,9 @@ export default {
   submitted: "Submitted",
   completed: "Completed",
   resignation_date: "Resignation Date",
+  pay_slip: "Pay Slip",
+  earnings: "Earnings",
+  deductions_label: "Deductions",
+  employee_information: "Employee Information",
+  print: "Print",
 };

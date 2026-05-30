@@ -390,6 +390,64 @@ def update_salary_payment(
     return {"message": "Updated"}
 
 
+@router.get("/salary/{payment_id}/payslip")
+def get_payslip(
+    payment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
+    if not sp:
+        raise HTTPException(404, "Salary record not found")
+    emp = db.query(Employee).filter(Employee.id == sp.employee_id).first()
+    branch = db.query(Branch).filter(Branch.id == sp.branch_id).first()
+    return {
+        "id": sp.id,
+        "month": sp.month,
+        "employee": {
+            "id": emp.id if emp else 0,
+            "staff_no": emp.staff_no if emp else "",
+            "name": emp.name if emp else "",
+            "position": emp.position if emp else "",
+            "civil_id": emp.civil_id if emp else "",
+            "iban": emp.iban if emp else "",
+            "bank_name": emp.bank_name if emp else "",
+            "branch": branch.name if branch else "",
+            "join_date": str(emp.join_date) if emp and emp.join_date else "",
+            "nationality": emp.nationality if emp else "",
+        },
+        "basic_salary": sp.basic_salary,
+        "total_days": sp.total_days or 30,
+        "days_worked": sp.days_worked or 30,
+        "period_start": str(sp.period_start) if sp.period_start else "",
+        "period_end": str(sp.period_end) if sp.period_end else "",
+        "last_workplace": sp.last_workplace or "",
+        "housing_allowance": sp.housing_allowance or 0,
+        "transport_allowance": sp.transport_allowance or 0,
+        "food_allowance": sp.food_allowance or 0,
+        "other_allowance": sp.other_allowance or 0,
+        "allowances": sp.allowances or 0,
+        "overtime": sp.overtime or 0,
+        "bonus": sp.bonus or 0,
+        "incentive": sp.incentive or 0,
+        "leave_salary": sp.leave_salary or 0,
+        "ticket_payment": sp.ticket_payment or 0,
+        "absence_deduction": sp.absence_deduction or 0,
+        "late_deduction": sp.late_deduction or 0,
+        "other_deduction": sp.other_deduction or 0,
+        "loan_deduction": sp.loan_deduction or 0,
+        "penalty": sp.penalty or 0,
+        "deductions": sp.deductions or 0,
+        "advance": sp.advance or 0,
+        "net_salary": sp.net_salary or 0,
+        "payment_method": sp.payment_method,
+        "status": sp.status,
+        "paid_date": str(sp.paid_date) if sp.paid_date else None,
+    }
+
+
 @router.post("/salary/{payment_id}/pay")
 def mark_salary_paid(
     payment_id: int,

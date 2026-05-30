@@ -104,6 +104,10 @@ export default function HRPage() {
   const [editMethod, setEditMethod] = useState("cash");
   const [editNotes, setEditNotes] = useState("");
 
+  // Pay Slip state
+  const [payslipData, setPayslipData] = useState<any>(null);
+  const [showPayslip, setShowPayslip] = useState(false);
+
   // Transfer state
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [showTransferForm, setShowTransferForm] = useState(false);
@@ -284,6 +288,117 @@ export default function HRPage() {
     } catch (err: unknown) {
       showSalaryMsg((err as Error).message, "error");
     }
+  };
+
+  const handleViewPayslip = async (id: number) => {
+    try {
+      const data = await apiGet(`/api/hr/salary/${id}/payslip`);
+      setPayslipData(data);
+      setShowPayslip(true);
+    } catch (err: unknown) {
+      showSalaryMsg((err as Error).message, "error");
+    }
+  };
+
+  const handlePrintPayslip = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    const slip = payslipData;
+    const emp = slip.employee;
+    const monthLabel = slip.month;
+    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pay Slip - ${emp.name}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Tahoma,sans-serif;padding:20px;font-size:12px;direction:ltr}
+.container{max-width:700px;margin:0 auto;border:2px solid #333;padding:20px}
+.header{text-align:center;border-bottom:2px solid #333;padding-bottom:15px;margin-bottom:15px}
+.header h1{font-size:18px;margin-bottom:4px}
+.header h2{font-size:14px;color:#555}
+.header .ar{font-family:'Arial',sans-serif;direction:rtl}
+.section{margin-bottom:12px}
+.section-title{font-weight:bold;font-size:13px;background:#f0f0f0;padding:5px 8px;border:1px solid #ccc;margin-bottom:8px}
+.row{display:flex;justify-content:space-between;padding:3px 8px;border-bottom:1px dotted #ddd}
+.row .label{font-weight:500}
+.row .label-ar{font-family:'Arial',sans-serif;direction:rtl;color:#555;font-size:11px}
+.row .value{font-weight:bold;font-family:monospace}
+.emp-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;padding:0 8px;margin-bottom:10px}
+.emp-grid .item{display:flex;justify-content:space-between;border-bottom:1px dotted #eee;padding:3px 0}
+.totals{background:#f8f8f8;border:1px solid #333;padding:8px;margin-top:10px}
+.totals .row{border-bottom:none;font-size:13px}
+.net-row{font-size:16px;font-weight:bold;color:#1a5f1a;border-top:2px solid #333;padding-top:8px;margin-top:8px}
+.footer{margin-top:20px;display:flex;justify-content:space-between;padding-top:15px;border-top:1px solid #ccc}
+.sig-box{text-align:center;width:45%}
+.sig-line{border-bottom:1px solid #333;height:40px;margin-bottom:5px}
+@media print{body{padding:0}.container{border:none}}
+</style></head><body>
+<div class="container">
+<div class="header">
+<h1>WAHID MUDAWWARAH RESTAURANT</h1>
+<h1 class="ar">مطعم واحد مدوّرة</h1>
+<h2>PAY SLIP / قسيمة الراتب</h2>
+<p style="margin-top:8px;font-size:11px">Month / الشهر: <strong>${monthLabel}</strong></p>
+</div>
+
+<div class="section">
+<div class="section-title">Employee Information / معلومات الموظف</div>
+<div class="emp-grid">
+<div class="item"><span>Staff No. / رقم الموظف</span><span style="font-weight:bold">${emp.staff_no || '—'}</span></div>
+<div class="item"><span>Name / الاسم</span><span style="font-weight:bold">${emp.name || '—'}</span></div>
+<div class="item"><span>Position / المسمى الوظيفي</span><span style="font-weight:bold">${emp.position || '—'}</span></div>
+<div class="item"><span>Branch / الفرع</span><span style="font-weight:bold">${emp.branch || '—'}</span></div>
+<div class="item"><span>Civil ID / الرقم المدني</span><span style="font-weight:bold">${emp.civil_id || '—'}</span></div>
+<div class="item"><span>IBAN</span><span style="font-weight:bold">${emp.iban || '—'}</span></div>
+<div class="item"><span>Bank / البنك</span><span style="font-weight:bold">${emp.bank_name || '—'}</span></div>
+<div class="item"><span>Join Date / تاريخ الالتحاق</span><span style="font-weight:bold">${emp.join_date || '—'}</span></div>
+</div>
+</div>
+
+<div class="section">
+<div class="section-title">Salary Details / تفاصيل الراتب</div>
+<div class="row"><span class="label">Basic Salary / الراتب الأساسي</span><span class="value">KD ${slip.basic_salary.toFixed(3)}</span></div>
+<div class="row"><span class="label">Days Worked / أيام العمل</span><span class="value">${slip.days_worked} / ${slip.total_days}</span></div>
+<div class="row"><span class="label">Period / الفترة</span><span class="value">${slip.period_start || '—'} to ${slip.period_end || '—'}</span></div>
+</div>
+
+<div class="section">
+<div class="section-title">Earnings / المستحقات</div>
+${slip.overtime > 0 ? `<div class="row"><span class="label">Overtime / العمل الإضافي</span><span class="value" style="color:green">+${slip.overtime.toFixed(3)}</span></div>` : ''}
+${slip.bonus > 0 ? `<div class="row"><span class="label">Bonus / مكافأة</span><span class="value" style="color:green">+${slip.bonus.toFixed(3)}</span></div>` : ''}
+${slip.incentive > 0 ? `<div class="row"><span class="label">Incentive / حافز</span><span class="value" style="color:green">+${slip.incentive.toFixed(3)}</span></div>` : ''}
+${slip.leave_salary > 0 ? `<div class="row"><span class="label">Leave Salary / راتب الإجازة</span><span class="value" style="color:green">+${slip.leave_salary.toFixed(3)}</span></div>` : ''}
+${slip.ticket_payment > 0 ? `<div class="row"><span class="label">Ticket Payment / تذكرة السفر</span><span class="value" style="color:green">+${slip.ticket_payment.toFixed(3)}</span></div>` : ''}
+${slip.housing_allowance > 0 ? `<div class="row"><span class="label">Housing Allowance / بدل سكن</span><span class="value" style="color:green">+${slip.housing_allowance.toFixed(3)}</span></div>` : ''}
+${slip.transport_allowance > 0 ? `<div class="row"><span class="label">Transport Allowance / بدل نقل</span><span class="value" style="color:green">+${slip.transport_allowance.toFixed(3)}</span></div>` : ''}
+${slip.food_allowance > 0 ? `<div class="row"><span class="label">Food Allowance / بدل طعام</span><span class="value" style="color:green">+${slip.food_allowance.toFixed(3)}</span></div>` : ''}
+${slip.other_allowance > 0 ? `<div class="row"><span class="label">Other Allowance / بدلات أخرى</span><span class="value" style="color:green">+${slip.other_allowance.toFixed(3)}</span></div>` : ''}
+<div class="row" style="font-weight:bold;border-top:1px solid #ccc"><span class="label">Total Earnings / إجمالي المستحقات</span><span class="value" style="color:green">KD ${slip.allowances.toFixed(3)}</span></div>
+</div>
+
+<div class="section">
+<div class="section-title">Deductions / الخصومات</div>
+${slip.loan_deduction > 0 ? `<div class="row"><span class="label">Loan Deduction / خصم القرض</span><span class="value" style="color:red">-${slip.loan_deduction.toFixed(3)}</span></div>` : ''}
+${slip.penalty > 0 ? `<div class="row"><span class="label">Penalty/Fine / غرامة</span><span class="value" style="color:red">-${slip.penalty.toFixed(3)}</span></div>` : ''}
+${slip.absence_deduction > 0 ? `<div class="row"><span class="label">Absence Deduction / خصم غياب</span><span class="value" style="color:red">-${slip.absence_deduction.toFixed(3)}</span></div>` : ''}
+${slip.late_deduction > 0 ? `<div class="row"><span class="label">Late Deduction / خصم تأخير</span><span class="value" style="color:red">-${slip.late_deduction.toFixed(3)}</span></div>` : ''}
+${slip.other_deduction > 0 ? `<div class="row"><span class="label">Other Deduction / خصومات أخرى</span><span class="value" style="color:red">-${slip.other_deduction.toFixed(3)}</span></div>` : ''}
+${slip.advance > 0 ? `<div class="row"><span class="label">Advance / سلفة</span><span class="value" style="color:red">-${slip.advance.toFixed(3)}</span></div>` : ''}
+<div class="row" style="font-weight:bold;border-top:1px solid #ccc"><span class="label">Total Deductions / إجمالي الخصومات</span><span class="value" style="color:red">KD ${slip.deductions.toFixed(3)}</span></div>
+</div>
+
+<div class="totals">
+<div class="row net-row"><span class="label">NET SALARY / صافي الراتب</span><span class="value">KD ${slip.net_salary.toFixed(3)}</span></div>
+<div class="row"><span class="label">Payment Method / طريقة الدفع</span><span class="value">${slip.payment_method === 'bank_transfer' ? 'Bank Transfer / تحويل بنكي' : 'Cash / نقداً'}</span></div>
+${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / تاريخ الدفع</span><span class="value">${slip.paid_date || '—'}</span></div>` : ''}
+</div>
+
+<div class="footer">
+<div class="sig-box"><div class="sig-line"></div><p>Employee Signature<br/>توقيع الموظف</p></div>
+<div class="sig-box"><div class="sig-line"></div><p>Authorized Signature<br/>التوقيع المعتمد</p></div>
+</div>
+</div>
+</body></html>`);
+    printWindow.document.close();
+    setTimeout(() => printWindow.print(), 500);
   };
 
   const totalPayroll = salaryRecords.reduce((s, r) => s + r.net_salary, 0);
@@ -805,6 +920,8 @@ export default function HRPage() {
                       {isManager && (
                         <td className="px-3 py-3">
                           <div className="flex gap-2">
+                            <button onClick={() => handleViewPayslip(r.id)}
+                              className="text-purple-600 hover:underline text-xs">{t("pay_slip")}</button>
                             {r.status === "pending" && (
                               <>
                                 <button onClick={() => handleEditSalary(r)}
@@ -822,6 +939,85 @@ export default function HRPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Pay Slip Modal */}
+          {showPayslip && payslipData && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold">{t("pay_slip")} — {payslipData.employee?.name}</h3>
+                  <div className="flex gap-2">
+                    <button onClick={handlePrintPayslip}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                      {t("print")}
+                    </button>
+                    <button onClick={() => setShowPayslip(false)}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300">
+                      {t("close")}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Employee Info */}
+                <div className="border rounded-lg p-4 mb-4">
+                  <h4 className="font-semibold text-sm mb-2 text-gray-600">{t("employee_information")} / معلومات الموظف</h4>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div><span className="text-gray-500">{t("staff_no")}:</span> <strong>{payslipData.employee?.staff_no || "—"}</strong></div>
+                    <div><span className="text-gray-500">{t("name")}:</span> <strong>{payslipData.employee?.name || "—"}</strong></div>
+                    <div><span className="text-gray-500">{t("position")}:</span> <strong>{payslipData.employee?.position || "—"}</strong></div>
+                    <div><span className="text-gray-500">{t("branch")}:</span> <strong>{payslipData.employee?.branch || "—"}</strong></div>
+                    <div><span className="text-gray-500">{t("civil_id")}:</span> <strong>{payslipData.employee?.civil_id || "—"}</strong></div>
+                    <div><span className="text-gray-500">IBAN:</span> <strong>{payslipData.employee?.iban || "—"}</strong></div>
+                  </div>
+                </div>
+
+                {/* Salary Details */}
+                <div className="border rounded-lg p-4 mb-4">
+                  <h4 className="font-semibold text-sm mb-2 text-gray-600">{t("salary_details")} / تفاصيل الراتب</h4>
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between"><span>{t("basic_salary")} / الراتب الأساسي</span><span className="font-bold">KD {payslipData.basic_salary?.toFixed(3)}</span></div>
+                    <div className="flex justify-between"><span>{t("days_worked")} / أيام العمل</span><span className="font-bold">{payslipData.days_worked} / {payslipData.total_days}</span></div>
+                    <div className="flex justify-between"><span>{t("period")} / الفترة</span><span className="font-bold">{payslipData.period_start || "—"} → {payslipData.period_end || "—"}</span></div>
+                  </div>
+                </div>
+
+                {/* Earnings */}
+                <div className="border rounded-lg p-4 mb-4">
+                  <h4 className="font-semibold text-sm mb-2 text-green-700">{t("earnings")} / المستحقات</h4>
+                  <div className="space-y-1 text-xs">
+                    {payslipData.overtime > 0 && <div className="flex justify-between"><span>{t("overtime")} / العمل الإضافي</span><span className="text-green-600 font-bold">+{payslipData.overtime.toFixed(3)}</span></div>}
+                    {payslipData.bonus > 0 && <div className="flex justify-between"><span>{t("bonus")} / مكافأة</span><span className="text-green-600 font-bold">+{payslipData.bonus.toFixed(3)}</span></div>}
+                    {payslipData.incentive > 0 && <div className="flex justify-between"><span>{t("incentive")} / حافز</span><span className="text-green-600 font-bold">+{payslipData.incentive.toFixed(3)}</span></div>}
+                    {payslipData.leave_salary > 0 && <div className="flex justify-between"><span>{t("leave_salary")} / راتب الإجازة</span><span className="text-green-600 font-bold">+{payslipData.leave_salary.toFixed(3)}</span></div>}
+                    {payslipData.ticket_payment > 0 && <div className="flex justify-between"><span>{t("ticket_payment")} / تذكرة السفر</span><span className="text-green-600 font-bold">+{payslipData.ticket_payment.toFixed(3)}</span></div>}
+                    {payslipData.housing_allowance > 0 && <div className="flex justify-between"><span>{t("housing_allowance")} / بدل سكن</span><span className="text-green-600 font-bold">+{payslipData.housing_allowance.toFixed(3)}</span></div>}
+                    {payslipData.transport_allowance > 0 && <div className="flex justify-between"><span>{t("transport_allowance")} / بدل نقل</span><span className="text-green-600 font-bold">+{payslipData.transport_allowance.toFixed(3)}</span></div>}
+                    <div className="flex justify-between border-t pt-1 mt-1 font-bold"><span>{t("total_allowances")} / إجمالي المستحقات</span><span className="text-green-700">KD {payslipData.allowances?.toFixed(3)}</span></div>
+                  </div>
+                </div>
+
+                {/* Deductions */}
+                <div className="border rounded-lg p-4 mb-4">
+                  <h4 className="font-semibold text-sm mb-2 text-red-700">{t("deductions_label")} / الخصومات</h4>
+                  <div className="space-y-1 text-xs">
+                    {payslipData.loan_deduction > 0 && <div className="flex justify-between"><span>{t("loan_deduction")} / خصم القرض</span><span className="text-red-600 font-bold">-{payslipData.loan_deduction.toFixed(3)}</span></div>}
+                    {payslipData.penalty > 0 && <div className="flex justify-between"><span>{t("penalty")} / غرامة</span><span className="text-red-600 font-bold">-{payslipData.penalty.toFixed(3)}</span></div>}
+                    {payslipData.absence_deduction > 0 && <div className="flex justify-between"><span>{t("absence")} / غياب</span><span className="text-red-600 font-bold">-{payslipData.absence_deduction.toFixed(3)}</span></div>}
+                    {payslipData.late_deduction > 0 && <div className="flex justify-between"><span>{t("late")} / تأخير</span><span className="text-red-600 font-bold">-{payslipData.late_deduction.toFixed(3)}</span></div>}
+                    {payslipData.other_deduction > 0 && <div className="flex justify-between"><span>{t("other_deduction")} / خصومات أخرى</span><span className="text-red-600 font-bold">-{payslipData.other_deduction.toFixed(3)}</span></div>}
+                    <div className="flex justify-between border-t pt-1 mt-1 font-bold"><span>{t("total_deductions")} / إجمالي الخصومات</span><span className="text-red-700">KD {payslipData.deductions?.toFixed(3)}</span></div>
+                  </div>
+                </div>
+
+                {/* Net Salary */}
+                <div className="bg-green-50 border-2 border-green-300 rounded-lg p-4 text-center">
+                  <p className="text-sm text-green-700 font-medium">{t("net_salary")} / صافي الراتب</p>
+                  <p className="text-2xl font-bold text-green-800">KD {payslipData.net_salary?.toFixed(3)}</p>
+                  <p className="text-xs text-gray-500 mt-1">{t("payment_method")}: {payslipData.payment_method === "bank_transfer" ? t("bank_transfer") + " / تحويل بنكي" : t("cash") + " / نقداً"}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

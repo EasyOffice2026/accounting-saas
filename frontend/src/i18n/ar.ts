@@ -424,4 +424,9 @@ export default {
   submitted: "مقدمة",
   completed: "مكتملة",
   resignation_date: "تاريخ الاستقالة",
+  pay_slip: "قسيمة الراتب",
+  earnings: "المستحقات",
+  deductions_label: "الخصومات",
+  employee_information: "معلومات الموظف",
+  print: "طباعة",
 };

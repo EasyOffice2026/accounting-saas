@@ -416,7 +416,6 @@ def get_payslip(
             "bank_name": emp.bank_name if emp else "",
             "branch": branch.name if branch else "",
             "join_date": str(emp.join_date) if emp and emp.join_date else "",
-            "nationality": emp.nationality if emp else "",
         },
         "basic_salary": sp.basic_salary,
         "total_days": sp.total_days or 30,

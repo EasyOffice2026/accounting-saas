@@ -259,6 +259,25 @@ def generate_monthly_payroll(
         ).all()
         loan_ded = sum(l.monthly_deduction for l in active_loans)
 
+        # Auto-calculate benefits from StaffBenefitDeduction for this month
+        benefits = db.query(StaffBenefitDeduction).filter(
+            StaffBenefitDeduction.employee_id == emp.id,
+            StaffBenefitDeduction.month == month,
+        ).all()
+        incentive_total = sum(b.amount for b in benefits if b.category == "incentive")
+        bonus_total = sum(b.amount for b in benefits if b.category == "bonus")
+        leave_salary_total = sum(b.amount for b in benefits if b.category == "leave_salary")
+        ticket_total = sum(b.amount for b in benefits if b.category == "ticket")
+        overtime_total = sum(b.amount for b in benefits if b.category == "overtime")
+
+        # Auto-calculate deductions from StaffBenefitDeduction for this month
+        penalty_total = sum(b.amount for b in benefits if b.category in ("fine", "penalty"))
+        other_ded_total = sum(b.amount for b in benefits if b.category == "other_deduction")
+
+        total_allowances = incentive_total + bonus_total + leave_salary_total + ticket_total + overtime_total
+        total_deductions = loan_ded + penalty_total + other_ded_total
+        net = emp.actual_salary + total_allowances - total_deductions
+
         sp = SalaryPayment(
             employee_id=emp.id,
             branch_id=emp.branch_id,
@@ -271,14 +290,19 @@ def generate_monthly_payroll(
             last_workplace="",
             housing_allowance=0, transport_allowance=0,
             food_allowance=0, other_allowance=0,
-            allowances=0,
-            absence_deduction=0, late_deduction=0, other_deduction=0,
-            deductions=0,
+            allowances=total_allowances,
+            absence_deduction=0, late_deduction=0,
+            other_deduction=other_ded_total,
+            deductions=total_deductions,
             advance=0,
-            overtime=0, bonus=0, incentive=0, leave_salary=0, ticket_payment=0,
+            overtime=overtime_total,
+            bonus=bonus_total,
+            incentive=incentive_total,
+            leave_salary=leave_salary_total,
+            ticket_payment=ticket_total,
             loan_deduction=loan_ded,
-            penalty=0,
-            net_salary=emp.actual_salary - loan_ded,
+            penalty=penalty_total,
+            net_salary=net,
             payment_method=emp.salary_transfer_method or "cash",
             status="pending",
         )

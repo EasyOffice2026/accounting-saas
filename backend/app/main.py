@@ -119,6 +119,9 @@ def _migrate_columns():
                     conn.execute(text(f"ALTER TABLE salary_payments ADD COLUMN {col} DATE"))
             if "last_workplace" not in cols:
                 conn.execute(text("ALTER TABLE salary_payments ADD COLUMN last_workplace TEXT"))
+            for int_col in ["total_days", "days_worked"]:
+                if int_col not in cols:
+                    conn.execute(text(f"ALTER TABLE salary_payments ADD COLUMN {int_col} INTEGER DEFAULT 30"))
             conn.commit()
 
         # Advance loans: add deduction_month

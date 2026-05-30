@@ -236,8 +236,12 @@ def generate_monthly_payroll(
         raise HTTPException(403, "Not authorized")
     year, mon = int(month.split("-")[0]), int(month.split("-")[1])
     total_days = 30  # salary always calculated on 30-day basis
+    last_day = calendar.monthrange(year, mon)[1]
 
-    employees = db.query(Employee).filter(Employee.is_active == True).all()
+    employees = db.query(Employee).filter(
+        Employee.is_active == True,
+        Employee.actual_salary > 0,
+    ).all()
     created = 0
     for emp in employees:
         exists = db.query(SalaryPayment).filter(
@@ -263,7 +267,7 @@ def generate_monthly_payroll(
             total_days=total_days,
             days_worked=total_days,
             period_start=date(year, mon, 1),
-            period_end=date(year, mon, total_days),
+            period_end=date(year, mon, last_day),
             last_workplace="",
             housing_allowance=0, transport_allowance=0,
             food_allowance=0, other_allowance=0,

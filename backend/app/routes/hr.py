@@ -33,10 +33,13 @@ def list_employees(branch_id: Optional[int] = None, db: Session = Depends(get_db
             "civil_id": emp.civil_id or "", "position": emp.position or "",
             "phone": emp.phone or "",
             "salary": 0 if hide_salary else emp.salary,
+            "work_permit_salary": 0 if hide_salary else (emp.work_permit_salary or 0),
+            "actual_salary": 0 if hide_salary else (emp.actual_salary or 0),
             "iban": emp.iban or "", "bank_name": emp.bank_name or "",
             "salary_transfer_method": emp.salary_transfer_method or "cash",
             "employer": emp.employer or "mudawwarah",
             "join_date": str(emp.join_date) if emp.join_date else "",
+            "termination_date": str(emp.termination_date) if emp.termination_date else "",
             "is_active": emp.is_active,
         }
         result.append(d)
@@ -49,6 +52,8 @@ def create_employee(
     staff_no: str = Form(""), name_ar: str = Form(""),
     civil_id: str = Form(""), position: str = Form(""),
     phone: str = Form(""), salary: float = Form(0),
+    work_permit_salary: float = Form(0),
+    actual_salary: float = Form(0),
     iban: str = Form(""), bank_name: str = Form(""),
     salary_transfer_method: str = Form("cash"),
     employer: str = Form("mudawwarah"),
@@ -59,7 +64,9 @@ def create_employee(
     emp = Employee(
         branch_id=branch_id, name=name, staff_no=staff_no or None,
         name_ar=name_ar, civil_id=civil_id, position=position, phone=phone,
-        salary=salary, iban=iban or None, bank_name=bank_name or None,
+        salary=salary, work_permit_salary=work_permit_salary,
+        actual_salary=actual_salary,
+        iban=iban or None, bank_name=bank_name or None,
         salary_transfer_method=salary_transfer_method, employer=employer,
         join_date=date.fromisoformat(join_date) if join_date else None,
         termination_date=date.fromisoformat(termination_date) if termination_date else None,
@@ -77,6 +84,8 @@ def update_employee(
     staff_no: str = Form(""), name_ar: str = Form(""),
     civil_id: str = Form(""), position: str = Form(""),
     phone: str = Form(""), salary: float = Form(0),
+    work_permit_salary: float = Form(0),
+    actual_salary: float = Form(0),
     iban: str = Form(""), bank_name: str = Form(""),
     salary_transfer_method: str = Form("cash"),
     employer: str = Form("mudawwarah"),
@@ -97,6 +106,8 @@ def update_employee(
     emp.position = position
     emp.phone = phone
     emp.salary = salary
+    emp.work_permit_salary = work_permit_salary
+    emp.actual_salary = actual_salary
     emp.iban = iban or None
     emp.bank_name = bank_name or None
     emp.salary_transfer_method = salary_transfer_method
@@ -247,7 +258,7 @@ def generate_monthly_payroll(
             employee_id=emp.id,
             branch_id=emp.branch_id,
             month=month,
-            basic_salary=emp.salary,
+            basic_salary=emp.actual_salary,
             total_days=total_days,
             days_worked=total_days,
             period_start=date(year, mon, 1),
@@ -262,7 +273,7 @@ def generate_monthly_payroll(
             overtime=0, bonus=0, incentive=0, leave_salary=0, ticket_payment=0,
             loan_deduction=loan_ded,
             penalty=0,
-            net_salary=emp.salary - loan_ded,
+            net_salary=emp.actual_salary - loan_ded,
             payment_method=emp.salary_transfer_method or "cash",
             status="pending",
         )

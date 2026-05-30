@@ -6,6 +6,7 @@ interface Branch { id: number; name: string; }
 interface Employee {
   id: number; staff_no: string; branch_id: number; name: string; name_ar: string;
   civil_id: string; position: string; phone: string; salary: number;
+  work_permit_salary: number; actual_salary: number;
   iban: string; bank_name: string; salary_transfer_method: string; employer: string;
   join_date: string; termination_date: string | null; is_active: boolean;
 }
@@ -381,8 +382,12 @@ export default function HRPage() {
                     placeholder="8 digits" defaultValue={editingEmp?.phone || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t("salary")}</label>
-                  <input type="number" step="0.001" name="salary" defaultValue={editingEmp?.salary || 0} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <label className="block text-sm font-medium mb-1">{t("work_permit_salary")}</label>
+                  <input type="number" step="0.001" name="work_permit_salary" defaultValue={editingEmp?.work_permit_salary || 0} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("actual_salary")}</label>
+                  <input type="number" step="0.001" name="actual_salary" defaultValue={editingEmp?.actual_salary || 0} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("iban_no")}</label>

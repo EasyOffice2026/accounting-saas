@@ -102,6 +102,9 @@ def _migrate_columns():
                     conn.execute(text(f"ALTER TABLE employees ADD COLUMN {col} TEXT{default}"))
             if "termination_date" not in cols:
                 conn.execute(text("ALTER TABLE employees ADD COLUMN termination_date DATE"))
+            for sal_col in ["work_permit_salary", "actual_salary"]:
+                if sal_col not in cols:
+                    conn.execute(text(f"ALTER TABLE employees ADD COLUMN {sal_col} FLOAT DEFAULT 0"))
             conn.commit()
 
         # Salary payments: add new fields
@@ -135,6 +138,10 @@ def _seed_data():
     db = SessionLocal()
     try:
         if db.query(Branch).count() > 0:
+            # Add Administration branch if missing
+            if not db.query(Branch).filter(Branch.name == "Administration").first():
+                db.add(Branch(name="Administration", name_ar="الإدارة", is_central_kitchen=False))
+                db.commit()
             return
 
         branch_data = [
@@ -143,6 +150,7 @@ def _seed_data():
             ("Al Jahra", "الجهراء", False),
             ("Al Ayoun", "العيون", False),
             ("Central Kitchen", "المطبخ المركزي", True),
+            ("Administration", "الإدارة", False),
         ]
         branches = []
         for name, name_ar, is_ck in branch_data:

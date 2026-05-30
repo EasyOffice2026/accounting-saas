@@ -64,6 +64,8 @@ export default {
   salary: "الراتب",
   join_date: "تاريخ الانضمام",
   termination_date: "تاريخ إنهاء / مغادرة الخدمة",
+  work_permit_salary: "راتب تصريح العمل",
+  actual_salary: "الراتب الفعلي",
   civil_id: "الرقم المدني",
   check_in: "وقت الحضور",
   check_out: "وقت الانصراف",

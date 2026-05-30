@@ -64,6 +64,8 @@ export default {
   salary: "Salary",
   join_date: "Join Date",
   termination_date: "Termination / Leaving Date",
+  work_permit_salary: "Work Permit Salary",
+  actual_salary: "Actual Salary",
   civil_id: "Civil ID",
   check_in: "Check In",
   check_out: "Check Out",

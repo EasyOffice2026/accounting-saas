@@ -14,7 +14,9 @@ class Employee(Base):
     civil_id = Column(String, nullable=True)
     position = Column(String, nullable=True)
     phone = Column(String, nullable=True)
-    salary = Column(Float, default=0)
+    salary = Column(Float, default=0)  # legacy, kept for compat
+    work_permit_salary = Column(Float, default=0)
+    actual_salary = Column(Float, default=0)
     iban = Column(String, nullable=True)
     bank_name = Column(String, nullable=True)
     salary_transfer_method = Column(String, default="cash")  # cash, bank

@@ -110,7 +110,13 @@ def _migrate_columns():
         # Salary payments: add new fields
         if "salary_payments" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("salary_payments")]
-            float_cols = ["overtime", "bonus", "incentive", "leave_salary", "ticket_payment", "loan_deduction", "penalty"]
+            float_cols = [
+                "housing_allowance", "transport_allowance", "food_allowance",
+                "other_allowance", "allowances", "absence_deduction",
+                "late_deduction", "other_deduction", "deductions", "advance",
+                "overtime", "bonus", "incentive", "leave_salary",
+                "ticket_payment", "loan_deduction", "penalty",
+            ]
             for col in float_cols:
                 if col not in cols:
                     conn.execute(text(f"ALTER TABLE salary_payments ADD COLUMN {col} REAL DEFAULT 0"))

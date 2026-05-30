@@ -122,3 +122,50 @@ class StaffBenefitDeduction(Base):
     month = Column(String, nullable=True)  # YYYY-MM to link to salary period
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class Resignation(Base):
+    __tablename__ = "resignations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ref_no = Column(String, nullable=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    name_en = Column(String, nullable=True)
+    name_ar = Column(String, nullable=True)
+    civil_id = Column(String, nullable=True)
+    nationality = Column(String, nullable=True)
+    job_title = Column(String, nullable=True)
+    department_branch = Column(String, nullable=True)
+    date_of_joining = Column(Date, nullable=True)
+    last_working_day = Column(Date, nullable=True)
+    mobile = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    reason = Column(Text, nullable=True)
+    resignation_date = Column(Date, nullable=True)
+    # Clearance checklist
+    company_id_returned = Column(Boolean, default=False)
+    uniform_returned = Column(Boolean, default=False)
+    locker_keys_handed = Column(Boolean, default=False)
+    equipment_returned = Column(Boolean, default=False)
+    loans_cleared = Column(Boolean, default=False)
+    handover_completed = Column(Boolean, default=False)
+    final_settlement_calculated = Column(Boolean, default=False)
+    final_salary_paid = Column(Boolean, default=False)
+    # Management approvals
+    ops_manager_name = Column(String, nullable=True)
+    ops_manager_status = Column(String, default="pending")  # pending, approved, rejected
+    ops_manager_date = Column(Date, nullable=True)
+    gm_name = Column(String, nullable=True)
+    gm_status = Column(String, default="pending")  # pending, approved, rejected
+    gm_date = Column(Date, nullable=True)
+    # Finance settlement
+    finance_manager_name = Column(String, nullable=True)
+    last_salary_paid_amount = Column(Float, default=0)
+    end_of_service = Column(Float, default=0)
+    leave_encashment = Column(Float, default=0)
+    deductions_amount = Column(Float, default=0)
+    final_settlement_amount = Column(Float, default=0)
+    finance_date = Column(Date, nullable=True)
+    # Status
+    status = Column(String, default="draft")  # draft, submitted, approved, rejected, completed
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

@@ -5,7 +5,8 @@ from typing import Optional
 import calendar
 
 from app.database import get_db
-from app.models.hr import Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction
+from app.models.hr import Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, Resignation
+from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
 
@@ -556,3 +557,161 @@ def create_benefit_deduction(
     db.commit()
     db.refresh(bd)
     return bd
+
+
+# --- Resignations ---
+def _resignation_to_dict(r):
+    return {
+        "id": r.id, "ref_no": r.ref_no or "", "employee_id": r.employee_id,
+        "name_en": r.name_en or "", "name_ar": r.name_ar or "",
+        "civil_id": r.civil_id or "", "nationality": r.nationality or "",
+        "job_title": r.job_title or "", "department_branch": r.department_branch or "",
+        "date_of_joining": str(r.date_of_joining) if r.date_of_joining else "",
+        "last_working_day": str(r.last_working_day) if r.last_working_day else "",
+        "mobile": r.mobile or "", "email": r.email or "",
+        "reason": r.reason or "", "resignation_date": str(r.resignation_date) if r.resignation_date else "",
+        "company_id_returned": r.company_id_returned, "uniform_returned": r.uniform_returned,
+        "locker_keys_handed": r.locker_keys_handed, "equipment_returned": r.equipment_returned,
+        "loans_cleared": r.loans_cleared, "handover_completed": r.handover_completed,
+        "final_settlement_calculated": r.final_settlement_calculated,
+        "final_salary_paid": r.final_salary_paid,
+        "ops_manager_name": r.ops_manager_name or "", "ops_manager_status": r.ops_manager_status or "pending",
+        "ops_manager_date": str(r.ops_manager_date) if r.ops_manager_date else "",
+        "gm_name": r.gm_name or "", "gm_status": r.gm_status or "pending",
+        "gm_date": str(r.gm_date) if r.gm_date else "",
+        "finance_manager_name": r.finance_manager_name or "",
+        "last_salary_paid_amount": r.last_salary_paid_amount or 0,
+        "end_of_service": r.end_of_service or 0,
+        "leave_encashment": r.leave_encashment or 0,
+        "deductions_amount": r.deductions_amount or 0,
+        "final_settlement_amount": r.final_settlement_amount or 0,
+        "finance_date": str(r.finance_date) if r.finance_date else "",
+        "status": r.status or "draft",
+        "created_at": str(r.created_at) if r.created_at else "",
+    }
+
+
+@router.get("/resignations")
+def list_resignations(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    rows = db.query(Resignation).order_by(Resignation.id.desc()).all()
+    return [_resignation_to_dict(r) for r in rows]
+
+
+@router.post("/resignations")
+def create_resignation(
+    employee_id: int = Form(...),
+    ref_no: str = Form(""),
+    name_en: str = Form(""), name_ar: str = Form(""),
+    civil_id: str = Form(""), nationality: str = Form(""),
+    job_title: str = Form(""), department_branch: str = Form(""),
+    date_of_joining: str = Form(""), last_working_day: str = Form(""),
+    mobile: str = Form(""), email: str = Form(""),
+    reason: str = Form(""), resignation_date: str = Form(""),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    r = Resignation(
+        employee_id=employee_id,
+        ref_no=ref_no or None,
+        name_en=name_en or None, name_ar=name_ar or None,
+        civil_id=civil_id or None, nationality=nationality or None,
+        job_title=job_title or None, department_branch=department_branch or None,
+        date_of_joining=date.fromisoformat(date_of_joining) if date_of_joining else None,
+        last_working_day=date.fromisoformat(last_working_day) if last_working_day else None,
+        mobile=mobile or None, email=email or None,
+        reason=reason or None,
+        resignation_date=date.fromisoformat(resignation_date) if resignation_date else None,
+    )
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return _resignation_to_dict(r)
+
+
+@router.put("/resignations/{res_id}")
+def update_resignation(
+    res_id: int,
+    ref_no: str = Form(""),
+    name_en: str = Form(""), name_ar: str = Form(""),
+    civil_id: str = Form(""), nationality: str = Form(""),
+    job_title: str = Form(""), department_branch: str = Form(""),
+    date_of_joining: str = Form(""), last_working_day: str = Form(""),
+    mobile: str = Form(""), email: str = Form(""),
+    reason: str = Form(""), resignation_date: str = Form(""),
+    company_id_returned: bool = Form(False), uniform_returned: bool = Form(False),
+    locker_keys_handed: bool = Form(False), equipment_returned: bool = Form(False),
+    loans_cleared: bool = Form(False), handover_completed: bool = Form(False),
+    final_settlement_calculated: bool = Form(False), final_salary_paid: bool = Form(False),
+    ops_manager_name: str = Form(""), ops_manager_status: str = Form("pending"),
+    ops_manager_date: str = Form(""),
+    gm_name: str = Form(""), gm_status: str = Form("pending"),
+    gm_date: str = Form(""),
+    finance_manager_name: str = Form(""),
+    last_salary_paid_amount: float = Form(0),
+    end_of_service: float = Form(0),
+    leave_encashment: float = Form(0),
+    deductions_amount: float = Form(0),
+    final_settlement_amount: float = Form(0),
+    finance_date: str = Form(""),
+    status: str = Form("draft"),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    r = db.query(Resignation).filter(Resignation.id == res_id).first()
+    if not r:
+        raise HTTPException(404, "Resignation not found")
+    r.ref_no = ref_no or None
+    r.name_en = name_en or None
+    r.name_ar = name_ar or None
+    r.civil_id = civil_id or None
+    r.nationality = nationality or None
+    r.job_title = job_title or None
+    r.department_branch = department_branch or None
+    r.date_of_joining = date.fromisoformat(date_of_joining) if date_of_joining else None
+    r.last_working_day = date.fromisoformat(last_working_day) if last_working_day else None
+    r.mobile = mobile or None
+    r.email = email or None
+    r.reason = reason or None
+    r.resignation_date = date.fromisoformat(resignation_date) if resignation_date else None
+    r.company_id_returned = company_id_returned
+    r.uniform_returned = uniform_returned
+    r.locker_keys_handed = locker_keys_handed
+    r.equipment_returned = equipment_returned
+    r.loans_cleared = loans_cleared
+    r.handover_completed = handover_completed
+    r.final_settlement_calculated = final_settlement_calculated
+    r.final_salary_paid = final_salary_paid
+    r.ops_manager_name = ops_manager_name or None
+    r.ops_manager_status = ops_manager_status
+    r.ops_manager_date = date.fromisoformat(ops_manager_date) if ops_manager_date else None
+    r.gm_name = gm_name or None
+    r.gm_status = gm_status
+    r.gm_date = date.fromisoformat(gm_date) if gm_date else None
+    r.finance_manager_name = finance_manager_name or None
+    r.last_salary_paid_amount = last_salary_paid_amount
+    r.end_of_service = end_of_service
+    r.leave_encashment = leave_encashment
+    r.deductions_amount = deductions_amount
+    r.final_settlement_amount = final_settlement_amount
+    r.finance_date = date.fromisoformat(finance_date) if finance_date else None
+    r.status = status
+    db.commit()
+    db.refresh(r)
+    return _resignation_to_dict(r)
+
+
+@router.delete("/resignations/{res_id}")
+def delete_resignation(res_id: int, db: Session = Depends(get_db),
+                       user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    r = db.query(Resignation).filter(Resignation.id == res_id).first()
+    if not r:
+        raise HTTPException(404, "Resignation not found")
+    db.delete(r)
+    db.commit()
+    return {"ok": True}

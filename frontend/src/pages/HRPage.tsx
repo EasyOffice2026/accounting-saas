@@ -39,8 +39,27 @@ interface BenefitDeduction {
   id: number; employee_id: number; category: string;
   amount: number; date: string; month: string | null; notes: string | null;
 }
+interface ResignationRecord {
+  id: number; ref_no: string; employee_id: number;
+  name_en: string; name_ar: string; civil_id: string; nationality: string;
+  job_title: string; department_branch: string;
+  date_of_joining: string; last_working_day: string;
+  mobile: string; email: string;
+  reason: string; resignation_date: string;
+  company_id_returned: boolean; uniform_returned: boolean;
+  locker_keys_handed: boolean; equipment_returned: boolean;
+  loans_cleared: boolean; handover_completed: boolean;
+  final_settlement_calculated: boolean; final_salary_paid: boolean;
+  ops_manager_name: string; ops_manager_status: string; ops_manager_date: string;
+  gm_name: string; gm_status: string; gm_date: string;
+  finance_manager_name: string;
+  last_salary_paid_amount: number; end_of_service: number;
+  leave_encashment: number; deductions_amount: number; final_settlement_amount: number;
+  finance_date: string;
+  status: string; created_at: string;
+}
 
-type Tab = "employees" | "salary" | "transfers" | "loans" | "benefits" | "deductions";
+type Tab = "employees" | "salary" | "transfers" | "loans" | "benefits" | "deductions" | "resignation";
 
 export default function HRPage() {
   const { t } = useTranslation();
@@ -101,6 +120,12 @@ export default function HRPage() {
   const [deductionItems, setDeductionItems] = useState<BenefitDeduction[]>([]);
   const [showDeductionForm, setShowDeductionForm] = useState(false);
 
+  // Resignation state
+  const [resignations, setResignations] = useState<ResignationRecord[]>([]);
+  const [showResignationForm, setShowResignationForm] = useState(false);
+  const [editingResignation, setEditingResignation] = useState<ResignationRecord | null>(null);
+  const [resEmpId, setResEmpId] = useState<number | null>(null);
+
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager = currentUser.role === "owner" || currentUser.role === "manager";
 
@@ -119,6 +144,7 @@ export default function HRPage() {
     if (tab === "deductions") apiGet("/api/hr/benefits-deductions").then((data: BenefitDeduction[]) => {
       setDeductionItems(data.filter(d => ["fine", "penalty", "other_deduction"].includes(d.category)));
     });
+    if (tab === "resignation") apiGet("/api/hr/resignations").then(setResignations);
   }, [tab, salaryMonth]);
 
   const loadSalary = () => {
@@ -332,7 +358,7 @@ export default function HRPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
-        {(["employees", "salary", "transfers", "loans", "benefits", "deductions"] as Tab[]).map(tb => {
+        {(["employees", "salary", "transfers", "loans", "benefits", "deductions", "resignation"] as Tab[]).map(tb => {
           const label = tb === "benefits" ? "benefits_tab" : tb === "deductions" ? "deductions_tab" : tb === "loans" ? "advance_loan" : tb === "transfers" ? "staff_transfers" : tb;
           return (
             <button key={tb} onClick={() => setTab(tb)}
@@ -1171,6 +1197,427 @@ export default function HRPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Resignation Tab */}
+      {tab === "resignation" && (
+        <div>
+          {isManager && !editingResignation && (
+            <button onClick={() => { setShowResignationForm(!showResignationForm); setResEmpId(null); }}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
+              {showResignationForm ? t("cancel") : t("new_resignation")}
+            </button>
+          )}
+
+          {/* New Resignation - Select Employee */}
+          {showResignationForm && !editingResignation && (
+            <div className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
+              <h3 className="font-semibold text-lg">{t("new_resignation")}</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("select_employee")}</label>
+                  <select value={resEmpId || ""} onChange={e => setResEmpId(Number(e.target.value) || null)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">{t("select_employee")}</option>
+                    {employees.map(e => <option key={e.id} value={e.id}>{e.staff_no ? `${e.staff_no} - ` : ""}{e.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              {resEmpId && (
+                <button onClick={async () => {
+                  const emp = employees.find(e => e.id === resEmpId);
+                  if (!emp) return;
+                  const fd = new FormData();
+                  fd.append("employee_id", String(emp.id));
+                  fd.append("name_en", emp.name);
+                  fd.append("name_ar", emp.name_ar || emp.name);
+                  fd.append("civil_id", emp.civil_id || "");
+                  fd.append("job_title", emp.position || "");
+                  fd.append("department_branch", branchName(emp.branch_id));
+                  fd.append("date_of_joining", emp.join_date || "");
+                  fd.append("mobile", emp.phone || "");
+                  fd.append("resignation_date", new Date().toISOString().slice(0, 10));
+                  const res = await apiPost("/api/hr/resignations", fd);
+                  setShowResignationForm(false);
+                  setEditingResignation(res);
+                  apiGet("/api/hr/resignations").then(setResignations);
+                }} className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
+                  {t("save")}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Edit/View Resignation Form */}
+          {editingResignation && (
+            <div className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold">{t("resignation_form")}</h2>
+                <div className="flex gap-2">
+                  <button onClick={() => {
+                    const printContent = document.getElementById("resignation-print");
+                    if (!printContent) return;
+                    const w = window.open("", "_blank");
+                    if (!w) return;
+                    w.document.write(`<html><head><title>${t("resignation_form")}</title>
+                      <style>
+                        body { font-family: Arial, sans-serif; padding: 20px; direction: ltr; }
+                        .header { text-align: center; margin-bottom: 20px; }
+                        .header h1 { font-size: 18px; margin: 4px 0; }
+                        .header h2 { font-size: 14px; margin: 4px 0; color: #666; }
+                        .section { margin: 16px 0; }
+                        .section h3 { font-size: 14px; font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 8px; }
+                        .field { display: flex; border-bottom: 1px solid #eee; padding: 4px 0; font-size: 13px; }
+                        .field-label { width: 200px; font-weight: bold; }
+                        .field-value { flex: 1; }
+                        .checklist { list-style: none; padding: 0; }
+                        .checklist li { padding: 3px 0; font-size: 13px; }
+                        .approval-box { border: 1px solid #ccc; padding: 10px; margin: 8px 0; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+                        td, th { border: 1px solid #ccc; padding: 6px; font-size: 12px; text-align: left; }
+                        @media print { body { padding: 0; } }
+                      </style></head><body>`);
+                    w.document.write(printContent.innerHTML);
+                    w.document.write("</body></html>");
+                    w.document.close();
+                    w.print();
+                  }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+                    {t("print_form")}
+                  </button>
+                  <button onClick={() => setEditingResignation(null)}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm">
+                    {t("close")}
+                  </button>
+                </div>
+              </div>
+
+              <div id="resignation-print">
+                <div className="header text-center mb-4">
+                  <p className="text-sm text-gray-500">Wahid Mudawwarah Restaurant &middot; مطعم واحد مدوّرة</p>
+                  <h1 className="text-lg font-bold">RESIGNATION FORM &middot; نموذج استقالة</h1>
+                  <p className="text-sm">Ref: HR-RES-{editingResignation.id.toString().padStart(4, "0")} &nbsp;&nbsp; {t("date")}: {editingResignation.resignation_date || "—"}</p>
+                </div>
+
+                {/* Section 1: Employee Info */}
+                <div className="section border rounded-lg p-4 mb-4">
+                  <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("employee_info")}</h3>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {[
+                      [t("name_en"), "name_en"], [t("name_ar_label"), "name_ar"],
+                      [t("civil_id"), "civil_id"], [t("nationality"), "nationality"],
+                      [t("job_title"), "job_title"], [t("department_branch"), "department_branch"],
+                      [t("date_of_joining"), "date_of_joining"], [t("last_working_day"), "last_working_day"],
+                      [t("mobile_label"), "mobile"], [t("email_label"), "email"],
+                    ].map(([label, key]) => (
+                      <div key={key} className="flex border-b py-1">
+                        <span className="w-40 font-medium text-gray-600">{label}</span>
+                        <span>{(editingResignation as unknown as Record<string, string>)[key] || "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section 2: Reason */}
+                <div className="section border rounded-lg p-4 mb-4">
+                  <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("reason_for_resignation")}</h3>
+                  <p className="text-sm min-h-[40px]">{editingResignation.reason || "—"}</p>
+                </div>
+
+                {/* Section 3: Clearance */}
+                <div className="section border rounded-lg p-4 mb-4">
+                  <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("clearance_checklist")}</h3>
+                  <div className="grid grid-cols-2 gap-1 text-sm">
+                    {[
+                      ["company_id_returned", t("company_id_returned")],
+                      ["uniform_returned", t("uniform_returned")],
+                      ["locker_keys_handed", t("locker_keys_handed")],
+                      ["equipment_returned", t("equipment_returned")],
+                      ["loans_cleared", t("loans_advances_cleared")],
+                      ["handover_completed", t("handover_completed")],
+                      ["final_settlement_calculated", t("final_settlement_calc")],
+                      ["final_salary_paid", t("final_salary_eos_paid")],
+                    ].map(([key, label]) => (
+                      <div key={key} className="flex items-center gap-2 py-1">
+                        <span>{(editingResignation as unknown as Record<string, boolean>)[key] ? "☑" : "☐"}</span>
+                        <span>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section 4: Declaration */}
+                <div className="section border rounded-lg p-4 mb-4">
+                  <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("employee_declaration")}</h3>
+                  <p className="text-xs text-gray-600 mb-2">{t("declaration_text")}</p>
+                  <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
+                    <div className="border-b pb-1">Employee Signature / توقيع الموظف: _______________</div>
+                    <div className="border-b pb-1">{t("date")}: _______________</div>
+                  </div>
+                </div>
+
+                {/* Section 5: Approvals & Finance */}
+                <div className="section border rounded-lg p-4 mb-4">
+                  <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("management_approvals")}</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                    <div className="border p-3 rounded">
+                      <p className="font-medium mb-1">{t("ops_manager")} / مدير العمليات</p>
+                      <p>{t("name")}: {editingResignation.ops_manager_name || "_______________"}</p>
+                      <p>{t("status")}: {editingResignation.ops_manager_status === "approved" ? "☑ " + t("approved") : editingResignation.ops_manager_status === "rejected" ? "☑ " + t("rejected") : "☐ " + t("pending")}</p>
+                      <p>{t("date")}: {editingResignation.ops_manager_date || "_______________"}</p>
+                    </div>
+                    <div className="border p-3 rounded">
+                      <p className="font-medium mb-1">{t("general_manager")} / المدير العام</p>
+                      <p>{t("name")}: {editingResignation.gm_name || "_______________"}</p>
+                      <p>{t("status")}: {editingResignation.gm_status === "approved" ? "☑ " + t("approved") : editingResignation.gm_status === "rejected" ? "☑ " + t("rejected") : "☐ " + t("pending")}</p>
+                      <p>{t("date")}: {editingResignation.gm_date || "_______________"}</p>
+                    </div>
+                  </div>
+                  <div className="border p-3 rounded text-sm">
+                    <p className="font-medium mb-2">{t("finance_settlement")}</p>
+                    <p>{t("name")}: {editingResignation.finance_manager_name || "_______________"}</p>
+                    <table className="w-full mt-2 border-collapse">
+                      <tbody>
+                        {[
+                          [t("last_salary_paid_amount"), editingResignation.last_salary_paid_amount],
+                          [t("end_of_service"), editingResignation.end_of_service],
+                          [t("leave_encashment"), editingResignation.leave_encashment],
+                          [t("deductions_loans"), editingResignation.deductions_amount],
+                          [t("final_settlement_amount"), editingResignation.final_settlement_amount],
+                        ].map(([label, val]) => (
+                          <tr key={label as string} className="border-b">
+                            <td className="py-1 font-medium">{label}</td>
+                            <td className="py-1 text-right">KWD {(val as number || 0).toFixed(3)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="mt-2">{t("date")}: {editingResignation.finance_date || "_______________"}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Edit Form */}
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.currentTarget);
+                // Checkboxes need explicit handling
+                const checkboxes = ["company_id_returned", "uniform_returned", "locker_keys_handed",
+                  "equipment_returned", "loans_cleared", "handover_completed",
+                  "final_settlement_calculated", "final_salary_paid"];
+                checkboxes.forEach(cb => {
+                  if (!fd.has(cb)) fd.set(cb, "false");
+                });
+                await apiFetch(`/api/hr/resignations/${editingResignation.id}`, { method: "PUT", body: fd });
+                const updated = await apiGet("/api/hr/resignations");
+                setResignations(updated);
+                const found = updated.find((r: ResignationRecord) => r.id === editingResignation.id);
+                if (found) setEditingResignation(found);
+              }} className="border-t pt-4 space-y-4">
+                <h3 className="font-semibold">{t("edit")}</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("name_en")}</label>
+                    <input name="name_en" defaultValue={editingResignation.name_en} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("name_ar_label")}</label>
+                    <input name="name_ar" defaultValue={editingResignation.name_ar} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("civil_id")}</label>
+                    <input name="civil_id" defaultValue={editingResignation.civil_id} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("nationality")}</label>
+                    <input name="nationality" defaultValue={editingResignation.nationality} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("job_title")}</label>
+                    <input name="job_title" defaultValue={editingResignation.job_title} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("department_branch")}</label>
+                    <input name="department_branch" defaultValue={editingResignation.department_branch} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("date_of_joining")}</label>
+                    <input type="date" name="date_of_joining" defaultValue={editingResignation.date_of_joining} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("last_working_day")}</label>
+                    <input type="date" name="last_working_day" defaultValue={editingResignation.last_working_day} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("mobile_label")}</label>
+                    <input name="mobile" defaultValue={editingResignation.mobile} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("email_label")}</label>
+                    <input name="email" defaultValue={editingResignation.email} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("resignation_date")}</label>
+                    <input type="date" name="resignation_date" defaultValue={editingResignation.resignation_date} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("reason_for_resignation")}</label>
+                  <textarea name="reason" defaultValue={editingResignation.reason} className="w-full px-3 py-2 border rounded-lg text-sm" rows={3} />
+                </div>
+
+                {/* Clearance checkboxes */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">{t("clearance_checklist")}</label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {[
+                      ["company_id_returned", t("company_id_returned")],
+                      ["uniform_returned", t("uniform_returned")],
+                      ["locker_keys_handed", t("locker_keys_handed")],
+                      ["equipment_returned", t("equipment_returned")],
+                      ["loans_cleared", t("loans_advances_cleared")],
+                      ["handover_completed", t("handover_completed")],
+                      ["final_settlement_calculated", t("final_settlement_calc")],
+                      ["final_salary_paid", t("final_salary_eos_paid")],
+                    ].map(([key, label]) => (
+                      <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="checkbox" name={key} value="true"
+                          defaultChecked={(editingResignation as unknown as Record<string, boolean>)[key]}
+                          className="rounded" />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Management approvals */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="border rounded-lg p-3">
+                    <h4 className="font-medium text-sm mb-2">{t("ops_manager")}</h4>
+                    <input name="ops_manager_name" placeholder={t("name")} defaultValue={editingResignation.ops_manager_name} className="w-full px-3 py-1.5 border rounded text-sm mb-2" />
+                    <select name="ops_manager_status" defaultValue={editingResignation.ops_manager_status} className="w-full px-3 py-1.5 border rounded text-sm mb-2">
+                      <option value="pending">{t("pending")}</option>
+                      <option value="approved">{t("approved")}</option>
+                      <option value="rejected">{t("rejected")}</option>
+                    </select>
+                    <input type="date" name="ops_manager_date" defaultValue={editingResignation.ops_manager_date} className="w-full px-3 py-1.5 border rounded text-sm" />
+                  </div>
+                  <div className="border rounded-lg p-3">
+                    <h4 className="font-medium text-sm mb-2">{t("general_manager")}</h4>
+                    <input name="gm_name" placeholder={t("name")} defaultValue={editingResignation.gm_name} className="w-full px-3 py-1.5 border rounded text-sm mb-2" />
+                    <select name="gm_status" defaultValue={editingResignation.gm_status} className="w-full px-3 py-1.5 border rounded text-sm mb-2">
+                      <option value="pending">{t("pending")}</option>
+                      <option value="approved">{t("approved")}</option>
+                      <option value="rejected">{t("rejected")}</option>
+                    </select>
+                    <input type="date" name="gm_date" defaultValue={editingResignation.gm_date} className="w-full px-3 py-1.5 border rounded text-sm" />
+                  </div>
+                </div>
+
+                {/* Finance */}
+                <div className="border rounded-lg p-3">
+                  <h4 className="font-medium text-sm mb-2">{t("finance_settlement")}</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1">{t("name")}</label>
+                      <input name="finance_manager_name" defaultValue={editingResignation.finance_manager_name} className="w-full px-3 py-1.5 border rounded text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">{t("last_salary_paid_amount")}</label>
+                      <input type="number" step="0.001" name="last_salary_paid_amount" defaultValue={editingResignation.last_salary_paid_amount} className="w-full px-3 py-1.5 border rounded text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">{t("end_of_service")}</label>
+                      <input type="number" step="0.001" name="end_of_service" defaultValue={editingResignation.end_of_service} className="w-full px-3 py-1.5 border rounded text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">{t("leave_encashment")}</label>
+                      <input type="number" step="0.001" name="leave_encashment" defaultValue={editingResignation.leave_encashment} className="w-full px-3 py-1.5 border rounded text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">{t("deductions_loans")}</label>
+                      <input type="number" step="0.001" name="deductions_amount" defaultValue={editingResignation.deductions_amount} className="w-full px-3 py-1.5 border rounded text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">{t("final_settlement_amount")}</label>
+                      <input type="number" step="0.001" name="final_settlement_amount" defaultValue={editingResignation.final_settlement_amount} className="w-full px-3 py-1.5 border rounded text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">{t("date")}</label>
+                      <input type="date" name="finance_date" defaultValue={editingResignation.finance_date} className="w-full px-3 py-1.5 border rounded text-sm" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status */}
+                <div className="flex items-center gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("status")}</label>
+                    <select name="status" defaultValue={editingResignation.status} className="px-3 py-2 border rounded-lg text-sm">
+                      <option value="draft">{t("draft")}</option>
+                      <option value="submitted">{t("submitted")}</option>
+                      <option value="approved">{t("approved")}</option>
+                      <option value="rejected">{t("rejected")}</option>
+                      <option value="completed">{t("completed")}</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mt-5">
+                    {t("save")}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Resignations List */}
+          {!editingResignation && (
+            <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-4 py-3 text-left">{t("ref_no")}</th>
+                    <th className="px-4 py-3 text-left">{t("employee")}</th>
+                    <th className="px-4 py-3 text-left">{t("department_branch")}</th>
+                    <th className="px-4 py-3 text-left">{t("resignation_date")}</th>
+                    <th className="px-4 py-3 text-left">{t("last_working_day")}</th>
+                    <th className="px-4 py-3 text-left">{t("status")}</th>
+                    <th className="px-4 py-3 text-left">{t("actions")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resignations.length === 0 ? (
+                    <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  ) : resignations.map(r => (
+                    <tr key={r.id} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-3 font-mono">HR-RES-{r.id.toString().padStart(4, "0")}</td>
+                      <td className="px-4 py-3">{r.name_ar || r.name_en || empName(r.employee_id)}</td>
+                      <td className="px-4 py-3">{r.department_branch || "—"}</td>
+                      <td className="px-4 py-3">{r.resignation_date || "—"}</td>
+                      <td className="px-4 py-3">{r.last_working_day || "—"}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          r.status === "completed" ? "bg-green-100 text-green-700" :
+                          r.status === "approved" ? "bg-blue-100 text-blue-700" :
+                          r.status === "rejected" ? "bg-red-100 text-red-700" :
+                          r.status === "submitted" ? "bg-yellow-100 text-yellow-700" :
+                          "bg-gray-100 text-gray-700"
+                        }`}>{t(r.status) || r.status}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button onClick={() => setEditingResignation(r)}
+                          className="text-emerald-600 hover:underline text-sm mr-3">{t("view")} / {t("edit")}</button>
+                        <button onClick={async () => {
+                          if (!confirm(t("confirm_delete"))) return;
+                          await apiFetch(`/api/hr/resignations/${r.id}`, { method: "DELETE" });
+                          apiGet("/api/hr/resignations").then(setResignations);
+                        }} className="text-red-600 hover:underline text-sm">{t("delete")}</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>

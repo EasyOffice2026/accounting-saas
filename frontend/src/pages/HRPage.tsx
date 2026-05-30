@@ -7,7 +7,7 @@ interface Employee {
   id: number; staff_no: string; branch_id: number; name: string; name_ar: string;
   civil_id: string; position: string; phone: string; salary: number;
   iban: string; bank_name: string; salary_transfer_method: string; employer: string;
-  join_date: string; is_active: boolean;
+  join_date: string; termination_date: string | null; is_active: boolean;
 }
 interface SalaryRecord {
   id: number; employee_id: number; staff_no: string; designation: string;
@@ -410,6 +410,10 @@ export default function HRPage() {
                   <label className="block text-sm font-medium mb-1">{t("join_date")}</label>
                   <input type="date" name="join_date" defaultValue={editingEmp?.join_date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("termination_date")}</label>
+                  <input type="date" name="termination_date" defaultValue={editingEmp?.termination_date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
               </div>
               <button type="submit"
                 className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
@@ -428,17 +432,13 @@ export default function HRPage() {
                   <th className="px-3 py-3 text-left">{t("position")}</th>
                   <th className="px-3 py-3 text-left">{t("civil_id")}</th>
                   <th className="px-3 py-3 text-left">{t("phone")}</th>
-                  <th className="px-3 py-3 text-left">{t("iban_no")}</th>
-                  <th className="px-3 py-3 text-left">{t("bank_name_label")}</th>
-                  <th className="px-3 py-3 text-left">{t("salary_transfer")}</th>
                   <th className="px-3 py-3 text-left">{t("employer_label")}</th>
-                  {isManager && <th className="px-3 py-3 text-right">{t("salary")}</th>}
                   {isManager && <th className="px-3 py-3 text-center">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {employees.length === 0 ? (
-                  <tr><td colSpan={isManager ? 12 : 10} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={isManager ? 8 : 7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : employees.map(emp => (
                   <tr key={emp.id} className="border-b hover:bg-gray-50">
                     <td className="px-3 py-3">{emp.staff_no || "—"}</td>
@@ -447,11 +447,7 @@ export default function HRPage() {
                     <td className="px-3 py-3">{emp.position}</td>
                     <td className="px-3 py-3">{emp.civil_id}</td>
                     <td className="px-3 py-3">{emp.phone}</td>
-                    <td className="px-3 py-3 text-xs">{emp.iban || "—"}</td>
-                    <td className="px-3 py-3">{emp.bank_name || "—"}</td>
-                    <td className="px-3 py-3">{t(emp.salary_transfer_method === "bank" ? "bank_transfer" : "cash")}</td>
                     <td className="px-3 py-3">{emp.employer === "mudawwarah" ? "Mudawwarah" : t("other")}</td>
-                    {isManager && <td className="px-3 py-3 text-right font-mono">KD {emp.salary.toFixed(3)}</td>}
                     {isManager && (
                       <td className="px-3 py-3 text-center">
                         <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>

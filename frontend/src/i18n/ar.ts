@@ -63,6 +63,7 @@ export default {
   position: "المنصب",
   salary: "الراتب",
   join_date: "تاريخ الانضمام",
+  termination_date: "تاريخ إنهاء / مغادرة الخدمة",
   civil_id: "الرقم المدني",
   check_in: "وقت الحضور",
   check_out: "وقت الانصراف",

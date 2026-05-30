@@ -53,6 +53,7 @@ def create_employee(
     salary_transfer_method: str = Form("cash"),
     employer: str = Form("mudawwarah"),
     join_date: str = Form(""),
+    termination_date: str = Form(""),
     db: Session = Depends(get_db), _=Depends(get_current_user),
 ):
     emp = Employee(
@@ -61,6 +62,7 @@ def create_employee(
         salary=salary, iban=iban or None, bank_name=bank_name or None,
         salary_transfer_method=salary_transfer_method, employer=employer,
         join_date=date.fromisoformat(join_date) if join_date else None,
+        termination_date=date.fromisoformat(termination_date) if termination_date else None,
     )
     db.add(emp)
     db.commit()
@@ -79,6 +81,7 @@ def update_employee(
     salary_transfer_method: str = Form("cash"),
     employer: str = Form("mudawwarah"),
     join_date: str = Form(""),
+    termination_date: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if user.role not in SALARY_VISIBLE_ROLES:
@@ -99,6 +102,7 @@ def update_employee(
     emp.salary_transfer_method = salary_transfer_method
     emp.employer = employer
     emp.join_date = date.fromisoformat(join_date) if join_date else None
+    emp.termination_date = date.fromisoformat(termination_date) if termination_date else None
     db.commit()
     db.refresh(emp)
     return emp
@@ -120,7 +124,7 @@ def list_attendance(employee_id: Optional[int] = None, att_date: Optional[str] =
 def mark_attendance(
     employee_id: int = Form(...), att_date: str = Form(...),
     check_in: str = Form(""), check_out: str = Form(""),
-    status: str = Form("present"), notes: str = Form(""),
+    status: str = Form("absent"), notes: str = Form(""),
     db: Session = Depends(get_db), _=Depends(get_current_user),
 ):
     att = Attendance(
@@ -219,7 +223,7 @@ def generate_monthly_payroll(
     if user.role not in ("owner", "manager"):
         raise HTTPException(403, "Not authorized")
     year, mon = int(month.split("-")[0]), int(month.split("-")[1])
-    total_days = calendar.monthrange(year, mon)[1]
+    total_days = 30  # salary always calculated on 30-day basis
 
     employees = db.query(Employee).filter(Employee.is_active == True).all()
     created = 0

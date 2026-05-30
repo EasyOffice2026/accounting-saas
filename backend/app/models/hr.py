@@ -20,6 +20,7 @@ class Employee(Base):
     salary_transfer_method = Column(String, default="cash")  # cash, bank
     employer = Column(String, default="mudawwarah")  # mudawwarah, other
     join_date = Column(Date, nullable=True)
+    termination_date = Column(Date, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -32,7 +33,7 @@ class Attendance(Base):
     date = Column(Date, nullable=False)
     check_in = Column(Time, nullable=True)
     check_out = Column(Time, nullable=True)
-    status = Column(String, default="present")  # present, absent, late, leave
+    status = Column(String, default="absent")  # absent, late, leave
     notes = Column(Text, nullable=True)
 
 

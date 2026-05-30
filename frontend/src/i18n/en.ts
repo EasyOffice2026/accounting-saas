@@ -63,6 +63,7 @@ export default {
   position: "Position",
   salary: "Salary",
   join_date: "Join Date",
+  termination_date: "Termination / Leaving Date",
   civil_id: "Civil ID",
   check_in: "Check In",
   check_out: "Check Out",

@@ -28,7 +28,6 @@ export default function AttendancePage() {
 
   const statusColor = (s: string) => {
     switch (s) {
-      case "present": return "bg-green-100 text-green-700";
       case "absent": return "bg-red-100 text-red-700";
       case "late": return "bg-yellow-100 text-yellow-700";
       case "leave": return "bg-blue-100 text-blue-700";
@@ -71,7 +70,6 @@ export default function AttendancePage() {
           <div>
             <label className="block text-sm font-medium mb-1">{t("status")}</label>
             <select name="status" className="w-full px-3 py-2 border rounded-lg text-sm">
-              <option value="present">{t("present")}</option>
               <option value="absent">{t("absent")}</option>
               <option value="late">{t("late")}</option>
               <option value="leave">{t("leave")}</option>

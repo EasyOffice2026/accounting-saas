@@ -100,6 +100,8 @@ def _migrate_columns():
                 if col not in cols:
                     default = " DEFAULT 'cash'" if col == "salary_transfer_method" else " DEFAULT 'mudawwarah'" if col == "employer" else ""
                     conn.execute(text(f"ALTER TABLE employees ADD COLUMN {col} TEXT{default}"))
+            if "termination_date" not in cols:
+                conn.execute(text("ALTER TABLE employees ADD COLUMN termination_date DATE"))
             conn.commit()
 
         # Salary payments: add new fields

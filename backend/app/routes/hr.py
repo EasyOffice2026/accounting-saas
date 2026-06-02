@@ -242,8 +242,6 @@ def list_salary_payments(
 @router.post("/salary/generate")
 def generate_monthly_payroll(
     month: str = Form(...),
-    period_start: str = Form(""),
-    period_end: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -251,14 +249,11 @@ def generate_monthly_payroll(
         raise HTTPException(403, "Not authorized")
     year, mon = int(month.split("-")[0]), int(month.split("-")[1])
     last_day = calendar.monthrange(year, mon)[1]
-    # Use provided period dates or default to full month
-    p_start = date.fromisoformat(period_start) if period_start else date(year, mon, 1)
-    p_end = date.fromisoformat(period_end) if period_end else date(year, mon, last_day)
-    # Calculate working days in period (capped at 30 for salary basis)
-    calendar_days = (p_end - p_start).days + 1
+    # Default to full month
+    p_start = date(year, mon, 1)
+    p_end = date(year, mon, last_day)
     total_days = 30  # salary basis always 30
-    # If period is less than 30 days, pro-rate the working days
-    period_working_days = min(calendar_days, 30)
+    period_working_days = 30
 
     employees = db.query(Employee).filter(
         Employee.is_active == True,
@@ -324,9 +319,17 @@ def generate_monthly_payroll(
             sp = existing
             sp.basic_salary = emp.actual_salary
             sp.total_days = total_days
-            sp.days_worked = actual_days_worked
-            sp.period_start = p_start
-            sp.period_end = p_end
+            # Preserve custom period dates if already set by user edit
+            if sp.period_start and sp.period_end and (sp.period_start != p_start or sp.period_end != p_end):
+                custom_days = (sp.period_end - sp.period_start).days + 1
+                custom_working_days = min(max(custom_days, 0), 30)
+                sp.days_worked = max(0, custom_working_days - total_leave_days)
+                prorated_salary = round(per_day * custom_working_days, 3)
+                net = prorated_salary + total_allowances - total_deductions
+            else:
+                sp.days_worked = actual_days_worked
+                sp.period_start = p_start
+                sp.period_end = p_end
             sp.allowances = total_allowances
             sp.absence_deduction = absence_ded
             sp.other_deduction = other_ded_total
@@ -415,11 +418,16 @@ def update_salary_payment(
         sp.basic_salary = basic_salary
     if total_days is not None:
         sp.total_days = total_days
-    if days_worked is not None:
-        sp.days_worked = days_worked
 
     sp.period_start = date.fromisoformat(period_start) if period_start else None
     sp.period_end = date.fromisoformat(period_end) if period_end else None
+
+    # Auto-calculate days_worked from period dates if both are provided
+    if sp.period_start and sp.period_end:
+        calendar_days = (sp.period_end - sp.period_start).days + 1
+        sp.days_worked = min(max(calendar_days, 0), 30)
+    elif days_worked is not None:
+        sp.days_worked = days_worked
     sp.last_workplace = last_workplace or None
     sp.housing_allowance = housing_allowance
     sp.transport_allowance = transport_allowance

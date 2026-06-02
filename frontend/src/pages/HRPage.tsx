@@ -81,8 +81,7 @@ export default function HRPage() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
-  const [periodStart, setPeriodStart] = useState("");
-  const [periodEnd, setPeriodEnd] = useState("");
+
   const [salaryMsg, setSalaryMsg] = useState("");
   const [salaryMsgType, setSalaryMsgType] = useState<"success" | "error">("success");
   const [editingRecord, setEditingRecord] = useState<SalaryRecord | null>(null);
@@ -209,8 +208,6 @@ export default function HRPage() {
   const handleGeneratePayroll = async () => {
     const fd = new URLSearchParams();
     fd.append("month", salaryMonth);
-    if (periodStart) fd.append("period_start", periodStart);
-    if (periodEnd) fd.append("period_end", periodEnd);
     try {
       const res = await apiFetch("/api/hr/salary/generate", { method: "POST", body: fd });
       const data = await res.json();
@@ -690,16 +687,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
               <input type="month" value={salaryMonth} onChange={e => setSalaryMonth(e.target.value)}
                 className="px-3 py-2 border rounded-lg text-sm" />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">{t("period_start")}</label>
-              <input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)}
-                className="px-3 py-2 border rounded-lg text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">{t("period_end")}</label>
-              <input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)}
-                className="px-3 py-2 border rounded-lg text-sm" />
-            </div>
+
             {isManager && (
               <>
                 <button onClick={handleGeneratePayroll}
@@ -780,13 +768,31 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                   <div>
                     <label className="block text-xs font-medium mb-1">{t("period_start")}</label>
                     <input type="date" value={editPeriodStart}
-                      onChange={e => setEditPeriodStart(e.target.value)}
+                      onChange={e => {
+                        const newStart = e.target.value;
+                        setEditPeriodStart(newStart);
+                        if (newStart && editPeriodEnd) {
+                          const d1 = new Date(newStart);
+                          const d2 = new Date(editPeriodEnd);
+                          const diff = Math.floor((d2.getTime() - d1.getTime()) / (1000*60*60*24)) + 1;
+                          if (diff > 0) setEditDaysWorked(String(Math.min(diff, 30)));
+                        }
+                      }}
                       className="w-full px-3 py-2 border rounded-lg text-sm" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1">{t("period_end")}</label>
                     <input type="date" value={editPeriodEnd}
-                      onChange={e => setEditPeriodEnd(e.target.value)}
+                      onChange={e => {
+                        const newEnd = e.target.value;
+                        setEditPeriodEnd(newEnd);
+                        if (editPeriodStart && newEnd) {
+                          const d1 = new Date(editPeriodStart);
+                          const d2 = new Date(newEnd);
+                          const diff = Math.floor((d2.getTime() - d1.getTime()) / (1000*60*60*24)) + 1;
+                          if (diff > 0) setEditDaysWorked(String(Math.min(diff, 30)));
+                        }
+                      }}
                       className="w-full px-3 py-2 border rounded-lg text-sm" />
                   </div>
                   <div>

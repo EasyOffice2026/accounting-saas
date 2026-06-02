@@ -86,12 +86,23 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE whatsapp_settings ADD COLUMN api_url TEXT"))
                 conn.commit()
 
-        # Purchase orders: add delivery_location
+        # Purchase orders: add missing columns
         if "purchase_orders" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("purchase_orders")]
             if "delivery_location" not in cols:
                 conn.execute(text("ALTER TABLE purchase_orders ADD COLUMN delivery_location TEXT"))
-                conn.commit()
+            if "category_id" not in cols:
+                conn.execute(text("ALTER TABLE purchase_orders ADD COLUMN category_id INTEGER"))
+            conn.commit()
+
+        # Expenses: add missing columns
+        if "expenses" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("expenses")]
+            if "supplier_id" not in cols:
+                conn.execute(text("ALTER TABLE expenses ADD COLUMN supplier_id INTEGER"))
+            if "category_id" not in cols:
+                conn.execute(text("ALTER TABLE expenses ADD COLUMN category_id INTEGER"))
+            conn.commit()
 
         # Employees: add new fields
         if "employees" in insp.get_table_names():

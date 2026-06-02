@@ -673,10 +673,16 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                 className="px-3 py-2 border rounded-lg text-sm" />
             </div>
             {isManager && (
-              <button onClick={handleGeneratePayroll}
-                className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mt-5">
-                {t("generate_payroll")}
-              </button>
+              <>
+                <button onClick={handleGeneratePayroll}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mt-5">
+                  {t("generate_payroll")}
+                </button>
+                <button onClick={() => window.open(`/api/export/salary/csv?month=${salaryMonth}`, "_blank")}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm mt-5">
+                  {t("export_csv")}
+                </button>
+              </>
             )}
           </div>
 

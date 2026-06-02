@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet, apiPost } from "../contexts/api";
+import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
 interface PurchaseCategoryI { id: number; name: string; name_ar: string | null; is_active: boolean; }
@@ -307,9 +307,17 @@ export default function PurchasesPage() {
       <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("purchases")}</h2>
         <div className="flex gap-2">
-          <button onClick={() => window.open("/api/export/purchases/csv", "_blank")}
+          <button onClick={() => apiDownload("/api/export/purchases/csv", "purchases.csv")}
             className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
             {t("export_csv")}
+          </button>
+          <button onClick={() => apiDownload("/api/export/purchases/excel", "purchases.xlsx")}
+            className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+            {t("export_excel")}
+          </button>
+          <button onClick={() => apiDownload("/api/export/purchases/pdf", "purchases.pdf")}
+            className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
+            {t("export_pdf")}
           </button>
           <button onClick={() => setShowSupplierForm(!showSupplierForm)}
             className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm">

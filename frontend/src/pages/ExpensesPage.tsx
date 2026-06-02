@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet, apiPost } from "../contexts/api";
+import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Branch { id: number; name: string; }
@@ -66,9 +66,17 @@ export default function ExpensesPage() {
         <h2 className="text-2xl font-bold text-gray-800">{t("expenses")}</h2>
         {tab === "expenses" && (
           <div className="flex gap-2">
-            <button onClick={() => window.open("/api/export/expenses/csv", "_blank")}
+            <button onClick={() => apiDownload("/api/export/expenses/csv", "expenses.csv")}
               className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
               {t("export_csv")}
+            </button>
+            <button onClick={() => apiDownload("/api/export/expenses/excel", "expenses.xlsx")}
+              className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+              {t("export_excel")}
+            </button>
+            <button onClick={() => apiDownload("/api/export/expenses/pdf", "expenses.pdf")}
+              className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
+              {t("export_pdf")}
             </button>
             <button onClick={() => setShowForm(!showForm)}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">

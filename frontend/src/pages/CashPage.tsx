@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet, apiFetch } from "../contexts/api";
+import { apiGet, apiFetch, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Branch { id: number; name: string; name_ar: string; }
@@ -82,8 +82,9 @@ export default function CashPage() {
     return b ? (i18n.language === "ar" ? b.name_ar || b.name : b.name) : "";
   };
 
-  const downloadCSV = () => {
-    window.open(`/api/export/cash/csv?branch_id=${branchId}`, "_blank");
+  const exportData = (fmt: string) => {
+    const ext = fmt === "excel" ? "xlsx" : fmt;
+    apiDownload(`/api/export/cash/${fmt}?branch_id=${branchId}`, `cash_management.${ext}`);
   };
 
   const isStaff = user?.role === "staff";
@@ -93,9 +94,17 @@ export default function CashPage() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("cash_management")}</h2>
         <div className="flex gap-2">
-          <button onClick={downloadCSV}
+          <button onClick={() => exportData("csv")}
             className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
             {t("export_csv")}
+          </button>
+          <button onClick={() => exportData("excel")}
+            className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+            {t("export_excel")}
+          </button>
+          <button onClick={() => exportData("pdf")}
+            className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
+            {t("export_pdf")}
           </button>
         </div>
       </div>

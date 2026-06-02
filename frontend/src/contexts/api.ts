@@ -23,3 +23,20 @@ export async function apiPost(path: string, body: FormData | URLSearchParams) {
   const res = await apiFetch(path, { method: "POST", body });
   return res.json();
 }
+
+export async function apiDownload(path: string, filename: string) {
+  const res = await apiFetch(path);
+  if (!res.ok) {
+    alert("Export failed");
+    return;
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet, apiPost } from "../contexts/api";
+import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Branch { id: number; name: string; name_ar: string; }
@@ -113,9 +113,10 @@ export default function SalesPage() {
     return b ? (i18n.language === "ar" ? b.name_ar || b.name : b.name) : "";
   };
 
-  const downloadCSV = () => {
+  const exportData = (fmt: string) => {
     const params = branchFilter ? `?branch_id=${branchFilter}` : "";
-    window.open(`/api/export/sales/csv${params}`, "_blank");
+    const ext = fmt === "excel" ? "xlsx" : fmt;
+    apiDownload(`/api/export/sales/${fmt}${params}`, `sales.${ext}`);
   };
 
   return (
@@ -135,9 +136,17 @@ export default function SalesPage() {
               📱 {t("send_daily_report")}
             </button>
           )}
-          <button onClick={downloadCSV}
+          <button onClick={() => exportData("csv")}
             className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
             {t("export_csv")}
+          </button>
+          <button onClick={() => exportData("excel")}
+            className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+            {t("export_excel")}
+          </button>
+          <button onClick={() => exportData("pdf")}
+            className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
+            {t("export_pdf")}
           </button>
           <button onClick={() => setShowForm(!showForm)}
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet, apiPost, apiFetch } from "../contexts/api";
+import { apiGet, apiPost, apiFetch, apiDownload } from "../contexts/api";
 
 interface Branch { id: number; name: string; }
 interface Employee {
@@ -514,9 +514,17 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
       <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("hr")}</h2>
         <div className="flex gap-2">
-          <button onClick={() => window.open("/api/export/hr/csv", "_blank")}
+          <button onClick={() => apiDownload("/api/export/hr/csv", "employees.csv")}
             className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
             {t("export_csv")}
+          </button>
+          <button onClick={() => apiDownload("/api/export/hr/excel", "employees.xlsx")}
+            className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+            {t("export_excel")}
+          </button>
+          <button onClick={() => apiDownload("/api/export/hr/pdf", "employees.pdf")}
+            className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
+            {t("export_pdf")}
           </button>
           {tab === "employees" && (
             <button onClick={() => { setShowForm(!showForm); setEditingEmp(null); }}
@@ -678,9 +686,17 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                   className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mt-5">
                   {t("generate_payroll")}
                 </button>
-                <button onClick={() => window.open(`/api/export/salary/csv?month=${salaryMonth}`, "_blank")}
+                <button onClick={() => apiDownload(`/api/export/salary/csv?month=${salaryMonth}`, `salary_${salaryMonth}.csv`)}
                   className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm mt-5">
                   {t("export_csv")}
+                </button>
+                <button onClick={() => apiDownload(`/api/export/salary/excel?month=${salaryMonth}`, `salary_${salaryMonth}.xlsx`)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm mt-5">
+                  {t("export_excel")}
+                </button>
+                <button onClick={() => apiDownload(`/api/export/salary/pdf?month=${salaryMonth}`, `salary_${salaryMonth}.pdf`)}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm mt-5">
+                  {t("export_pdf")}
                 </button>
               </>
             )}

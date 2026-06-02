@@ -81,6 +81,8 @@ export default function HRPage() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
   const [salaryMsg, setSalaryMsg] = useState("");
   const [salaryMsgType, setSalaryMsgType] = useState<"success" | "error">("success");
   const [editingRecord, setEditingRecord] = useState<SalaryRecord | null>(null);
@@ -207,6 +209,8 @@ export default function HRPage() {
   const handleGeneratePayroll = async () => {
     const fd = new URLSearchParams();
     fd.append("month", salaryMonth);
+    if (periodStart) fd.append("period_start", periodStart);
+    if (periodEnd) fd.append("period_end", periodEnd);
     try {
       const res = await apiFetch("/api/hr/salary/generate", { method: "POST", body: fd });
       const data = await res.json();
@@ -684,6 +688,16 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">{t("select_month")}</label>
               <input type="month" value={salaryMonth} onChange={e => setSalaryMonth(e.target.value)}
+                className="px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{t("period_start")}</label>
+              <input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)}
+                className="px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{t("period_end")}</label>
+              <input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)}
                 className="px-3 py-2 border rounded-lg text-sm" />
             </div>
             {isManager && (

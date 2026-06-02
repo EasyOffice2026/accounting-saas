@@ -242,14 +242,23 @@ def list_salary_payments(
 @router.post("/salary/generate")
 def generate_monthly_payroll(
     month: str = Form(...),
+    period_start: str = Form(""),
+    period_end: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     if user.role not in ("owner", "manager"):
         raise HTTPException(403, "Not authorized")
     year, mon = int(month.split("-")[0]), int(month.split("-")[1])
-    total_days = 30  # salary always calculated on 30-day basis
     last_day = calendar.monthrange(year, mon)[1]
+    # Use provided period dates or default to full month
+    p_start = date.fromisoformat(period_start) if period_start else date(year, mon, 1)
+    p_end = date.fromisoformat(period_end) if period_end else date(year, mon, last_day)
+    # Calculate working days in period (capped at 30 for salary basis)
+    calendar_days = (p_end - p_start).days + 1
+    total_days = 30  # salary basis always 30
+    # If period is less than 30 days, pro-rate the working days
+    period_working_days = min(calendar_days, 30)
 
     employees = db.query(Employee).filter(
         Employee.is_active == True,
@@ -274,11 +283,14 @@ def generate_monthly_payroll(
         unpaid_absence_days = sum(lr.days for lr in leave_recs if not lr.is_paid)
         paid_leave_days = sum(lr.days for lr in leave_recs if lr.is_paid)
         total_leave_days = unpaid_absence_days + paid_leave_days
-        actual_days_worked = max(0, total_days - total_leave_days)
+        actual_days_worked = max(0, period_working_days - total_leave_days)
 
         # Absence deduction (only for unpaid leaves)
         per_day = emp.actual_salary / total_days if total_days > 0 else 0
         absence_ded = round(per_day * unpaid_absence_days, 3)
+
+        # Pro-rate salary if period < 30 days
+        prorated_salary = round(per_day * period_working_days, 3)
 
         # Auto-calculate loan deduction from active loans with matching deduction_month
         active_loans = db.query(AdvanceLoan).filter(
@@ -305,13 +317,16 @@ def generate_monthly_payroll(
 
         total_allowances = incentive_total + bonus_total + leave_salary_total + ticket_total + overtime_total
         total_deductions = absence_ded + loan_ded + penalty_total + other_ded_total
-        net = emp.actual_salary + total_allowances - total_deductions
+        net = prorated_salary + total_allowances - total_deductions
 
         if existing:
             # Update existing pending record with latest calculations
             sp = existing
             sp.basic_salary = emp.actual_salary
+            sp.total_days = total_days
             sp.days_worked = actual_days_worked
+            sp.period_start = p_start
+            sp.period_end = p_end
             sp.allowances = total_allowances
             sp.absence_deduction = absence_ded
             sp.other_deduction = other_ded_total
@@ -334,8 +349,8 @@ def generate_monthly_payroll(
                 basic_salary=emp.actual_salary,
                 total_days=total_days,
                 days_worked=actual_days_worked,
-                period_start=date(year, mon, 1),
-                period_end=date(year, mon, last_day),
+                period_start=p_start,
+                period_end=p_end,
                 last_workplace="",
                 housing_allowance=0, transport_allowance=0,
                 food_allowance=0, other_allowance=0,

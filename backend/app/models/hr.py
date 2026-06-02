@@ -124,6 +124,21 @@ class StaffBenefitDeduction(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class LeaveRecord(Base):
+    __tablename__ = "leave_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    leave_type = Column(String, nullable=False)  # absent, annual_leave, sick_leave
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    days = Column(Integer, nullable=False)
+    is_paid = Column(Boolean, default=False)  # paid leave = no deduction
+    month = Column(String, nullable=True)  # YYYY-MM to link to salary period
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class Resignation(Base):
     __tablename__ = "resignations"
 

@@ -5,7 +5,7 @@ from typing import Optional
 import calendar
 
 from app.database import get_db
-from app.models.hr import Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, Resignation
+from app.models.hr import Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, LeaveRecord, Resignation
 from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
@@ -251,6 +251,20 @@ def generate_monthly_payroll(
         if exists:
             continue
 
+        # Auto-calculate leave/absence days for this month
+        leave_records = db.query(LeaveRecord).filter(
+            LeaveRecord.employee_id == emp.id,
+            LeaveRecord.month == month,
+        ).all()
+        unpaid_absence_days = sum(lr.days for lr in leave_records if not lr.is_paid)
+        paid_leave_days = sum(lr.days for lr in leave_records if lr.is_paid)
+        total_leave_days = unpaid_absence_days + paid_leave_days
+        actual_days_worked = max(0, total_days - total_leave_days)
+
+        # Calculate absence deduction (only for unpaid leaves)
+        per_day = emp.actual_salary / total_days if total_days > 0 else 0
+        absence_ded = round(per_day * unpaid_absence_days, 3)
+
         # Auto-calculate loan deduction from active loans with matching deduction_month
         active_loans = db.query(AdvanceLoan).filter(
             AdvanceLoan.employee_id == emp.id,
@@ -260,22 +274,22 @@ def generate_monthly_payroll(
         loan_ded = sum(l.monthly_deduction for l in active_loans)
 
         # Auto-calculate benefits from StaffBenefitDeduction for this month
-        benefits = db.query(StaffBenefitDeduction).filter(
+        ben_deds = db.query(StaffBenefitDeduction).filter(
             StaffBenefitDeduction.employee_id == emp.id,
             StaffBenefitDeduction.month == month,
         ).all()
-        incentive_total = sum(b.amount for b in benefits if b.category == "incentive")
-        bonus_total = sum(b.amount for b in benefits if b.category == "bonus")
-        leave_salary_total = sum(b.amount for b in benefits if b.category == "leave_salary")
-        ticket_total = sum(b.amount for b in benefits if b.category == "ticket")
-        overtime_total = sum(b.amount for b in benefits if b.category == "overtime")
+        incentive_total = sum(b.amount for b in ben_deds if b.category == "incentive")
+        bonus_total = sum(b.amount for b in ben_deds if b.category == "bonus")
+        leave_salary_total = sum(b.amount for b in ben_deds if b.category == "leave_salary")
+        ticket_total = sum(b.amount for b in ben_deds if b.category == "ticket")
+        overtime_total = sum(b.amount for b in ben_deds if b.category == "overtime")
 
         # Auto-calculate deductions from StaffBenefitDeduction for this month
-        penalty_total = sum(b.amount for b in benefits if b.category in ("fine", "penalty"))
-        other_ded_total = sum(b.amount for b in benefits if b.category == "other_deduction")
+        penalty_total = sum(b.amount for b in ben_deds if b.category in ("fine", "penalty"))
+        other_ded_total = sum(b.amount for b in ben_deds if b.category == "other_deduction")
 
         total_allowances = incentive_total + bonus_total + leave_salary_total + ticket_total + overtime_total
-        total_deductions = loan_ded + penalty_total + other_ded_total
+        total_deductions = absence_ded + loan_ded + penalty_total + other_ded_total
         net = emp.actual_salary + total_allowances - total_deductions
 
         sp = SalaryPayment(
@@ -284,14 +298,14 @@ def generate_monthly_payroll(
             month=month,
             basic_salary=emp.actual_salary,
             total_days=total_days,
-            days_worked=total_days,
+            days_worked=actual_days_worked,
             period_start=date(year, mon, 1),
             period_end=date(year, mon, last_day),
             last_workplace="",
             housing_allowance=0, transport_allowance=0,
             food_allowance=0, other_allowance=0,
             allowances=total_allowances,
-            absence_deduction=0, late_deduction=0,
+            absence_deduction=absence_ded, late_deduction=0,
             other_deduction=other_ded_total,
             deductions=total_deductions,
             advance=0,
@@ -642,6 +656,76 @@ def create_benefit_deduction(
     db.commit()
     db.refresh(bd)
     return bd
+
+
+# --- Leave / Absence Records ---
+@router.get("/leaves")
+def list_leaves(employee_id: Optional[int] = None, month: Optional[str] = None,
+                db: Session = Depends(get_db), _=Depends(get_current_user)):
+    q = db.query(LeaveRecord)
+    if employee_id:
+        q = q.filter(LeaveRecord.employee_id == employee_id)
+    if month:
+        q = q.filter(LeaveRecord.month == month)
+    rows = q.order_by(LeaveRecord.start_date.desc()).all()
+    return [
+        {
+            "id": r.id, "employee_id": r.employee_id,
+            "leave_type": r.leave_type, "start_date": str(r.start_date),
+            "end_date": str(r.end_date), "days": r.days,
+            "is_paid": r.is_paid, "month": r.month or "",
+            "notes": r.notes or "",
+        }
+        for r in rows
+    ]
+
+
+@router.post("/leaves")
+def create_leave(
+    employee_id: int = Form(...),
+    leave_type: str = Form(...),
+    start_date: str = Form(...),
+    end_date: str = Form(...),
+    is_paid: bool = Form(False),
+    month: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    sd = date.fromisoformat(start_date)
+    ed = date.fromisoformat(end_date)
+    days = (ed - sd).days + 1
+    if days < 1:
+        raise HTTPException(400, "End date must be after start date")
+    rec = LeaveRecord(
+        employee_id=employee_id,
+        leave_type=leave_type,
+        start_date=sd,
+        end_date=ed,
+        days=days,
+        is_paid=is_paid,
+        month=month or None,
+        notes=notes,
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return {"id": rec.id, "days": rec.days, "message": f"Leave recorded: {days} days"}
+
+
+@router.delete("/leaves/{leave_id}")
+def delete_leave(leave_id: int, db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    rec = db.query(LeaveRecord).filter(LeaveRecord.id == leave_id).first()
+    if not rec:
+        raise HTTPException(404, "Leave record not found")
+    db.delete(rec)
+    db.commit()
+    return {"message": "Deleted"}
 
 
 # --- Resignations ---

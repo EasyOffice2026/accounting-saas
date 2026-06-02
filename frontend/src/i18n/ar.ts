@@ -429,4 +429,13 @@ export default {
   deductions_label: "الخصومات",
   employee_information: "معلومات الموظف",
   print: "طباعة",
+  leaves_absences: "الإجازات / الغياب",
+  leave_type: "نوع الإجازة",
+  annual_leave: "إجازة سنوية",
+  sick_leave: "إجازة مرضية",
+  paid_leave: "إجازة مدفوعة",
+  paid_unpaid: "مدفوعة / غير مدفوعة",
+  add_leave: "إضافة إجازة / غياب",
+  unpaid: "غير مدفوعة",
+  days: "أيام",
 };

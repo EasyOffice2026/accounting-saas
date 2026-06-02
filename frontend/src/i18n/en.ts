@@ -430,4 +430,13 @@ export default {
   deductions_label: "Deductions",
   employee_information: "Employee Information",
   print: "Print",
+  leaves_absences: "Leaves / Absences",
+  leave_type: "Leave Type",
+  annual_leave: "Annual Leave",
+  sick_leave: "Sick Leave",
+  paid_leave: "Paid Leave",
+  paid_unpaid: "Paid / Unpaid",
+  add_leave: "Add Leave / Absence",
+  unpaid: "Unpaid",
+  days: "Days",
 };

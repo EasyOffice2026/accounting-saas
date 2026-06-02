@@ -59,7 +59,13 @@ interface ResignationRecord {
   status: string; created_at: string;
 }
 
-type Tab = "employees" | "salary" | "transfers" | "loans" | "benefits" | "deductions" | "resignation";
+interface LeaveRec {
+  id: number; employee_id: number; leave_type: string;
+  start_date: string; end_date: string; days: number;
+  is_paid: boolean; month: string; notes: string;
+}
+
+type Tab = "employees" | "salary" | "transfers" | "loans" | "benefits" | "deductions" | "leaves" | "resignation";
 
 export default function HRPage() {
   const { t } = useTranslation();
@@ -124,6 +130,10 @@ export default function HRPage() {
   const [deductionItems, setDeductionItems] = useState<BenefitDeduction[]>([]);
   const [showDeductionForm, setShowDeductionForm] = useState(false);
 
+  // Leave/Absence state
+  const [leaveRecords, setLeaveRecords] = useState<LeaveRec[]>([]);
+  const [showLeaveForm, setShowLeaveForm] = useState(false);
+
   // Resignation state
   const [resignations, setResignations] = useState<ResignationRecord[]>([]);
   const [showResignationForm, setShowResignationForm] = useState(false);
@@ -148,6 +158,7 @@ export default function HRPage() {
     if (tab === "deductions") apiGet("/api/hr/benefits-deductions").then((data: BenefitDeduction[]) => {
       setDeductionItems(data.filter(d => ["fine", "penalty", "other_deduction"].includes(d.category)));
     });
+    if (tab === "leaves") apiGet("/api/hr/leaves").then(setLeaveRecords);
     if (tab === "resignation") apiGet("/api/hr/resignations").then(setResignations);
   }, [tab, salaryMonth]);
 
@@ -473,8 +484,8 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ت�
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
-        {(["employees", "salary", "transfers", "loans", "benefits", "deductions", "resignation"] as Tab[]).map(tb => {
-          const label = tb === "benefits" ? "benefits_tab" : tb === "deductions" ? "deductions_tab" : tb === "loans" ? "advance_loan" : tb === "transfers" ? "staff_transfers" : tb;
+        {(["employees", "salary", "transfers", "loans", "benefits", "deductions", "leaves", "resignation"] as Tab[]).map(tb => {
+          const label = tb === "benefits" ? "benefits_tab" : tb === "deductions" ? "deductions_tab" : tb === "loans" ? "advance_loan" : tb === "transfers" ? "staff_transfers" : tb === "leaves" ? "leaves_absences" : tb;
           return (
             <button key={tb} onClick={() => setTab(tb)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
@@ -1390,6 +1401,128 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ت�
                     <td className="px-4 py-3 text-xs text-gray-500">{d.notes || "—"}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Leave / Absence Tab */}
+      {tab === "leaves" && (
+        <div>
+          {isManager && (
+            <button onClick={() => setShowLeaveForm(!showLeaveForm)}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
+              {showLeaveForm ? t("cancel") : t("add_leave")}
+            </button>
+          )}
+
+          {showLeaveForm && (
+            <form className="bg-white rounded-xl shadow p-4 mb-4 grid grid-cols-2 md:grid-cols-3 gap-3"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.currentTarget);
+                await apiPost("/api/hr/leaves", fd);
+                setShowLeaveForm(false);
+                apiGet("/api/hr/leaves").then(setLeaveRecords);
+              }}>
+              <div>
+                <label className="block text-xs mb-1">{t("employee")}</label>
+                <select name="employee_id" required className="w-full border rounded px-2 py-1.5 text-sm">
+                  <option value="">{t("select")}</option>
+                  {employees.map(em => (
+                    <option key={em.id} value={em.id}>{em.staff_no ? `${em.staff_no} - ` : ""}{em.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs mb-1">{t("leave_type")}</label>
+                <select name="leave_type" required className="w-full border rounded px-2 py-1.5 text-sm">
+                  <option value="absent">{t("absent")}</option>
+                  <option value="annual_leave">{t("annual_leave")}</option>
+                  <option value="sick_leave">{t("sick_leave")}</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs mb-1">{t("start_date")}</label>
+                <input type="date" name="start_date" required className="w-full border rounded px-2 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs mb-1">{t("end_date")}</label>
+                <input type="date" name="end_date" required className="w-full border rounded px-2 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs mb-1">{t("salary_month")}</label>
+                <input type="month" name="month" className="w-full border rounded px-2 py-1.5 text-sm" />
+              </div>
+              <div className="flex items-center gap-2 pt-5">
+                <input type="checkbox" name="is_paid" id="is_paid_check" value="true" className="rounded" />
+                <label htmlFor="is_paid_check" className="text-sm">{t("paid_leave")}</label>
+              </div>
+              <div className="col-span-full">
+                <label className="block text-xs mb-1">{t("notes")}</label>
+                <input type="text" name="notes" className="w-full border rounded px-2 py-1.5 text-sm" />
+              </div>
+              <div>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                  {t("save")}
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div className="bg-white rounded-xl shadow overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left">{t("staff_no")}</th>
+                  <th className="px-4 py-3 text-left">{t("name")}</th>
+                  <th className="px-4 py-3 text-left">{t("leave_type")}</th>
+                  <th className="px-4 py-3 text-left">{t("start_date")}</th>
+                  <th className="px-4 py-3 text-left">{t("end_date")}</th>
+                  <th className="px-4 py-3 text-right">{t("days")}</th>
+                  <th className="px-4 py-3 text-left">{t("paid_unpaid")}</th>
+                  <th className="px-4 py-3 text-left">{t("salary_month")}</th>
+                  <th className="px-4 py-3 text-left">{t("notes")}</th>
+                  {isManager && <th className="px-4 py-3">{t("actions")}</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {leaveRecords.map(lr => {
+                  const empStaff = employees.find(e => e.id === lr.employee_id);
+                  const leaveLabel = lr.leave_type === "annual_leave" ? t("annual_leave")
+                    : lr.leave_type === "sick_leave" ? t("sick_leave") : t("absent");
+                  const typeColor = lr.leave_type === "sick_leave" ? "bg-orange-100 text-orange-700"
+                    : lr.leave_type === "annual_leave" ? "bg-blue-100 text-blue-700"
+                    : "bg-red-100 text-red-700";
+                  return (
+                    <tr key={lr.id} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-3">{empStaff?.staff_no || "—"}</td>
+                      <td className="px-4 py-3">{empStaff?.name || "—"}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${typeColor}`}>{leaveLabel}</span>
+                      </td>
+                      <td className="px-4 py-3">{lr.start_date}</td>
+                      <td className="px-4 py-3">{lr.end_date}</td>
+                      <td className="px-4 py-3 text-right font-mono">{lr.days}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${lr.is_paid ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                          {lr.is_paid ? t("paid") : t("unpaid")}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">{lr.month || "—"}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{lr.notes || "—"}</td>
+                      {isManager && (
+                        <td className="px-4 py-3">
+                          <button onClick={async () => {
+                            await apiFetch(`/api/hr/leaves/${lr.id}`, { method: "DELETE" });
+                            apiGet("/api/hr/leaves").then(setLeaveRecords);
+                          }} className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

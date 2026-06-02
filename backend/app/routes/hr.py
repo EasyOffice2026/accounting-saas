@@ -243,25 +243,27 @@ def generate_monthly_payroll(
         Employee.actual_salary > 0,
     ).all()
     created = 0
+    updated = 0
     for emp in employees:
-        exists = db.query(SalaryPayment).filter(
+        existing = db.query(SalaryPayment).filter(
             SalaryPayment.employee_id == emp.id,
             SalaryPayment.month == month,
         ).first()
-        if exists:
+        # Skip already-paid records
+        if existing and existing.status == "paid":
             continue
 
         # Auto-calculate leave/absence days for this month
-        leave_records = db.query(LeaveRecord).filter(
+        leave_recs = db.query(LeaveRecord).filter(
             LeaveRecord.employee_id == emp.id,
             LeaveRecord.month == month,
         ).all()
-        unpaid_absence_days = sum(lr.days for lr in leave_records if not lr.is_paid)
-        paid_leave_days = sum(lr.days for lr in leave_records if lr.is_paid)
+        unpaid_absence_days = sum(lr.days for lr in leave_recs if not lr.is_paid)
+        paid_leave_days = sum(lr.days for lr in leave_recs if lr.is_paid)
         total_leave_days = unpaid_absence_days + paid_leave_days
         actual_days_worked = max(0, total_days - total_leave_days)
 
-        # Calculate absence deduction (only for unpaid leaves)
+        # Absence deduction (only for unpaid leaves)
         per_day = emp.actual_salary / total_days if total_days > 0 else 0
         absence_ded = round(per_day * unpaid_absence_days, 3)
 
@@ -292,38 +294,58 @@ def generate_monthly_payroll(
         total_deductions = absence_ded + loan_ded + penalty_total + other_ded_total
         net = emp.actual_salary + total_allowances - total_deductions
 
-        sp = SalaryPayment(
-            employee_id=emp.id,
-            branch_id=emp.branch_id,
-            month=month,
-            basic_salary=emp.actual_salary,
-            total_days=total_days,
-            days_worked=actual_days_worked,
-            period_start=date(year, mon, 1),
-            period_end=date(year, mon, last_day),
-            last_workplace="",
-            housing_allowance=0, transport_allowance=0,
-            food_allowance=0, other_allowance=0,
-            allowances=total_allowances,
-            absence_deduction=absence_ded, late_deduction=0,
-            other_deduction=other_ded_total,
-            deductions=total_deductions,
-            advance=0,
-            overtime=overtime_total,
-            bonus=bonus_total,
-            incentive=incentive_total,
-            leave_salary=leave_salary_total,
-            ticket_payment=ticket_total,
-            loan_deduction=loan_ded,
-            penalty=penalty_total,
-            net_salary=net,
-            payment_method=emp.salary_transfer_method or "cash",
-            status="pending",
-        )
-        db.add(sp)
-        created += 1
+        if existing:
+            # Update existing pending record with latest calculations
+            sp = existing
+            sp.basic_salary = emp.actual_salary
+            sp.days_worked = actual_days_worked
+            sp.allowances = total_allowances
+            sp.absence_deduction = absence_ded
+            sp.other_deduction = other_ded_total
+            sp.deductions = total_deductions
+            sp.overtime = overtime_total
+            sp.bonus = bonus_total
+            sp.incentive = incentive_total
+            sp.leave_salary = leave_salary_total
+            sp.ticket_payment = ticket_total
+            sp.loan_deduction = loan_ded
+            sp.penalty = penalty_total
+            sp.net_salary = net
+            sp.payment_method = emp.salary_transfer_method or "cash"
+            updated += 1
+        else:
+            sp = SalaryPayment(
+                employee_id=emp.id,
+                branch_id=emp.branch_id,
+                month=month,
+                basic_salary=emp.actual_salary,
+                total_days=total_days,
+                days_worked=actual_days_worked,
+                period_start=date(year, mon, 1),
+                period_end=date(year, mon, last_day),
+                last_workplace="",
+                housing_allowance=0, transport_allowance=0,
+                food_allowance=0, other_allowance=0,
+                allowances=total_allowances,
+                absence_deduction=absence_ded, late_deduction=0,
+                other_deduction=other_ded_total,
+                deductions=total_deductions,
+                advance=0,
+                overtime=overtime_total,
+                bonus=bonus_total,
+                incentive=incentive_total,
+                leave_salary=leave_salary_total,
+                ticket_payment=ticket_total,
+                loan_deduction=loan_ded,
+                penalty=penalty_total,
+                net_salary=net,
+                payment_method=emp.salary_transfer_method or "cash",
+                status="pending",
+            )
+            db.add(sp)
+            created += 1
     db.commit()
-    return {"message": f"Generated {created} salary records for {month}"}
+    return {"message": f"Generated {created} new, updated {updated} existing salary records for {month}"}
 
 
 @router.put("/salary/{payment_id}")

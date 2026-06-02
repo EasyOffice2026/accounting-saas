@@ -29,6 +29,7 @@ export default {
   view: "View",
   edit: "Edit",
   delete: "Delete",
+  update: "Update",
   all_branches: "All Branches",
   foodics_data: "Foodics Data",
   physical_data: "Physical Data",

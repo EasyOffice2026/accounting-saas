@@ -121,18 +121,22 @@ export default function HRPage() {
   // Loan state
   const [loans, setLoans] = useState<Loan[]>([]);
   const [showLoanForm, setShowLoanForm] = useState(false);
+  const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
 
   // Benefits state (incentive, bonus, leave_salary, ticket)
   const [benefits, setBenefits] = useState<BenefitDeduction[]>([]);
   const [showBenefitForm, setShowBenefitForm] = useState(false);
+  const [editingBenefit, setEditingBenefit] = useState<BenefitDeduction | null>(null);
 
   // Deductions state (fine, penalty)
   const [deductionItems, setDeductionItems] = useState<BenefitDeduction[]>([]);
   const [showDeductionForm, setShowDeductionForm] = useState(false);
+  const [editingDeduction, setEditingDeduction] = useState<BenefitDeduction | null>(null);
 
   // Leave/Absence state
   const [leaveRecords, setLeaveRecords] = useState<LeaveRec[]>([]);
   const [showLeaveForm, setShowLeaveForm] = useState(false);
+  const [editingLeave, setEditingLeave] = useState<LeaveRec | null>(null);
 
   // Resignation state
   const [resignations, setResignations] = useState<ResignationRecord[]>([]);
@@ -437,31 +441,72 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
   const handleLoanSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    await apiPost("/api/hr/loans", fd);
+    if (editingLoan) {
+      await apiFetch(`/api/hr/loans/${editingLoan.id}`, { method: "PUT", body: fd });
+      setEditingLoan(null);
+    } else {
+      await apiPost("/api/hr/loans", fd);
+    }
     setShowLoanForm(false);
     apiGet("/api/hr/loans").then(setLoans);
   };
 
+  const handleDeleteLoan = async (id: number) => {
+    if (!confirm(t("confirm_delete"))) return;
+    await apiFetch(`/api/hr/loans/${id}`, { method: "DELETE" });
+    apiGet("/api/hr/loans").then(setLoans);
+  };
+
   // Benefit handlers
-  const handleBenefitSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    await apiPost("/api/hr/benefits-deductions", fd);
-    setShowBenefitForm(false);
+  const loadBenefits = () => {
     apiGet("/api/hr/benefits-deductions").then((data: BenefitDeduction[]) => {
       setBenefits(data.filter(d => ["incentive", "bonus", "leave_salary", "ticket", "other_benefit"].includes(d.category)));
     });
   };
 
-  // Deduction handlers
-  const handleDeductionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleBenefitSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    await apiPost("/api/hr/benefits-deductions", fd);
-    setShowDeductionForm(false);
+    if (editingBenefit) {
+      await apiFetch(`/api/hr/benefits-deductions/${editingBenefit.id}`, { method: "PUT", body: fd });
+      setEditingBenefit(null);
+    } else {
+      await apiPost("/api/hr/benefits-deductions", fd);
+    }
+    setShowBenefitForm(false);
+    loadBenefits();
+  };
+
+  const handleDeleteBenefit = async (id: number) => {
+    if (!confirm(t("confirm_delete"))) return;
+    await apiFetch(`/api/hr/benefits-deductions/${id}`, { method: "DELETE" });
+    loadBenefits();
+  };
+
+  // Deduction handlers
+  const loadDeductions = () => {
     apiGet("/api/hr/benefits-deductions").then((data: BenefitDeduction[]) => {
       setDeductionItems(data.filter(d => ["fine", "penalty", "other_deduction"].includes(d.category)));
     });
+  };
+
+  const handleDeductionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    if (editingDeduction) {
+      await apiFetch(`/api/hr/benefits-deductions/${editingDeduction.id}`, { method: "PUT", body: fd });
+      setEditingDeduction(null);
+    } else {
+      await apiPost("/api/hr/benefits-deductions", fd);
+    }
+    setShowDeductionForm(false);
+    loadDeductions();
+  };
+
+  const handleDeleteDeduction = async (id: number) => {
+    if (!confirm(t("confirm_delete"))) return;
+    await apiFetch(`/api/hr/benefits-deductions/${id}`, { method: "DELETE" });
+    loadDeductions();
   };
 
   return (
@@ -1134,7 +1179,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
       {tab === "loans" && (
         <div>
           {isManager && (
-            <button onClick={() => setShowLoanForm(!showLoanForm)}
+            <button onClick={() => { setShowLoanForm(!showLoanForm); setEditingLoan(null); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
               {showLoanForm ? t("cancel") : t("add_new")}
             </button>
@@ -1145,43 +1190,58 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("employee")}</label>
-                  <select name="employee_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="employee_id" required defaultValue={editingLoan?.employee_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select_employee")}</option>
                     {employees.map(e => <option key={e.id} value={e.id}>{e.staff_no ? `${e.staff_no} - ` : ""}{e.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("loan_type_label")}</label>
-                  <select name="loan_type" className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="loan_type" defaultValue={editingLoan?.loan_type || "advance"} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="advance">{t("advance")}</option>
                     <option value="loan">{t("loan_label")}</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("amount")}</label>
-                  <input type="number" step="0.001" name="amount" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="number" step="0.001" name="amount" required defaultValue={editingLoan?.amount || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
+                {editingLoan && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("balance")}</label>
+                    <input type="number" step="0.001" name="balance" required defaultValue={editingLoan.balance} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("monthly_deduction")}</label>
-                  <input type="number" step="0.001" name="monthly_deduction" defaultValue="0" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="number" step="0.001" name="monthly_deduction" defaultValue={editingLoan?.monthly_deduction || 0} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
-                  <input type="date" name="loan_date" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="date" name="loan_date" required defaultValue={editingLoan?.date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("salary_month")} ({t("for_deduction")})</label>
-                  <input type="month" name="deduction_month" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="month" name="deduction_month" defaultValue={editingLoan?.deduction_month || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                   <p className="text-xs text-gray-400 mt-1">{t("no_month_no_deduction")}</p>
                 </div>
+                {editingLoan && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("status")}</label>
+                    <select name="status" defaultValue={editingLoan.status} className="w-full px-3 py-2 border rounded-lg text-sm">
+                      <option value="active">{t("active")}</option>
+                      <option value="paid_off">{t("paid")}</option>
+                    </select>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">{t("notes")}</label>
-                <textarea name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+                <textarea name="notes" defaultValue={editingLoan?.notes || ""} className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
               </div>
               <button type="submit"
                 className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
-                {t("save")}
+                {editingLoan ? t("update") : t("save")}
               </button>
             </form>
           )}
@@ -1199,11 +1259,12 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                   <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("date")}</th>
                   <th className="px-4 py-3 text-left">{t("status")}</th>
+                  {isManager && <th className="px-4 py-3">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {loans.length === 0 ? (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : loans.map(l => (
                   <tr key={l.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(l.employee_id) || "â€”"}</td>
@@ -1219,6 +1280,14 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                         l.status === "paid_off" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
                       }`}>{l.status === "paid_off" ? t("paid") : t("active")}</span>
                     </td>
+                    {isManager && (
+                      <td className="px-4 py-3 space-x-2">
+                        <button onClick={() => { setEditingLoan(l); setShowLoanForm(true); }}
+                          className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
+                        <button onClick={() => handleDeleteLoan(l.id)}
+                          className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -1231,7 +1300,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
       {tab === "benefits" && (
         <div>
           {isManager && (
-            <button onClick={() => setShowBenefitForm(!showBenefitForm)}
+            <button onClick={() => { setShowBenefitForm(!showBenefitForm); setEditingBenefit(null); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
               {showBenefitForm ? t("cancel") : t("add_new")}
             </button>
@@ -1242,14 +1311,14 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("employee")}</label>
-                  <select name="employee_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="employee_id" required defaultValue={editingBenefit?.employee_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select_employee")}</option>
                     {employees.map(e => <option key={e.id} value={e.id}>{e.staff_no ? `${e.staff_no} - ` : ""}{e.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("category")}</label>
-                  <select name="category" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="category" required defaultValue={editingBenefit?.category || "incentive"} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="incentive">{t("incentive_label")}</option>
                     <option value="bonus">{t("bonus_label")}</option>
                     <option value="leave_salary">{t("leave_salary_label")}</option>
@@ -1259,24 +1328,24 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("amount")}</label>
-                  <input type="number" step="0.001" name="amount" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="number" step="0.001" name="amount" required defaultValue={editingBenefit?.amount || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
-                  <input type="date" name="bd_date" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="date" name="bd_date" required defaultValue={editingBenefit?.date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("salary_month")}</label>
-                  <input type="month" name="month" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="month" name="month" defaultValue={editingBenefit?.month || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">{t("notes")}</label>
-                <textarea name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+                <textarea name="notes" defaultValue={editingBenefit?.notes || ""} className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
               </div>
               <button type="submit"
                 className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
-                {t("save")}
+                {editingBenefit ? t("update") : t("save")}
               </button>
             </form>
           )}
@@ -1292,11 +1361,12 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                   <th className="px-4 py-3 text-left">{t("date")}</th>
                   <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("notes")}</th>
+                  {isManager && <th className="px-4 py-3">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {benefits.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : benefits.map(b => (
                   <tr key={b.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(b.employee_id) || "â€”"}</td>
@@ -1310,6 +1380,14 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                     <td className="px-4 py-3">{b.date}</td>
                     <td className="px-4 py-3">{b.month || "â€”"}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{b.notes || "â€”"}</td>
+                    {isManager && (
+                      <td className="px-4 py-3 space-x-2">
+                        <button onClick={() => { setEditingBenefit(b); setShowBenefitForm(true); }}
+                          className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
+                        <button onClick={() => handleDeleteBenefit(b.id)}
+                          className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -1322,7 +1400,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
       {tab === "deductions" && (
         <div>
           {isManager && (
-            <button onClick={() => setShowDeductionForm(!showDeductionForm)}
+            <button onClick={() => { setShowDeductionForm(!showDeductionForm); setEditingDeduction(null); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
               {showDeductionForm ? t("cancel") : t("add_new")}
             </button>
@@ -1333,14 +1411,14 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("employee")}</label>
-                  <select name="employee_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="employee_id" required defaultValue={editingDeduction?.employee_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select_employee")}</option>
                     {employees.map(e => <option key={e.id} value={e.id}>{e.staff_no ? `${e.staff_no} - ` : ""}{e.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("category")}</label>
-                  <select name="category" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="category" required defaultValue={editingDeduction?.category || "fine"} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="fine">{t("fine_label")}</option>
                     <option value="penalty">{t("penalty_label")}</option>
                     <option value="other_deduction">{t("other_deduction")}</option>
@@ -1348,24 +1426,24 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("amount")}</label>
-                  <input type="number" step="0.001" name="amount" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="number" step="0.001" name="amount" required defaultValue={editingDeduction?.amount || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
-                  <input type="date" name="bd_date" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="date" name="bd_date" required defaultValue={editingDeduction?.date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("salary_month")}</label>
-                  <input type="month" name="month" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="month" name="month" defaultValue={editingDeduction?.month || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">{t("notes")}</label>
-                <textarea name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+                <textarea name="notes" defaultValue={editingDeduction?.notes || ""} className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
               </div>
               <button type="submit"
                 className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">
-                {t("save")}
+                {editingDeduction ? t("update") : t("save")}
               </button>
             </form>
           )}
@@ -1381,11 +1459,12 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                   <th className="px-4 py-3 text-left">{t("date")}</th>
                   <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("notes")}</th>
+                  {isManager && <th className="px-4 py-3">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {deductionItems.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : deductionItems.map(d => (
                   <tr key={d.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(d.employee_id) || "â€”"}</td>
@@ -1399,6 +1478,14 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                     <td className="px-4 py-3">{d.date}</td>
                     <td className="px-4 py-3">{d.month || "â€”"}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{d.notes || "â€”"}</td>
+                    {isManager && (
+                      <td className="px-4 py-3 space-x-2">
+                        <button onClick={() => { setEditingDeduction(d); setShowDeductionForm(true); }}
+                          className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
+                        <button onClick={() => handleDeleteDeduction(d.id)}
+                          className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -1411,7 +1498,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
       {tab === "leaves" && (
         <div>
           {isManager && (
-            <button onClick={() => setShowLeaveForm(!showLeaveForm)}
+            <button onClick={() => { setShowLeaveForm(!showLeaveForm); setEditingLeave(null); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
               {showLeaveForm ? t("cancel") : t("add_leave")}
             </button>
@@ -1422,13 +1509,18 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
               onSubmit={async (e) => {
                 e.preventDefault();
                 const fd = new FormData(e.currentTarget);
-                await apiPost("/api/hr/leaves", fd);
+                if (editingLeave) {
+                  await apiFetch(`/api/hr/leaves/${editingLeave.id}`, { method: "PUT", body: fd });
+                  setEditingLeave(null);
+                } else {
+                  await apiPost("/api/hr/leaves", fd);
+                }
                 setShowLeaveForm(false);
                 apiGet("/api/hr/leaves").then(setLeaveRecords);
               }}>
               <div>
                 <label className="block text-xs mb-1">{t("employee")}</label>
-                <select name="employee_id" required className="w-full border rounded px-2 py-1.5 text-sm">
+                <select name="employee_id" required defaultValue={editingLeave?.employee_id || ""} className="w-full border rounded px-2 py-1.5 text-sm">
                   <option value="">{t("select")}</option>
                   {employees.map(em => (
                     <option key={em.id} value={em.id}>{em.staff_no ? `${em.staff_no} - ` : ""}{em.name}</option>
@@ -1437,7 +1529,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
               </div>
               <div>
                 <label className="block text-xs mb-1">{t("leave_type")}</label>
-                <select name="leave_type" required className="w-full border rounded px-2 py-1.5 text-sm">
+                <select name="leave_type" required defaultValue={editingLeave?.leave_type || "absent"} className="w-full border rounded px-2 py-1.5 text-sm">
                   <option value="absent">{t("absent")}</option>
                   <option value="annual_leave">{t("annual_leave")}</option>
                   <option value="sick_leave">{t("sick_leave")}</option>
@@ -1445,27 +1537,27 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
               </div>
               <div>
                 <label className="block text-xs mb-1">{t("start_date")}</label>
-                <input type="date" name="start_date" required className="w-full border rounded px-2 py-1.5 text-sm" />
+                <input type="date" name="start_date" required defaultValue={editingLeave?.start_date || ""} className="w-full border rounded px-2 py-1.5 text-sm" />
               </div>
               <div>
                 <label className="block text-xs mb-1">{t("end_date")}</label>
-                <input type="date" name="end_date" required className="w-full border rounded px-2 py-1.5 text-sm" />
+                <input type="date" name="end_date" required defaultValue={editingLeave?.end_date || ""} className="w-full border rounded px-2 py-1.5 text-sm" />
               </div>
               <div>
                 <label className="block text-xs mb-1">{t("salary_month")}</label>
-                <input type="month" name="month" className="w-full border rounded px-2 py-1.5 text-sm" />
+                <input type="month" name="month" defaultValue={editingLeave?.month || ""} className="w-full border rounded px-2 py-1.5 text-sm" />
               </div>
               <div className="flex items-center gap-2 pt-5">
-                <input type="checkbox" name="is_paid" id="is_paid_check" value="true" className="rounded" />
+                <input type="checkbox" name="is_paid" id="is_paid_check" value="true" defaultChecked={editingLeave?.is_paid || false} className="rounded" />
                 <label htmlFor="is_paid_check" className="text-sm">{t("paid_leave")}</label>
               </div>
               <div className="col-span-full">
                 <label className="block text-xs mb-1">{t("notes")}</label>
-                <input type="text" name="notes" className="w-full border rounded px-2 py-1.5 text-sm" />
+                <input type="text" name="notes" defaultValue={editingLeave?.notes || ""} className="w-full border rounded px-2 py-1.5 text-sm" />
               </div>
               <div>
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
-                  {t("save")}
+                  {editingLeave ? t("update") : t("save")}
                 </button>
               </div>
             </form>
@@ -1513,8 +1605,11 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                       <td className="px-4 py-3">{lr.month || "â€”"}</td>
                       <td className="px-4 py-3 text-xs text-gray-500">{lr.notes || "â€”"}</td>
                       {isManager && (
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 space-x-2">
+                          <button onClick={() => { setEditingLeave(lr); setShowLeaveForm(true); }}
+                            className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
                           <button onClick={async () => {
+                            if (!confirm(t("confirm_delete"))) return;
                             await apiFetch(`/api/hr/leaves/${lr.id}`, { method: "DELETE" });
                             apiGet("/api/hr/leaves").then(setLeaveRecords);
                           }} className="text-red-600 hover:underline text-xs">{t("delete")}</button>

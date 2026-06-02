@@ -641,6 +641,52 @@ def create_loan(
     return loan
 
 
+@router.put("/loans/{loan_id}")
+def update_loan(
+    loan_id: int,
+    employee_id: int = Form(...),
+    loan_type: str = Form("advance"),
+    amount: float = Form(...),
+    balance: float = Form(...),
+    monthly_deduction: float = Form(0),
+    deduction_month: str = Form(""),
+    loan_date: str = Form(...),
+    notes: str = Form(""),
+    status: str = Form("active"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    loan = db.query(AdvanceLoan).filter(AdvanceLoan.id == loan_id).first()
+    if not loan:
+        raise HTTPException(404, "Loan not found")
+    loan.employee_id = employee_id
+    loan.loan_type = loan_type
+    loan.amount = amount
+    loan.balance = balance
+    loan.monthly_deduction = monthly_deduction
+    loan.deduction_month = deduction_month or None
+    loan.date = date.fromisoformat(loan_date)
+    loan.notes = notes
+    loan.status = status
+    db.commit()
+    return {"message": "Updated"}
+
+
+@router.delete("/loans/{loan_id}")
+def delete_loan(loan_id: int, db: Session = Depends(get_db),
+                user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    loan = db.query(AdvanceLoan).filter(AdvanceLoan.id == loan_id).first()
+    if not loan:
+        raise HTTPException(404, "Loan not found")
+    db.delete(loan)
+    db.commit()
+    return {"message": "Deleted"}
+
+
 # --- Benefits & Deductions ---
 @router.get("/benefits-deductions")
 def list_benefits_deductions(employee_id: Optional[int] = None, month: Optional[str] = None,
@@ -678,6 +724,46 @@ def create_benefit_deduction(
     db.commit()
     db.refresh(bd)
     return bd
+
+
+@router.put("/benefits-deductions/{bd_id}")
+def update_benefit_deduction(
+    bd_id: int,
+    employee_id: int = Form(...),
+    category: str = Form(...),
+    amount: float = Form(...),
+    bd_date: str = Form(...),
+    month: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    bd = db.query(StaffBenefitDeduction).filter(StaffBenefitDeduction.id == bd_id).first()
+    if not bd:
+        raise HTTPException(404, "Record not found")
+    bd.employee_id = employee_id
+    bd.category = category
+    bd.amount = amount
+    bd.date = date.fromisoformat(bd_date)
+    bd.month = month or None
+    bd.notes = notes
+    db.commit()
+    return {"message": "Updated"}
+
+
+@router.delete("/benefits-deductions/{bd_id}")
+def delete_benefit_deduction(bd_id: int, db: Session = Depends(get_db),
+                             user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    bd = db.query(StaffBenefitDeduction).filter(StaffBenefitDeduction.id == bd_id).first()
+    if not bd:
+        raise HTTPException(404, "Record not found")
+    db.delete(bd)
+    db.commit()
+    return {"message": "Deleted"}
 
 
 # --- Leave / Absence Records ---
@@ -735,6 +821,41 @@ def create_leave(
     db.commit()
     db.refresh(rec)
     return {"id": rec.id, "days": rec.days, "message": f"Leave recorded: {days} days"}
+
+
+@router.put("/leaves/{leave_id}")
+def update_leave(
+    leave_id: int,
+    employee_id: int = Form(...),
+    leave_type: str = Form(...),
+    start_date: str = Form(...),
+    end_date: str = Form(...),
+    is_paid: bool = Form(False),
+    month: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    rec = db.query(LeaveRecord).filter(LeaveRecord.id == leave_id).first()
+    if not rec:
+        raise HTTPException(404, "Leave record not found")
+    sd = date.fromisoformat(start_date)
+    ed = date.fromisoformat(end_date)
+    days = (ed - sd).days + 1
+    if days < 1:
+        raise HTTPException(400, "End date must be after start date")
+    rec.employee_id = employee_id
+    rec.leave_type = leave_type
+    rec.start_date = sd
+    rec.end_date = ed
+    rec.days = days
+    rec.is_paid = is_paid
+    rec.month = month or None
+    rec.notes = notes
+    db.commit()
+    return {"message": "Updated"}
 
 
 @router.delete("/leaves/{leave_id}")

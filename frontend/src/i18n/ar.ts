@@ -29,6 +29,7 @@ export default {
   view: "عرض",
   edit: "تعديل",
   delete: "حذف",
+  update: "تحديث",
   all_branches: "جميع الفروع",
   foodics_data: "بيانات فودكس",
   physical_data: "البيانات الفعلية",

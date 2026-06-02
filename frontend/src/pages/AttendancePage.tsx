@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost } from "../contexts/api";
 
-interface Employee { id: number; name: string; branch_id: number; }
+interface Employee { id: number; name: string; name_ar: string; branch_id: number; }
 interface AttRecord { id: number; employee_id: number; date: string; check_in: string; check_out: string; status: string; }
 
 export default function AttendancePage() {
@@ -24,7 +24,7 @@ export default function AttendancePage() {
     apiGet("/api/hr/attendance").then(setRecords);
   };
 
-  const empName = (id: number) => employees.find(e => e.id === id)?.name || "";
+  const empName = (id: number) => { const e = employees.find(x => x.id === id); return e ? (e.name_ar || e.name) : ""; };
 
   const statusColor = (s: string) => {
     switch (s) {
@@ -51,7 +51,7 @@ export default function AttendancePage() {
             <div>
               <label className="block text-sm font-medium mb-1">{t("employees")}</label>
               <select name="employee_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
-                {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                {employees.map(e => <option key={e.id} value={e.id}>{e.name_ar || e.name}</option>)}
               </select>
             </div>
             <div>

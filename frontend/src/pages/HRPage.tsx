@@ -175,14 +175,18 @@ export default function HRPage() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    if (editingEmp) {
-      await apiFetch(`/api/hr/employees/${editingEmp.id}`, { method: "PUT", body: fd });
-    } else {
-      await apiPost("/api/hr/employees", fd);
-    }
-    setShowForm(false);
-    setEditingEmp(null);
-    apiGet("/api/hr/employees").then(setEmployees);
+    try {
+      if (editingEmp) {
+        const res = await apiFetch(`/api/hr/employees/${editingEmp.id}`, { method: "PUT", body: fd });
+        if (!res.ok) { const d = await res.json(); alert(d.detail || "Error"); return; }
+      } else {
+        const res = await apiFetch("/api/hr/employees", { method: "POST", body: fd });
+        if (!res.ok) { const d = await res.json(); alert(d.detail || "Error"); return; }
+      }
+      setShowForm(false);
+      setEditingEmp(null);
+      apiGet("/api/hr/employees").then(setEmployees);
+    } catch (err: unknown) { alert((err as Error).message); }
   };
 
   const startEditEmp = (emp: Employee) => {
@@ -191,7 +195,7 @@ export default function HRPage() {
   };
 
   const branchName = (id: number) => branches.find(b => b.id === id)?.name || "";
-  const empName = (id: number) => employees.find(e => e.id === id)?.name || "-";
+  const empName = (id: number) => { const e = employees.find(x => x.id === id); return e ? (e.name_ar || e.name) : "-"; };
   const empStaffNo = (id: number) => employees.find(e => e.id === id)?.staff_no || "";
 
   const showSalaryMsg = (text: string, type: "success" | "error") => {
@@ -554,10 +558,12 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
           {showForm && (
             <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {editingEmp && (
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("staff_no")}</label>
-                  <input name="staff_no" defaultValue={editingEmp?.staff_no || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input name="staff_no" readOnly value={editingEmp?.staff_no || ""} className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-100" />
                 </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("branch")}</label>
                   <select name="branch_id" required defaultValue={editingEmp?.branch_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
@@ -652,7 +658,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                 ) : employees.map(emp => (
                   <tr key={emp.id} className="border-b hover:bg-gray-50">
                     <td className="px-3 py-3">{emp.staff_no || "â€”"}</td>
-                    <td className="px-3 py-3">{emp.name}</td>
+                    <td className="px-3 py-3" dir="rtl">{emp.name_ar || emp.name}</td>
                     <td className="px-3 py-3">{branchName(emp.branch_id)}</td>
                     <td className="px-3 py-3">{emp.position}</td>
                     <td className="px-3 py-3">{emp.civil_id}</td>
@@ -1116,7 +1122,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                   <label className="block text-sm font-medium mb-1">{t("employee")}</label>
                   <select name="employee_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select_employee")}</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.staff_no ? `${e.staff_no} - ` : ""}{e.name}</option>)}
+                    {employees.map(e => <option key={e.id} value={e.id}>{e.name_ar || e.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1214,7 +1220,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                   <label className="block text-sm font-medium mb-1">{t("employee")}</label>
                   <select name="employee_id" required defaultValue={editingLoan?.employee_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select_employee")}</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.staff_no ? `${e.staff_no} - ` : ""}{e.name}</option>)}
+                    {employees.map(e => <option key={e.id} value={e.id}>{e.name_ar || e.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1335,7 +1341,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                   <label className="block text-sm font-medium mb-1">{t("employee")}</label>
                   <select name="employee_id" required defaultValue={editingBenefit?.employee_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select_employee")}</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.staff_no ? `${e.staff_no} - ` : ""}{e.name}</option>)}
+                    {employees.map(e => <option key={e.id} value={e.id}>{e.name_ar || e.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1435,7 +1441,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                   <label className="block text-sm font-medium mb-1">{t("employee")}</label>
                   <select name="employee_id" required defaultValue={editingDeduction?.employee_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select_employee")}</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.staff_no ? `${e.staff_no} - ` : ""}{e.name}</option>)}
+                    {employees.map(e => <option key={e.id} value={e.id}>{e.name_ar || e.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1545,7 +1551,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                 <select name="employee_id" required defaultValue={editingLeave?.employee_id || ""} className="w-full border rounded px-2 py-1.5 text-sm">
                   <option value="">{t("select")}</option>
                   {employees.map(em => (
-                    <option key={em.id} value={em.id}>{em.staff_no ? `${em.staff_no} - ` : ""}{em.name}</option>
+                    <option key={em.id} value={em.id}>{em.name_ar || em.name}</option>
                   ))}
                 </select>
               </div>
@@ -1612,7 +1618,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                   return (
                     <tr key={lr.id} className="border-b hover:bg-gray-50">
                       <td className="px-4 py-3">{empStaff?.staff_no || "â€”"}</td>
-                      <td className="px-4 py-3">{empStaff?.name || "â€”"}</td>
+                      <td className="px-4 py-3" dir="rtl">{empStaff?.name_ar || empStaff?.name || "â€”"}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${typeColor}`}>{leaveLabel}</span>
                       </td>
@@ -1666,7 +1672,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                   <select value={resEmpId || ""} onChange={e => setResEmpId(Number(e.target.value) || null)}
                     className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select_employee")}</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.staff_no ? `${e.staff_no} - ` : ""}{e.name}</option>)}
+                    {employees.map(e => <option key={e.id} value={e.id}>{e.name_ar || e.name}</option>)}
                   </select>
                 </div>
               </div>

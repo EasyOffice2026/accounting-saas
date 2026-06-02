@@ -62,8 +62,16 @@ def create_employee(
     termination_date: str = Form(""),
     db: Session = Depends(get_db), _=Depends(get_current_user),
 ):
+    # Duplicate Civil ID check
+    if civil_id and civil_id.strip():
+        existing = db.query(Employee).filter(Employee.civil_id == civil_id.strip()).first()
+        if existing:
+            raise HTTPException(400, f"Employee with Civil ID {civil_id} already exists")
+    # Auto-generate staff_no
+    max_no = db.query(Employee).count()
+    generated_staff_no = f"EMP-{max_no + 1:04d}"
     emp = Employee(
-        branch_id=branch_id, name=name, staff_no=staff_no or None,
+        branch_id=branch_id, name=name, staff_no=generated_staff_no,
         name_ar=name_ar, civil_id=civil_id, position=position, phone=phone,
         salary=salary, work_permit_salary=work_permit_salary,
         actual_salary=actual_salary,
@@ -99,9 +107,14 @@ def update_employee(
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(404, "Employee not found")
+    # Duplicate Civil ID check (exclude self)
+    if civil_id and civil_id.strip():
+        existing = db.query(Employee).filter(Employee.civil_id == civil_id.strip(), Employee.id != emp_id).first()
+        if existing:
+            raise HTTPException(400, f"Employee with Civil ID {civil_id} already exists")
     emp.branch_id = branch_id
     emp.name = name
-    emp.staff_no = staff_no or None
+    emp.staff_no = staff_no or emp.staff_no
     emp.name_ar = name_ar
     emp.civil_id = civil_id
     emp.position = position

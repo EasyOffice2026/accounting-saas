@@ -308,14 +308,14 @@ def generate_monthly_payroll(
         leave_salary_total = sum(b.amount for b in ben_deds if b.category == "leave_salary")
         ticket_total = sum(b.amount for b in ben_deds if b.category == "ticket")
         overtime_total = sum(b.amount for b in ben_deds if b.category == "overtime")
+        other_benefit_total = sum(b.amount for b in ben_deds if b.category == "other_benefit")
 
         # Auto-calculate deductions from StaffBenefitDeduction for this month
         penalty_total = sum(b.amount for b in ben_deds if b.category in ("fine", "penalty"))
         other_ded_total = sum(b.amount for b in ben_deds if b.category == "other_deduction")
 
-        # sp.allowances = only fixed allowances (housing/transport/food/other are 0 during generate)
-        # Individual benefits (overtime, bonus, etc.) are stored separately
-        fixed_allowances = 0  # housing+transport+food+other are set to 0 during generation
+        # sp.allowances = fixed allowances (other_benefit goes into other_allowance)
+        fixed_allowances = other_benefit_total
         total_additions = incentive_total + bonus_total + leave_salary_total + ticket_total + overtime_total
         fixed_deductions = absence_ded + other_ded_total  # exclude loan_ded and penalty (stored separately)
         net = prorated_salary + fixed_allowances + total_additions - fixed_deductions - loan_ded - penalty_total
@@ -336,6 +336,7 @@ def generate_monthly_payroll(
                 sp.days_worked = actual_days_worked
                 sp.period_start = p_start
                 sp.period_end = p_end
+            sp.other_allowance = other_benefit_total
             sp.allowances = fixed_allowances
             sp.absence_deduction = absence_ded
             sp.other_deduction = other_ded_total
@@ -362,7 +363,7 @@ def generate_monthly_payroll(
                 period_end=p_end,
                 last_workplace="",
                 housing_allowance=0, transport_allowance=0,
-                food_allowance=0, other_allowance=0,
+                food_allowance=0, other_allowance=other_benefit_total,
                 allowances=fixed_allowances,
                 absence_deduction=absence_ded, late_deduction=0,
                 other_deduction=other_ded_total,

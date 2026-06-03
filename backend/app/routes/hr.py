@@ -133,6 +133,21 @@ def update_employee(
     return emp
 
 
+@router.delete("/employees/{emp_id}")
+def delete_employee(
+    emp_id: int,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner",):
+        raise HTTPException(403, "Not authorized")
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+    db.delete(emp)
+    db.commit()
+    return {"message": "Deleted"}
+
+
 # --- Attendance ---
 @router.get("/attendance")
 def list_attendance(employee_id: Optional[int] = None, att_date: Optional[str] = None,

@@ -11,7 +11,8 @@ interface Employee {
   join_date: string; termination_date: string | null; is_active: boolean;
 }
 interface SalaryRecord {
-  id: number; employee_id: number; staff_no: string; designation: string;
+  id: number; employee_id: number; staff_no: string; name: string; name_ar: string;
+  designation: string; current_actual_salary: number;
   branch_id: number; month: string;
   basic_salary: number; total_days: number; days_worked: number;
   period_start: string; period_end: string; last_workplace: string;
@@ -221,12 +222,17 @@ export default function HRPage() {
 
   const handleEditSalary = (r: SalaryRecord) => {
     setEditingRecord(r);
-    setEditBasicSalary(String(r.basic_salary));
+    // Sync basic salary from employee's current actual salary if available
+    const emp = employees.find(e => e.id === r.employee_id);
+    const syncedSalary = emp && emp.actual_salary > 0 ? emp.actual_salary : r.basic_salary;
+    setEditBasicSalary(String(syncedSalary));
     setEditTotalDays(String(r.total_days));
     setEditDaysWorked(String(r.days_worked));
     setEditPeriodStart(r.period_start || "");
     setEditPeriodEnd(r.period_end || "");
-    setEditLastWorkplace(r.last_workplace || "");
+    // Sync last workplace from employee's current branch
+    const empBranch = emp ? (branches.find(b => b.id === emp.branch_id)?.name || "") : "";
+    setEditLastWorkplace(r.last_workplace || empBranch);
     setEditHousing(String(r.housing_allowance));
     setEditTransport(String(r.transport_allowance));
     setEditFood(String(r.food_allowance));
@@ -242,7 +248,8 @@ export default function HRPage() {
     setEditTicket(String(r.ticket_payment));
     setEditLoanDed(String(r.loan_deduction));
     setEditPenalty(String(r.penalty));
-    setEditMethod(r.payment_method);
+    // Sync payment method from employee's current transfer method
+    setEditMethod(emp ? emp.salary_transfer_method || "cash" : r.payment_method);
     setEditNotes(r.notes || "");
   };
 
@@ -1001,7 +1008,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ت�
                   return (
                     <tr key={r.id} className="border-b hover:bg-gray-50">
                       <td className="px-3 py-3">{r.staff_no || empStaffNo(r.employee_id) || "—"}</td>
-                      <td className="px-3 py-3 font-medium">{empName(r.employee_id)}</td>
+                      <td className="px-3 py-3 font-medium">{r.name_ar || r.name || empName(r.employee_id)}</td>
                       <td className="px-3 py-3">{r.designation || "—"}</td>
                       <td className="px-3 py-3 text-center">
                         <span className={r.days_worked < r.total_days ? "text-orange-600 font-semibold" : ""}>

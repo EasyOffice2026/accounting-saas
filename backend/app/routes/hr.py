@@ -205,7 +205,10 @@ def list_salary_payments(
         {
             "id": r.id, "employee_id": r.employee_id,
             "staff_no": emps.get(r.employee_id, Employee()).staff_no or "",
+            "name": emps.get(r.employee_id, Employee()).name or "",
+            "name_ar": emps.get(r.employee_id, Employee()).name_ar or "",
             "designation": emps.get(r.employee_id, Employee()).position or "",
+            "current_actual_salary": emps.get(r.employee_id, Employee()).actual_salary or 0,
             "branch_id": r.branch_id, "month": r.month,
             "basic_salary": 0 if hide_salary else r.basic_salary,
             "total_days": r.total_days or 30,
@@ -310,9 +313,12 @@ def generate_monthly_payroll(
         penalty_total = sum(b.amount for b in ben_deds if b.category in ("fine", "penalty"))
         other_ded_total = sum(b.amount for b in ben_deds if b.category == "other_deduction")
 
-        total_allowances = incentive_total + bonus_total + leave_salary_total + ticket_total + overtime_total
-        total_deductions = absence_ded + loan_ded + penalty_total + other_ded_total
-        net = prorated_salary + total_allowances - total_deductions
+        # sp.allowances = only fixed allowances (housing/transport/food/other are 0 during generate)
+        # Individual benefits (overtime, bonus, etc.) are stored separately
+        fixed_allowances = 0  # housing+transport+food+other are set to 0 during generation
+        total_additions = incentive_total + bonus_total + leave_salary_total + ticket_total + overtime_total
+        fixed_deductions = absence_ded + other_ded_total  # exclude loan_ded and penalty (stored separately)
+        net = prorated_salary + fixed_allowances + total_additions - fixed_deductions - loan_ded - penalty_total
 
         if existing:
             # Update existing pending record with latest calculations
@@ -325,15 +331,15 @@ def generate_monthly_payroll(
                 custom_working_days = min(max(custom_days, 0), 30)
                 sp.days_worked = max(0, custom_working_days - total_leave_days)
                 prorated_salary = round(per_day * custom_working_days, 3)
-                net = prorated_salary + total_allowances - total_deductions
+                net = prorated_salary + fixed_allowances + total_additions - fixed_deductions - loan_ded - penalty_total
             else:
                 sp.days_worked = actual_days_worked
                 sp.period_start = p_start
                 sp.period_end = p_end
-            sp.allowances = total_allowances
+            sp.allowances = fixed_allowances
             sp.absence_deduction = absence_ded
             sp.other_deduction = other_ded_total
-            sp.deductions = total_deductions
+            sp.deductions = fixed_deductions
             sp.overtime = overtime_total
             sp.bonus = bonus_total
             sp.incentive = incentive_total
@@ -357,10 +363,10 @@ def generate_monthly_payroll(
                 last_workplace="",
                 housing_allowance=0, transport_allowance=0,
                 food_allowance=0, other_allowance=0,
-                allowances=total_allowances,
+                allowances=fixed_allowances,
                 absence_deduction=absence_ded, late_deduction=0,
                 other_deduction=other_ded_total,
-                deductions=total_deductions,
+                deductions=fixed_deductions,
                 advance=0,
                 overtime=overtime_total,
                 bonus=bonus_total,

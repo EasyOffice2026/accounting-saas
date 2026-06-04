@@ -200,6 +200,15 @@ export default function HRPage() {
     setShowForm(true);
   };
 
+  const handleDeleteEmp = async (emp: Employee) => {
+    if (!confirm(`${t("delete")} ${emp.name_ar || emp.name}?`)) return;
+    try {
+      const res = await apiFetch(`/api/hr/employees/${emp.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Error");
+      apiGet("/api/hr/employees").then(setEmployees);
+    } catch (err: unknown) { alert((err as Error).message); }
+  };
+
   const branchName = (id: number) => branches.find(b => b.id === id)?.name || "";
   const empName = (id: number) => { const e = employees.find(x => x.id === id); return e ? (e.name_ar || e.name) : "-"; };
   const empStaffNo = (id: number) => employees.find(e => e.id === id)?.staff_no || "";
@@ -524,6 +533,83 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ت�
     setTimeout(() => printWindow.print(), 500);
   };
 
+  const handlePrintAllPayslips = async () => {
+    if (salaryRecords.length === 0) return;
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>All Pay Slips - ${salaryMonth}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Tahoma,sans-serif;padding:10px;font-size:11px;direction:ltr}
+.slip{max-width:700px;margin:0 auto 20px;border:2px solid #333;padding:15px;page-break-after:always}
+.slip:last-child{page-break-after:auto}
+.header{text-align:center;border-bottom:2px solid #333;padding-bottom:10px;margin-bottom:10px}
+.header h1{font-size:16px;margin-bottom:2px}
+.header h2{font-size:12px;color:#555}
+.section{margin-bottom:8px}
+.section-title{font-weight:bold;font-size:11px;background:#f0f0f0;padding:4px 6px;border:1px solid #ccc;margin-bottom:6px}
+.row{display:flex;justify-content:space-between;padding:2px 6px;border-bottom:1px dotted #ddd;font-size:11px}
+.row .value{font-weight:bold;font-family:monospace}
+.emp-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 15px;padding:0 6px;margin-bottom:8px;font-size:11px}
+.emp-grid .item{display:flex;justify-content:space-between;border-bottom:1px dotted #eee;padding:2px 0}
+.totals{background:#f8f8f8;border:1px solid #333;padding:6px;margin-top:8px}
+.net-row{font-size:14px;font-weight:bold;color:#1a5f1a;border-top:2px solid #333;padding-top:6px;margin-top:6px}
+.footer{margin-top:15px;display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid #ccc}
+.sig-box{text-align:center;width:45%}
+.sig-line{border-bottom:1px solid #333;height:30px;margin-bottom:4px}
+@media print{body{padding:0}.slip{border:none;margin:0;padding:10px}}
+</style></head><body>`);
+
+    for (const rec of salaryRecords) {
+      try {
+        const slip = await apiGet(`/api/hr/salary/${rec.id}/payslip`);
+        const emp = slip.employee;
+        w.document.write(`<div class="slip">
+<div class="header">
+<h1>WAHID MUDAWWARAH RESTAURANT / مطعم واحد مدوّرة</h1>
+<h2>PAY SLIP / قسيمة الراتب — ${slip.month}</h2>
+</div>
+<div class="section">
+<div class="section-title">Employee / الموظف</div>
+<div class="emp-grid">
+<div class="item"><span>Staff No.</span><span style="font-weight:bold">${emp.staff_no || '—'}</span></div>
+<div class="item"><span>Name / الاسم</span><span style="font-weight:bold">${emp.name || '—'}</span></div>
+<div class="item"><span>Position</span><span style="font-weight:bold">${emp.position || '—'}</span></div>
+<div class="item"><span>Branch</span><span style="font-weight:bold">${emp.branch || '—'}</span></div>
+<div class="item"><span>IBAN</span><span style="font-weight:bold">${emp.iban || '—'}</span></div>
+<div class="item"><span>Bank</span><span style="font-weight:bold">${emp.bank_name || '—'}</span></div>
+</div></div>
+<div class="section">
+<div class="section-title">Salary / الراتب</div>
+<div class="row"><span>Basic Salary / الراتب الأساسي</span><span class="value">KD ${slip.basic_salary.toFixed(3)}</span></div>
+<div class="row"><span>Days Worked / أيام العمل</span><span class="value">${slip.days_worked} / ${slip.total_days}</span></div>
+${slip.overtime > 0 ? `<div class="row"><span>Overtime / إضافي</span><span class="value" style="color:green">+${slip.overtime.toFixed(3)}</span></div>` : ''}
+${slip.bonus > 0 ? `<div class="row"><span>Bonus / مكافأة</span><span class="value" style="color:green">+${slip.bonus.toFixed(3)}</span></div>` : ''}
+${slip.incentive > 0 ? `<div class="row"><span>Incentive / حافز</span><span class="value" style="color:green">+${slip.incentive.toFixed(3)}</span></div>` : ''}
+${slip.leave_salary > 0 ? `<div class="row"><span>Leave Salary</span><span class="value" style="color:green">+${slip.leave_salary.toFixed(3)}</span></div>` : ''}
+${slip.ticket_payment > 0 ? `<div class="row"><span>Ticket</span><span class="value" style="color:green">+${slip.ticket_payment.toFixed(3)}</span></div>` : ''}
+${slip.other_allowance > 0 ? `<div class="row"><span>Other Allowance</span><span class="value" style="color:green">+${slip.other_allowance.toFixed(3)}</span></div>` : ''}
+${slip.loan_deduction > 0 ? `<div class="row"><span>Loan / قرض</span><span class="value" style="color:red">-${slip.loan_deduction.toFixed(3)}</span></div>` : ''}
+${slip.penalty > 0 ? `<div class="row"><span>Penalty / غرامة</span><span class="value" style="color:red">-${slip.penalty.toFixed(3)}</span></div>` : ''}
+${slip.absence_deduction > 0 ? `<div class="row"><span>Absence / غياب</span><span class="value" style="color:red">-${slip.absence_deduction.toFixed(3)}</span></div>` : ''}
+${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span class="value" style="color:red">-${slip.advance.toFixed(3)}</span></div>` : ''}
+</div>
+<div class="totals">
+<div class="row net-row"><span>NET SALARY / صافي الراتب</span><span class="value">KD ${slip.net_salary.toFixed(3)}</span></div>
+<div class="row"><span>Payment / طريقة الدفع</span><span class="value">${slip.payment_method === 'bank_transfer' ? 'Bank' : 'Cash'}</span></div>
+</div>
+<div class="footer">
+<div class="sig-box"><div class="sig-line"></div><p>Employee / الموظف</p></div>
+<div class="sig-box"><div class="sig-line"></div><p>Authorized / المعتمد</p></div>
+</div>
+</div>`);
+      } catch { /* skip if error */ }
+    }
+    w.document.write("</body></html>");
+    w.document.close();
+    setTimeout(() => w.print(), 1000);
+  };
+
   const totalPayroll = salaryRecords.reduce((s, r) => s + r.net_salary, 0);
   const totalPaid = salaryRecords.filter(r => r.status === "paid").reduce((s, r) => s + r.net_salary, 0);
   const totalPending = salaryRecords.filter(r => r.status === "pending").reduce((s, r) => s + r.net_salary, 0);
@@ -783,6 +869,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ت�
                         <div className="flex gap-2 justify-center">
                           <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
                           <button onClick={() => printEmployeeForm(emp)} className="text-purple-600 hover:underline text-xs">PDF</button>
+                          <button onClick={() => handleDeleteEmp(emp)} className="text-red-600 hover:underline text-xs">{t("delete")}</button>
                         </div>
                       </td>
                     )}
@@ -821,6 +908,10 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ت�
                 <button onClick={() => apiDownload(`/api/export/salary/pdf?month=${salaryMonth}`, `salary_${salaryMonth}.pdf`)}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm mt-5">
                   {t("export_pdf")}
+                </button>
+                <button onClick={handlePrintAllPayslips}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm mt-5">
+                  {t("print_all_payslips")}
                 </button>
               </>
             )}

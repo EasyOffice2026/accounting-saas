@@ -23,6 +23,7 @@ export default {
   amount: "Amount",
   description: "Description",
   save: "Save",
+  search: "Search",
   cancel: "Cancel",
   add_new: "Add New",
   actions: "Actions",

@@ -23,6 +23,7 @@ export default {
   amount: "المبلغ",
   description: "الوصف",
   save: "حفظ",
+  search: "بحث",
   cancel: "إلغاء",
   add_new: "إضافة جديد",
   actions: "الإجراءات",

@@ -112,6 +112,10 @@ export default function HRPage() {
   const [editMethod, setEditMethod] = useState("cash");
   const [editNotes, setEditNotes] = useState("");
 
+  // Search state
+  const [empSearch, setEmpSearch] = useState("");
+  const [salarySearch, setSalarySearch] = useState("");
+
   // Pay Slip state
   const [payslipData, setPayslipData] = useState<any>(null);
   const [showPayslip, setShowPayslip] = useState(false);
@@ -669,6 +673,11 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
             </form>
           )}
 
+          <div className="mb-3">
+            <input type="text" placeholder={t("search") + "..."} value={empSearch} onChange={e => setEmpSearch(e.target.value)}
+              className="w-full md:w-72 px-3 py-2 border rounded-lg text-sm" dir="auto" />
+          </div>
+
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
@@ -686,7 +695,11 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
               <tbody>
                 {employees.length === 0 ? (
                   <tr><td colSpan={isManager ? 8 : 7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : employees.map(emp => (
+                ) : employees.filter(emp => {
+                  if (!empSearch) return true;
+                  const q = empSearch.toLowerCase();
+                  return (emp.name_ar || "").includes(q) || (emp.name || "").toLowerCase().includes(q) || (emp.staff_no || "").includes(q) || (emp.civil_id || "").includes(q);
+                }).map(emp => (
                   <tr key={emp.id} className="border-b hover:bg-gray-50">
                     <td className="px-3 py-3">{emp.staff_no || "â€”"}</td>
                     <td className="px-3 py-3" dir="rtl">{emp.name_ar || emp.name}</td>
@@ -1007,6 +1020,12 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
             </div>
           )}
 
+          {/* Salary Search */}
+          <div className="mb-3">
+            <input type="text" placeholder={t("search") + "..."} value={salarySearch} onChange={e => setSalarySearch(e.target.value)}
+              className="w-full md:w-72 px-3 py-2 border rounded-lg text-sm" dir="auto" />
+          </div>
+
           {/* Salary Summary Table */}
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
             <table className="w-full text-xs">
@@ -1029,7 +1048,12 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                   <tr><td colSpan={isManager ? 10 : 9} className="px-4 py-8 text-center text-gray-400">
                     {t("no_data")} â€” {t("generate_payroll")}
                   </td></tr>
-                ) : salaryRecords.map(r => {
+                ) : salaryRecords.filter(r => {
+                  if (!salarySearch) return true;
+                  const q = salarySearch.toLowerCase();
+                  const name = r.name_ar || r.name || empName(r.employee_id);
+                  return name.includes(q) || (r.staff_no || "").includes(q);
+                }).map(r => {
                   const totalAllowances = r.allowances + r.overtime + r.bonus + r.incentive + r.leave_salary + r.ticket_payment;
                   const totalDeductions = r.deductions + r.advance + r.loan_deduction + r.penalty;
                   return (

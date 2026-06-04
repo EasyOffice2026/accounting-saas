@@ -353,6 +353,76 @@ export default function HRPage() {
     }
   };
 
+  const printEmployeeForm = (emp: Employee) => {
+    const w = window.open("", "_blank");
+    if (!w) return;
+    const branch = branches.find(b => b.id === emp.branch_id)?.name || "";
+    w.document.write(`<html><head><title>Employee Form - ${emp.name_ar || emp.name}</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 30px; direction: rtl; }
+        .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+        .header h1 { font-size: 20px; margin: 4px 0; }
+        .header h2 { font-size: 16px; margin: 4px 0; color: #444; }
+        .header p { font-size: 12px; color: #666; }
+        .section { margin: 20px 0; }
+        .section h3 { font-size: 14px; font-weight: bold; background: #f0f0f0; padding: 6px 10px; margin-bottom: 10px; }
+        .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .field { display: flex; gap: 8px; font-size: 13px; padding: 4px 0; border-bottom: 1px dotted #ccc; }
+        .field-label { font-weight: bold; min-width: 140px; }
+        .field-value { flex: 1; }
+        .photo-box { border: 1px solid #ccc; width: 100px; height: 120px; float: left; text-align: center; line-height: 120px; font-size: 11px; color: #999; }
+        .signature-area { margin-top: 40px; display: flex; justify-content: space-between; }
+        .sig-box { text-align: center; width: 200px; }
+        .sig-line { border-top: 1px solid #333; margin-top: 50px; padding-top: 5px; font-size: 12px; }
+        @media print { body { padding: 15px; } }
+      </style></head><body>
+      <div class="header">
+        <h1>واحد مدوره للمطاعم</h1>
+        <h1>Wahid Mudawwarah Restaurant</h1>
+        <h2>نموذج بيانات الموظف / Employee Information Form</h2>
+      </div>
+      <div class="photo-box">صورة<br>Photo</div>
+      <div class="section">
+        <h3>البيانات الشخصية / Personal Information</h3>
+        <div class="fields">
+          <div class="field"><span class="field-label">رقم الموظف / Staff No:</span><span class="field-value">${emp.staff_no || "—"}</span></div>
+          <div class="field"><span class="field-label">الاسم بالعربي / Name (AR):</span><span class="field-value">${emp.name_ar || "—"}</span></div>
+          <div class="field"><span class="field-label">الاسم بالانجليزي / Name (EN):</span><span class="field-value">${emp.name || "—"}</span></div>
+          <div class="field"><span class="field-label">رقم المدني / Civil ID:</span><span class="field-value">${emp.civil_id || "—"}</span></div>
+          <div class="field"><span class="field-label">الهاتف / Phone:</span><span class="field-value">${emp.phone || "—"}</span></div>
+          <div class="field"><span class="field-label">الجنسية / Nationality:</span><span class="field-value">—</span></div>
+        </div>
+      </div>
+      <div class="section">
+        <h3>بيانات العمل / Employment Information</h3>
+        <div class="fields">
+          <div class="field"><span class="field-label">المسمى الوظيفي / Position:</span><span class="field-value">${emp.position || "—"}</span></div>
+          <div class="field"><span class="field-label">الفرع / Branch:</span><span class="field-value">${branch}</span></div>
+          <div class="field"><span class="field-label">جهة العمل / Employer:</span><span class="field-value">${emp.employer === "mudawwarah" ? "واحد مدوره / Mudawwarah" : "أخرى / Other"}</span></div>
+          <div class="field"><span class="field-label">تاريخ الالتحاق / Join Date:</span><span class="field-value">${emp.join_date || "—"}</span></div>
+          <div class="field"><span class="field-label">تاريخ الانتهاء / Termination Date:</span><span class="field-value">${emp.termination_date || "—"}</span></div>
+        </div>
+      </div>
+      <div class="section">
+        <h3>البيانات المالية / Financial Information</h3>
+        <div class="fields">
+          <div class="field"><span class="field-label">راتب تصريح العمل / Work Permit Salary:</span><span class="field-value">${emp.work_permit_salary || 0} KD</span></div>
+          <div class="field"><span class="field-label">الراتب الفعلي / Actual Salary:</span><span class="field-value">${emp.actual_salary || 0} KD</span></div>
+          <div class="field"><span class="field-label">رقم الحساب / IBAN:</span><span class="field-value">${emp.iban || "—"}</span></div>
+          <div class="field"><span class="field-label">اسم البنك / Bank Name:</span><span class="field-value">${emp.bank_name || "—"}</span></div>
+          <div class="field"><span class="field-label">طريقة التحويل / Transfer Method:</span><span class="field-value">${emp.salary_transfer_method === "bank" ? "تحويل بنكي / Bank" : "نقداً / Cash"}</span></div>
+        </div>
+      </div>
+      <div class="signature-area">
+        <div class="sig-box"><div class="sig-line">توقيع الموظف / Employee Signature</div></div>
+        <div class="sig-box"><div class="sig-line">توقيع المدير / Manager Signature</div></div>
+        <div class="sig-box"><div class="sig-line">التاريخ / Date</div></div>
+      </div>
+    </body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 500);
+  };
+
   const handlePrintPayslip = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
@@ -710,7 +780,10 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ت�
                     <td className="px-3 py-3">{emp.employer === "mudawwarah" ? "Mudawwarah" : t("other")}</td>
                     {isManager && (
                       <td className="px-3 py-3 text-center">
-                        <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
+                        <div className="flex gap-2 justify-center">
+                          <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
+                          <button onClick={() => printEmployeeForm(emp)} className="text-purple-600 hover:underline text-xs">PDF</button>
+                        </div>
                       </td>
                     )}
                   </tr>

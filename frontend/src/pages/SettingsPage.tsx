@@ -77,7 +77,7 @@ interface BranchItem {
 }
 
 export default function SettingsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [host, setHost] = useState("smtp.gmail.com");
   const [port, setPort] = useState("587");
   const [user, setUser] = useState("");
@@ -312,7 +312,7 @@ export default function SettingsPage() {
   const getBranchName = (bid: number | null) => {
     if (!bid) return t("no_branch");
     const b = branchesList.find(x => x.id === bid);
-    return b ? b.name : "-";
+    return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : "-";
   };
 
   return (
@@ -376,7 +376,7 @@ export default function SettingsPage() {
                     className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">-- {t("branch")} --</option>
                     {branchesList.map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
+                      <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>
                     ))}
                   </select>
                 </div>
@@ -821,7 +821,7 @@ export default function SettingsPage() {
                           className="px-2 py-1 border rounded text-sm min-w-[160px]">
                           <option value="">-- {t("select_branch")} --</option>
                           {branchesList.map(b => (
-                            <option key={b.id} value={b.id}>{b.name}</option>
+                            <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>
                           ))}
                         </select>
                         {existing && <span className="text-green-500 text-xs">✓</span>}

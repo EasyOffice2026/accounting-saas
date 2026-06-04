@@ -11,7 +11,7 @@ interface PurchaseOrder {
   id: number; branch_id: number; supplier_id: number; category_id: number | null; date: string;
   payment_type: string; total_amount: number; status: string; delivery_location: string | null;
 }
-interface Branch { id: number; name: string; }
+interface Branch { id: number; name: string; name_ar?: string; }
 interface InvoiceI {
   id: number; purchase_order_id: number; supplier_id: number; supplier_name: string;
   branch_id: number; branch_name: string; invoice_number: string; date: string;
@@ -27,7 +27,7 @@ interface LedgerEntry {
 type Tab = "orders" | "catalog" | "categories" | "invoices" | "ledger";
 
 export default function PurchasesPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const [tab, setTab] = useState<Tab>("orders");
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
@@ -256,7 +256,7 @@ export default function PurchasesPage() {
   };
 
   const supplierName = (id: number) => suppliers.find(s => s.id === id)?.name || "";
-  const branchName = (id: number) => branches.find(b => b.id === id)?.name || "";
+  const branchName = (id: number) => { const b = branches.find(x => x.id === id); return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : ""; };
   const getSupplier = (id: number) => suppliers.find(s => s.id === id);
 
   const buildOrderMessage = (order: PurchaseOrder, orderItems: OrderItem[]) => {
@@ -450,7 +450,7 @@ export default function PurchasesPage() {
                   <div>
                     <label className="block text-sm font-medium mb-1">{t("branch")}</label>
                     <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
-                      {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
                     </select>
                   </div>
                 )}

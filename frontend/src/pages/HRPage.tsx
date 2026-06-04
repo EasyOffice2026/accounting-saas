@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiFetch, apiDownload } from "../contexts/api";
 
-interface Branch { id: number; name: string; }
+interface Branch { id: number; name: string; name_ar?: string; }
 interface Employee {
   id: number; staff_no: string; branch_id: number; name: string; name_ar: string;
   civil_id: string; position: string; phone: string; salary: number;
@@ -69,7 +69,7 @@ interface LeaveRec {
 type Tab = "employees" | "salary" | "transfers" | "loans" | "benefits" | "deductions" | "leaves" | "resignation";
 
 export default function HRPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [tab, setTab] = useState<Tab>("employees");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -209,7 +209,7 @@ export default function HRPage() {
     } catch (err: unknown) { alert((err as Error).message); }
   };
 
-  const branchName = (id: number) => branches.find(b => b.id === id)?.name || "";
+  const branchName = (id: number) => { const b = branches.find(x => x.id === id); return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : ""; };
   const empName = (id: number) => { const e = employees.find(x => x.id === id); return e ? (e.name_ar || e.name) : "-"; };
   const empStaffNo = (id: number) => employees.find(e => e.id === id)?.staff_no || "";
 
@@ -244,7 +244,7 @@ export default function HRPage() {
     setEditPeriodStart(r.period_start || "");
     setEditPeriodEnd(r.period_end || "");
     // Sync last workplace from employee's current branch
-    const empBranch = emp ? (branches.find(b => b.id === emp.branch_id)?.name || "") : "";
+    const empBranch = emp ? branchName(emp.branch_id) : "";
     setEditLastWorkplace(r.last_workplace || empBranch);
     setEditHousing(String(r.housing_allowance));
     setEditTransport(String(r.transport_allowance));
@@ -365,7 +365,7 @@ export default function HRPage() {
   const printEmployeeForm = (emp: Employee) => {
     const w = window.open("", "_blank");
     if (!w) return;
-    const branch = branches.find(b => b.id === emp.branch_id)?.name || "";
+    const branch = branchName(emp.branch_id);
     w.document.write(`<html><head><title>Employee Form - ${emp.name_ar || emp.name}</title>
       <style>
         body { font-family: Arial, sans-serif; padding: 30px; direction: rtl; }
@@ -766,7 +766,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("branch")}</label>
                   <select name="branch_id" required defaultValue={editingEmp?.branch_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
-                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1386,13 +1386,13 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("from_branch")}</label>
                   <select name="from_branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
-                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("to_branch")}</label>
                   <select name="to_branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
-                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
                   </select>
                 </div>
                 <div>

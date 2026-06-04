@@ -273,7 +273,7 @@ export default function SalesPage() {
           <select value={branchFilter} onChange={e => handleFilter(e.target.value)}
             className="px-3 py-2 border rounded-lg text-sm">
             <option value="">{t("all_branches")}</option>
-            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
           </select>
         </div>
       )}
@@ -292,7 +292,7 @@ export default function SalesPage() {
                 <label className="block text-sm font-medium mb-1">{t("branch")}</label>
                 <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
                   {branches.filter(b => !b.name.includes("Central")).map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
+                    <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>
                   ))}
                 </select>
               </div>

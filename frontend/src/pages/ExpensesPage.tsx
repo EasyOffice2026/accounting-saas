@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
-interface Branch { id: number; name: string; }
+interface Branch { id: number; name: string; name_ar?: string; }
 interface Category { id: number; name: string; name_ar: string; }
 interface Supplier { id: number; name: string; }
 interface Expense {
@@ -53,7 +53,7 @@ export default function ExpensesPage() {
     apiGet("/api/expenses/").then(setExpenses);
   };
 
-  const branchName = (id: number) => branches.find(b => b.id === id)?.name || "";
+  const branchName = (id: number) => { const b = branches.find(x => x.id === id); return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : ""; };
   const catName = (id: number) => {
     const c = categories.find(cat => cat.id === id);
     return c ? (i18n.language === "ar" ? c.name_ar || c.name : c.name) : "";
@@ -109,7 +109,7 @@ export default function ExpensesPage() {
                   <div>
                     <label className="block text-sm font-medium mb-1">{t("branch")}</label>
                     <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
-                      {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
                     </select>
                   </div>
                 )}

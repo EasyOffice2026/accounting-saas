@@ -284,8 +284,8 @@ def generate_monthly_payroll(
             SalaryPayment.employee_id == emp.id,
             SalaryPayment.month == month,
         ).first()
-        # Skip already-paid records
-        if existing and existing.status == "paid":
+        # Skip already-paid or on-hold records
+        if existing and existing.status in ("paid", "on_hold"):
             continue
 
         # Auto-calculate leave/absence days for this month
@@ -573,6 +573,42 @@ def mark_salary_paid(
 
     db.commit()
     return {"message": "Marked as paid"}
+
+
+@router.post("/salary/{payment_id}/hold")
+def hold_salary(
+    payment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
+    if not sp:
+        raise HTTPException(404, "Salary record not found")
+    if sp.status == "paid":
+        raise HTTPException(400, "Cannot hold a paid salary")
+    sp.status = "on_hold"
+    db.commit()
+    return {"message": "Salary on hold"}
+
+
+@router.post("/salary/{payment_id}/release")
+def release_salary(
+    payment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
+    if not sp:
+        raise HTTPException(404, "Salary record not found")
+    if sp.status != "on_hold":
+        raise HTTPException(400, "Salary is not on hold")
+    sp.status = "pending"
+    db.commit()
+    return {"message": "Salary released"}
 
 
 @router.delete("/salary/{payment_id}")

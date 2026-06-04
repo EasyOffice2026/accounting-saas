@@ -317,6 +317,28 @@ export default function HRPage() {
     }
   };
 
+  const handleHoldSalary = async (id: number) => {
+    try {
+      const res = await apiFetch(`/api/hr/salary/${id}/hold`, { method: "POST" });
+      if (!res.ok) throw new Error("Error");
+      showSalaryMsg(t("salary_held"), "success");
+      loadSalary();
+    } catch (err: unknown) {
+      showSalaryMsg((err as Error).message, "error");
+    }
+  };
+
+  const handleReleaseSalary = async (id: number) => {
+    try {
+      const res = await apiFetch(`/api/hr/salary/${id}/release`, { method: "POST" });
+      if (!res.ok) throw new Error("Error");
+      showSalaryMsg(t("salary_released"), "success");
+      loadSalary();
+    } catch (err: unknown) {
+      showSalaryMsg((err as Error).message, "error");
+    }
+  };
+
   const handleViewPayslip = async (id: number) => {
     try {
       const data = await apiGet(`/api/hr/salary/${id}/payslip`);
@@ -431,6 +453,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
   const totalPayroll = salaryRecords.reduce((s, r) => s + r.net_salary, 0);
   const totalPaid = salaryRecords.filter(r => r.status === "paid").reduce((s, r) => s + r.net_salary, 0);
   const totalPending = salaryRecords.filter(r => r.status === "pending").reduce((s, r) => s + r.net_salary, 0);
+  const totalOnHold = salaryRecords.filter(r => r.status === "on_hold").reduce((s, r) => s + r.net_salary, 0);
 
   const _recDailyRate = (r: SalaryRecord) => r.basic_salary / (r.total_days || 30);
   void _recDailyRate;
@@ -724,7 +747,7 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
           )}
 
           {salaryRecords.length > 0 && (
-            <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-4 gap-4 mb-4">
               <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
                 <p className="text-xs text-blue-600 font-medium">{t("total_payroll")}</p>
                 <p className="text-xl font-bold text-blue-800">KD {totalPayroll.toFixed(3)}</p>
@@ -734,8 +757,12 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                 <p className="text-xl font-bold text-green-800">KD {totalPaid.toFixed(3)}</p>
               </div>
               <div className="bg-amber-50 p-4 rounded-xl border border-amber-200">
-                <p className="text-xs text-amber-600 font-medium">{t("total_pending")}</p>
+                <p className="text-xs text-amber-600 font-medium">{t("total_payable")}</p>
                 <p className="text-xl font-bold text-amber-800">KD {totalPending.toFixed(3)}</p>
+              </div>
+              <div className="bg-red-50 p-4 rounded-xl border border-red-200">
+                <p className="text-xs text-red-600 font-medium">{t("total_on_hold")}</p>
+                <p className="text-xl font-bold text-red-800">KD {totalOnHold.toFixed(3)}</p>
               </div>
             </div>
           )}
@@ -1025,8 +1052,10 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                       <td className="px-3 py-3 text-right font-mono font-bold">{r.net_salary.toFixed(3)}</td>
                       <td className="px-3 py-3">
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          r.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                        }`}>{r.status === "paid" ? t("paid") : t("pending")}</span>
+                          r.status === "paid" ? "bg-green-100 text-green-700"
+                          : r.status === "on_hold" ? "bg-red-100 text-red-700"
+                          : "bg-amber-100 text-amber-700"
+                        }`}>{r.status === "paid" ? t("paid") : r.status === "on_hold" ? t("on_hold") : t("pending")}</span>
                       </td>
                       {isManager && (
                         <td className="px-3 py-3">
@@ -1039,7 +1068,13 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ØªØ
                                   className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
                                 <button onClick={() => handleMarkPaid(r.id)}
                                   className="text-green-600 hover:underline text-xs">{t("mark_paid")}</button>
+                                <button onClick={() => handleHoldSalary(r.id)}
+                                  className="text-red-600 hover:underline text-xs">{t("hold_salary")}</button>
                               </>
+                            )}
+                            {r.status === "on_hold" && (
+                              <button onClick={() => handleReleaseSalary(r.id)}
+                                className="text-orange-600 hover:underline text-xs">{t("release_salary")}</button>
                             )}
                           </div>
                         </td>

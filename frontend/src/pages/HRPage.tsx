@@ -540,31 +540,33 @@ ${slip.status === 'paid' ? `<div class="row"><span class="label">Paid Date / ت�
     w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>All Pay Slips - ${salaryMonth}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Segoe UI',Tahoma,sans-serif;padding:10px;font-size:11px;direction:ltr}
-.slip{max-width:700px;margin:0 auto 20px;border:2px solid #333;padding:15px;page-break-after:always}
-.slip:last-child{page-break-after:auto}
-.header{text-align:center;border-bottom:2px solid #333;padding-bottom:10px;margin-bottom:10px}
-.header h1{font-size:16px;margin-bottom:2px}
-.header h2{font-size:12px;color:#555}
-.section{margin-bottom:8px}
-.section-title{font-weight:bold;font-size:11px;background:#f0f0f0;padding:4px 6px;border:1px solid #ccc;margin-bottom:6px}
-.row{display:flex;justify-content:space-between;padding:2px 6px;border-bottom:1px dotted #ddd;font-size:11px}
+body{font-family:'Segoe UI',Tahoma,sans-serif;padding:5mm;font-size:9px;direction:ltr}
+.page{width:100%;height:auto;display:flex;flex-direction:column;gap:3mm;page-break-after:always}
+.page:last-child{page-break-after:auto}
+.slip{border:1.5px solid #333;padding:8px;flex:1;max-height:48%}
+.header{text-align:center;border-bottom:1.5px solid #333;padding-bottom:4px;margin-bottom:4px}
+.header h1{font-size:11px;margin:0}
+.header h2{font-size:9px;color:#555;margin:0}
+.section{margin-bottom:4px}
+.section-title{font-weight:bold;font-size:9px;background:#f0f0f0;padding:2px 4px;border:1px solid #ccc;margin-bottom:3px}
+.row{display:flex;justify-content:space-between;padding:1px 4px;border-bottom:1px dotted #ddd;font-size:9px}
 .row .value{font-weight:bold;font-family:monospace}
-.emp-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 15px;padding:0 6px;margin-bottom:8px;font-size:11px}
-.emp-grid .item{display:flex;justify-content:space-between;border-bottom:1px dotted #eee;padding:2px 0}
-.totals{background:#f8f8f8;border:1px solid #333;padding:6px;margin-top:8px}
-.net-row{font-size:14px;font-weight:bold;color:#1a5f1a;border-top:2px solid #333;padding-top:6px;margin-top:6px}
-.footer{margin-top:15px;display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid #ccc}
-.sig-box{text-align:center;width:45%}
-.sig-line{border-bottom:1px solid #333;height:30px;margin-bottom:4px}
-@media print{body{padding:0}.slip{border:none;margin:0;padding:10px}}
+.emp-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px 10px;padding:0 4px;margin-bottom:4px;font-size:9px}
+.emp-grid .item{display:flex;justify-content:space-between;border-bottom:1px dotted #eee;padding:1px 0}
+.totals{background:#f8f8f8;border:1px solid #333;padding:4px;margin-top:4px}
+.net-row{font-size:11px;font-weight:bold;color:#1a5f1a;border-top:1.5px solid #333;padding-top:3px;margin-top:3px}
+.footer{margin-top:6px;display:flex;justify-content:space-between;padding-top:4px;border-top:1px solid #ccc}
+.sig-box{text-align:center;width:45%;font-size:8px}
+.sig-line{border-bottom:1px solid #333;height:20px;margin-bottom:2px}
+@media print{body{padding:3mm}@page{size:A4;margin:5mm}}
 </style></head><body>`);
 
+    const slips: string[] = [];
     for (const rec of salaryRecords) {
       try {
         const slip = await apiGet(`/api/hr/salary/${rec.id}/payslip`);
         const emp = slip.employee;
-        w.document.write(`<div class="slip">
+        slips.push(`<div class="slip">
 <div class="header">
 <h1>WAHID MUDAWWARAH RESTAURANT / مطعم واحد مدوّرة</h1>
 <h2>PAY SLIP / قسيمة الراتب — ${slip.month}</h2>
@@ -604,6 +606,12 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
 </div>
 </div>`);
       } catch { /* skip if error */ }
+    }
+    for (let i = 0; i < slips.length; i += 2) {
+      w.document.write(`<div class="page">`);
+      w.document.write(slips[i]);
+      if (i + 1 < slips.length) w.document.write(slips[i + 1]);
+      w.document.write(`</div>`);
     }
     w.document.write("</body></html>");
     w.document.close();

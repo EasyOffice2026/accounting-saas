@@ -23,6 +23,10 @@ def _branch_map(db: Session):
     return {b.id: b.name for b in db.query(Branch).all()}
 
 
+def _branch_map_ar(db: Session):
+    return {b.id: (b.name_ar or b.name) for b in db.query(Branch).all()}
+
+
 # ── helpers for CSV / Excel / PDF ────────────────────────────────────
 
 def _csv_response(header: List[str], data: List[list], filename: str):
@@ -303,17 +307,24 @@ def _cash_data(db, user, branch_id):
     return header, data
 
 
-def _salary_data(db, user, month):
-    bmap = _branch_map(db)
+def _salary_data(db, user, month, lang: str = "en"):
+    is_ar = lang == "ar"
+    bmap = _branch_map_ar(db) if is_ar else _branch_map(db)
     emp_map = {e.id: e for e in db.query(Employee).all()}
     q = db.query(SalaryPayment)
     if month:
         q = q.filter(SalaryPayment.month == month)
     rows = q.order_by(SalaryPayment.month.desc()).all()
-    header = ["Month", "Staff No.", "Name", "Position", "Branch", "Days Worked",
-              "Basic Salary", "Incentive", "Bonus", "Leave Salary", "Ticket", "Overtime",
-              "Total Allowances", "Absence Deduction", "Loan Deduction", "Penalty",
-              "Other Deduction", "Total Deductions", "Net Salary", "Payment Method", "Status"]
+    if is_ar:
+        header = ["الشهر", "رقم الموظف", "الاسم", "المنصب", "الفرع", "أيام العمل",
+                  "الراتب الأساسي", "حافز", "مكافأة", "راتب الإجازة", "تذكرة", "عمل إضافي",
+                  "إجمالي البدلات", "خصم الغياب", "خصم القرض", "الغرامة",
+                  "خصم آخر", "إجمالي الخصومات", "صافي الراتب", "طريقة الدفع", "الحالة"]
+    else:
+        header = ["Month", "Staff No.", "Name", "Position", "Branch", "Days Worked",
+                  "Basic Salary", "Incentive", "Bonus", "Leave Salary", "Ticket", "Overtime",
+                  "Total Allowances", "Absence Deduction", "Loan Deduction", "Penalty",
+                  "Other Deduction", "Total Deductions", "Net Salary", "Payment Method", "Status"]
     data = []
     # Accumulators for totals
     sum_basic = 0
@@ -345,8 +356,11 @@ def _salary_data(db, user, month):
         other_ded = r.other_deduction or 0
         deductions = r.deductions or 0
         net = r.net_salary or 0
+        emp_name = ""
+        if emp:
+            emp_name = (emp.name_ar or emp.name) if is_ar else emp.name
         data.append([
-            r.month, emp.staff_no if emp else "", emp.name if emp else "",
+            r.month, emp.staff_no if emp else "", emp_name,
             emp.position if emp else "", bmap.get(emp.branch_id, "") if emp else "",
             r.days_worked or 30, r.basic_salary,
             incentive, bonus, leave_sal, ticket, overtime,
@@ -373,9 +387,12 @@ def _salary_data(db, user, month):
             sum_payable += net
 
     # Append totals row
+    total_label = "الإجمالي" if is_ar else "TOTAL / الإجمالي"
+    payable_label = "المستحق الدفع" if is_ar else "PAYABLE / المستحق الدفع"
+    hold_label = "معلق" if is_ar else "ON HOLD / معلق"
     if data:
         data.append([
-            "", "", "TOTAL / الإجمالي", "", "", "",
+            "", "", total_label, "", "", "",
             round(sum_basic, 3),
             round(sum_incentive, 3), round(sum_bonus, 3),
             round(sum_leave_salary, 3), round(sum_ticket, 3), round(sum_overtime, 3),
@@ -386,13 +403,13 @@ def _salary_data(db, user, month):
         ])
         # Append on-hold and payable summary rows
         data.append([
-            "", "", "PAYABLE / المستحق الدفع", "", "", "",
+            "", "", payable_label, "", "", "",
             "", "", "", "", "", "",
             "", "", "", "", "", "", round(sum_payable, 3),
             "", "pending",
         ])
         data.append([
-            "", "", "ON HOLD / معلق", "", "", "",
+            "", "", hold_label, "", "", "",
             "", "", "", "", "", "",
             "", "", "", "", "", "", round(sum_on_hold, 3),
             "", "on_hold",
@@ -438,9 +455,11 @@ def export_cash(fmt: str, branch_id: Optional[int] = None,
 
 
 @router.get("/salary/{fmt}")
-def export_salary(fmt: str, month: Optional[str] = None,
+def export_salary(fmt: str, month: Optional[str] = None, lang: Optional[str] = None,
                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if user.role not in ("owner", "manager"):
         raise HTTPException(status_code=403, detail="Not authorized")
-    header, data = _salary_data(db, user, month)
-    return _respond(fmt, header, data, f"salary_{month or 'all'}", f"Salary Sheet - {month or 'All'}", summary_rows=3)
+    language = lang or "en"
+    header, data = _salary_data(db, user, month, lang=language)
+    title = f"كشف الرواتب - {month or 'الكل'}" if language == "ar" else f"Salary Sheet - {month or 'All'}"
+    return _respond(fmt, header, data, f"salary_{month or 'all'}", title, summary_rows=3)

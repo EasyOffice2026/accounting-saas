@@ -905,15 +905,15 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mt-5">
                   {t("generate_payroll")}
                 </button>
-                <button onClick={() => apiDownload(`/api/export/salary/csv?month=${salaryMonth}`, `salary_${salaryMonth}.csv`)}
+                <button onClick={() => apiDownload(`/api/export/salary/csv?month=${salaryMonth}&lang=${i18n.language}`, `salary_${salaryMonth}.csv`)}
                   className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm mt-5">
                   {t("export_csv")}
                 </button>
-                <button onClick={() => apiDownload(`/api/export/salary/excel?month=${salaryMonth}`, `salary_${salaryMonth}.xlsx`)}
+                <button onClick={() => apiDownload(`/api/export/salary/excel?month=${salaryMonth}&lang=${i18n.language}`, `salary_${salaryMonth}.xlsx`)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm mt-5">
                   {t("export_excel")}
                 </button>
-                <button onClick={() => apiDownload(`/api/export/salary/pdf?month=${salaryMonth}`, `salary_${salaryMonth}.pdf`)}
+                <button onClick={() => apiDownload(`/api/export/salary/pdf?month=${salaryMonth}&lang=${i18n.language}`, `salary_${salaryMonth}.pdf`)}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm mt-5">
                   {t("export_pdf")}
                 </button>

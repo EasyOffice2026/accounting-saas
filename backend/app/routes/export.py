@@ -342,6 +342,9 @@ def _salary_data(db, user, month, lang: str = "en"):
     sum_net = 0
     sum_on_hold = 0
     sum_payable = 0
+    # Filter out records for employees with 0 or null actual salary
+    rows = [r for r in rows if emp_map.get(r.employee_id) and (emp_map[r.employee_id].actual_salary or 0) > 0]
+
     for r in rows:
         emp = emp_map.get(r.employee_id)
         incentive = r.incentive or 0

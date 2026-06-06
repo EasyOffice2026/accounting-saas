@@ -216,6 +216,9 @@ def list_salary_payments(
     emp_ids = list({r.employee_id for r in rows})
     emps = {e.id: e for e in db.query(Employee).filter(Employee.id.in_(emp_ids)).all()} if emp_ids else {}
 
+    # Filter out records for employees with 0 actual salary
+    rows = [r for r in rows if (emps.get(r.employee_id) and (emps[r.employee_id].actual_salary or 0) > 0)]
+
     return [
         {
             "id": r.id, "employee_id": r.employee_id,
@@ -277,6 +280,19 @@ def generate_monthly_payroll(
         Employee.is_active == True,
         Employee.actual_salary > 0,
     ).all()
+
+    # Clean up old pending salary records for employees with 0 actual salary
+    zero_salary_emps = db.query(Employee).filter(
+        (Employee.actual_salary == None) | (Employee.actual_salary == 0)
+    ).all()
+    zero_ids = [e.id for e in zero_salary_emps]
+    if zero_ids:
+        db.query(SalaryPayment).filter(
+            SalaryPayment.month == month,
+            SalaryPayment.employee_id.in_(zero_ids),
+            SalaryPayment.status == "pending",
+        ).delete(synchronize_session=False)
+
     created = 0
     updated = 0
     for emp in employees:

@@ -39,7 +39,7 @@ def _csv_response(header: List[str], data: List[list], filename: str):
     )
 
 
-def _excel_response(header: List[str], data: List[list], filename: str):
+def _excel_response(header: List[str], data: List[list], filename: str, summary_rows: int = 0):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -56,6 +56,14 @@ def _excel_response(header: List[str], data: List[list], filename: str):
         top=Side(style="thin"), bottom=Side(style="thin"),
     )
 
+    # Summary row styles
+    total_font = Font(bold=True, color="FFFFFF", size=11)
+    total_fill = PatternFill(start_color="1B5E20", end_color="1B5E20", fill_type="solid")
+    payable_font = Font(bold=True, color="2E7D32", size=11)
+    payable_fill = PatternFill(start_color="E8F5E9", end_color="E8F5E9", fill_type="solid")
+    hold_font = Font(bold=True, color="C62828", size=11)
+    hold_fill = PatternFill(start_color="FFEBEE", end_color="FFEBEE", fill_type="solid")
+
     for col_idx, h in enumerate(header, 1):
         cell = ws.cell(row=1, column=col_idx, value=h)
         cell.font = header_font
@@ -67,6 +75,26 @@ def _excel_response(header: List[str], data: List[list], filename: str):
         for col_idx, val in enumerate(row, 1):
             cell = ws.cell(row=row_idx, column=col_idx, value=val)
             cell.border = thin_border
+
+    # Style summary rows
+    if summary_rows > 0 and len(data) >= summary_rows:
+        total_row_idx = len(data) - summary_rows + 2  # +2 for header row + 1-based
+        for col_idx in range(1, len(header) + 1):
+            cell = ws.cell(row=total_row_idx, column=col_idx)
+            cell.font = total_font
+            cell.fill = total_fill
+        if summary_rows >= 2:
+            payable_row_idx = total_row_idx + 1
+            for col_idx in range(1, len(header) + 1):
+                cell = ws.cell(row=payable_row_idx, column=col_idx)
+                cell.font = payable_font
+                cell.fill = payable_fill
+        if summary_rows >= 3:
+            hold_row_idx = total_row_idx + 2
+            for col_idx in range(1, len(header) + 1):
+                cell = ws.cell(row=hold_row_idx, column=col_idx)
+                cell.font = hold_font
+                cell.fill = hold_fill
 
     # Auto-width
     for col_idx, h in enumerate(header, 1):
@@ -86,7 +114,7 @@ def _excel_response(header: List[str], data: List[list], filename: str):
     )
 
 
-def _pdf_response(header: List[str], data: List[list], filename: str, title: str = ""):
+def _pdf_response(header: List[str], data: List[list], filename: str, title: str = "", summary_rows: int = 0):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib import colors
     from reportlab.lib.units import mm
@@ -126,7 +154,7 @@ def _pdf_response(header: List[str], data: List[list], filename: str, title: str
     col_width = avail_width / num_cols
 
     t = Table(table_data, colWidths=[col_width] * num_cols, repeatRows=1)
-    style = TableStyle([
+    style_cmds = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2E7D32")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTSIZE", (0, 0), (-1, 0), 8),
@@ -137,8 +165,29 @@ def _pdf_response(header: List[str], data: List[list], filename: str, title: str
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F5F5F5")]),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ])
-    t.setStyle(style)
+    ]
+
+    # Highlight summary rows at the bottom
+    if summary_rows > 0 and len(table_data) > summary_rows:
+        total_row = len(table_data) - summary_rows  # first summary row (TOTAL)
+        # TOTAL row styling
+        style_cmds.append(("BACKGROUND", (0, total_row), (-1, total_row), colors.HexColor("#1B5E20")))
+        style_cmds.append(("TEXTCOLOR", (0, total_row), (-1, total_row), colors.white))
+        style_cmds.append(("FONTSIZE", (0, total_row), (-1, total_row), 8))
+        # PAYABLE row styling
+        if summary_rows >= 2:
+            payable_row = total_row + 1
+            style_cmds.append(("BACKGROUND", (0, payable_row), (-1, payable_row), colors.HexColor("#E8F5E9")))
+            style_cmds.append(("TEXTCOLOR", (0, payable_row), (-1, payable_row), colors.HexColor("#2E7D32")))
+            style_cmds.append(("FONTSIZE", (0, payable_row), (-1, payable_row), 8))
+        # ON HOLD row styling
+        if summary_rows >= 3:
+            hold_row = total_row + 2
+            style_cmds.append(("BACKGROUND", (0, hold_row), (-1, hold_row), colors.HexColor("#FFEBEE")))
+            style_cmds.append(("TEXTCOLOR", (0, hold_row), (-1, hold_row), colors.HexColor("#C62828")))
+            style_cmds.append(("FONTSIZE", (0, hold_row), (-1, hold_row), 8))
+
+    t.setStyle(TableStyle(style_cmds))
     elements.append(t)
 
     doc.build(elements)
@@ -150,11 +199,11 @@ def _pdf_response(header: List[str], data: List[list], filename: str, title: str
     )
 
 
-def _respond(fmt: str, header: List[str], data: List[list], filename: str, title: str = ""):
+def _respond(fmt: str, header: List[str], data: List[list], filename: str, title: str = "", summary_rows: int = 0):
     if fmt == "excel":
-        return _excel_response(header, data, filename)
+        return _excel_response(header, data, filename, summary_rows=summary_rows)
     elif fmt == "pdf":
-        return _pdf_response(header, data, filename, title)
+        return _pdf_response(header, data, filename, title, summary_rows=summary_rows)
     return _csv_response(header, data, filename)
 
 
@@ -266,16 +315,87 @@ def _salary_data(db, user, month):
               "Total Allowances", "Absence Deduction", "Loan Deduction", "Penalty",
               "Other Deduction", "Total Deductions", "Net Salary", "Payment Method", "Status"]
     data = []
+    # Accumulators for totals
+    sum_basic = 0
+    sum_incentive = 0
+    sum_bonus = 0
+    sum_leave_salary = 0
+    sum_ticket = 0
+    sum_overtime = 0
+    sum_allowances = 0
+    sum_absence_ded = 0
+    sum_loan_ded = 0
+    sum_penalty = 0
+    sum_other_ded = 0
+    sum_deductions = 0
+    sum_net = 0
+    sum_on_hold = 0
+    sum_payable = 0
     for r in rows:
         emp = emp_map.get(r.employee_id)
+        incentive = r.incentive or 0
+        bonus = r.bonus or 0
+        leave_sal = r.leave_salary or 0
+        ticket = r.ticket_payment or 0
+        overtime = r.overtime or 0
+        allowances = r.allowances or 0
+        absence_ded = r.absence_deduction or 0
+        loan_ded = r.loan_deduction or 0
+        penalty = r.penalty or 0
+        other_ded = r.other_deduction or 0
+        deductions = r.deductions or 0
+        net = r.net_salary or 0
         data.append([
             r.month, emp.staff_no if emp else "", emp.name if emp else "",
             emp.position if emp else "", bmap.get(emp.branch_id, "") if emp else "",
             r.days_worked or 30, r.basic_salary,
-            r.incentive or 0, r.bonus or 0, r.leave_salary or 0, r.ticket_payment or 0, r.overtime or 0,
-            r.allowances or 0, r.absence_deduction or 0, r.loan_deduction or 0, r.penalty or 0,
-            r.other_deduction or 0, r.deductions or 0, r.net_salary,
+            incentive, bonus, leave_sal, ticket, overtime,
+            allowances, absence_ded, loan_ded, penalty,
+            other_ded, deductions, net,
             r.payment_method or "", r.status,
+        ])
+        sum_basic += r.basic_salary or 0
+        sum_incentive += incentive
+        sum_bonus += bonus
+        sum_leave_salary += leave_sal
+        sum_ticket += ticket
+        sum_overtime += overtime
+        sum_allowances += allowances
+        sum_absence_ded += absence_ded
+        sum_loan_ded += loan_ded
+        sum_penalty += penalty
+        sum_other_ded += other_ded
+        sum_deductions += deductions
+        sum_net += net
+        if r.status == "on_hold":
+            sum_on_hold += net
+        elif r.status == "pending":
+            sum_payable += net
+
+    # Append totals row
+    if data:
+        data.append([
+            "", "", "TOTAL / الإجمالي", "", "", "",
+            round(sum_basic, 3),
+            round(sum_incentive, 3), round(sum_bonus, 3),
+            round(sum_leave_salary, 3), round(sum_ticket, 3), round(sum_overtime, 3),
+            round(sum_allowances, 3),
+            round(sum_absence_ded, 3), round(sum_loan_ded, 3), round(sum_penalty, 3),
+            round(sum_other_ded, 3), round(sum_deductions, 3), round(sum_net, 3),
+            "", "",
+        ])
+        # Append on-hold and payable summary rows
+        data.append([
+            "", "", "PAYABLE / المستحق الدفع", "", "", "",
+            "", "", "", "", "", "",
+            "", "", "", "", "", "", round(sum_payable, 3),
+            "", "pending",
+        ])
+        data.append([
+            "", "", "ON HOLD / معلق", "", "", "",
+            "", "", "", "", "", "",
+            "", "", "", "", "", "", round(sum_on_hold, 3),
+            "", "on_hold",
         ])
     return header, data
 
@@ -323,4 +443,4 @@ def export_salary(fmt: str, month: Optional[str] = None,
     if user.role not in ("owner", "manager"):
         raise HTTPException(status_code=403, detail="Not authorized")
     header, data = _salary_data(db, user, month)
-    return _respond(fmt, header, data, f"salary_{month or 'all'}", f"Salary Sheet - {month or 'All'}")
+    return _respond(fmt, header, data, f"salary_{month or 'all'}", f"Salary Sheet - {month or 'All'}", summary_rows=3)

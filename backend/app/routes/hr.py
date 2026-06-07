@@ -227,7 +227,7 @@ def list_salary_payments(
             "name_ar": emps.get(r.employee_id, Employee()).name_ar or "",
             "designation": emps.get(r.employee_id, Employee()).position or "",
             "current_actual_salary": emps.get(r.employee_id, Employee()).actual_salary or 0,
-            "branch_id": r.branch_id, "month": r.month,
+            "branch_id": emps[r.employee_id].branch_id if emps.get(r.employee_id) else r.branch_id, "month": r.month,
             "basic_salary": 0 if hide_salary else r.basic_salary,
             "total_days": r.total_days or 30,
             "days_worked": r.days_worked or 30,
@@ -354,6 +354,7 @@ def generate_monthly_payroll(
         if existing:
             # Update existing pending record with latest calculations
             sp = existing
+            sp.branch_id = emp.branch_id
             sp.basic_salary = emp.actual_salary
             sp.total_days = total_days
             # Preserve custom period dates if already set by user edit

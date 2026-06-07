@@ -277,6 +277,7 @@ export default {
   total_payable: "المستحق",
   total_on_hold: "معلق",
   print_all_payslips: "طباعة جميع قسائم الرواتب",
+  download_payslips_pdf: "تحميل قسائم الرواتب PDF",
   total_pending: "إجمالي المعلق",
   employee: "الموظف",
   total_days: "إجمالي الأيام",

@@ -457,6 +457,265 @@ def export_cash(fmt: str, branch_id: Optional[int] = None,
     return _respond(fmt, header, data, "cash_management", "Cash Management Report")
 
 
+# ── Bulk Payslips PDF (one full A4 page per employee) ───────────────
+# NOTE: This route MUST be defined before /salary/{fmt} to avoid being
+# swallowed by the path-parameter route.
+
+@router.get("/salary/slips/pdf")
+def export_salary_slips_pdf(
+    month: Optional[str] = None,
+    lang: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
+                                     Paragraph, Spacer, PageBreak)
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    is_ar = (lang or "en") == "ar"
+    bmap = _branch_map_ar(db) if is_ar else _branch_map(db)
+    emp_map = {e.id: e for e in db.query(Employee).all()}
+
+    q = db.query(SalaryPayment)
+    if month:
+        q = q.filter(SalaryPayment.month == month)
+    records = q.order_by(SalaryPayment.employee_id).all()
+    # Filter out employees with 0 actual salary
+    records = [r for r in records if emp_map.get(r.employee_id) and (emp_map[r.employee_id].actual_salary or 0) > 0]
+
+    if not records:
+        raise HTTPException(404, "No salary records found")
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=15 * mm, rightMargin=15 * mm,
+                            topMargin=12 * mm, bottomMargin=12 * mm)
+
+    # Styles
+    hdr_style = ParagraphStyle("hdr", fontSize=16, alignment=1, spaceAfter=2,
+                                fontName="Helvetica-Bold")
+    hdr_ar_style = ParagraphStyle("hdr_ar", fontSize=14, alignment=1, spaceAfter=2,
+                                   fontName="Helvetica")
+    sub_style = ParagraphStyle("sub", fontSize=12, alignment=1, spaceAfter=6,
+                                fontName="Helvetica-Bold", textColor=colors.HexColor("#555"))
+    month_style = ParagraphStyle("month", fontSize=10, alignment=1, spaceAfter=8)
+    sect_style = ParagraphStyle("sect", fontSize=10, fontName="Helvetica-Bold",
+                                 backColor=colors.HexColor("#E8F5E9"),
+                                 borderPadding=(4, 6, 4, 6), spaceAfter=4)
+    lbl = ParagraphStyle("lbl", fontSize=9, fontName="Helvetica")
+    val = ParagraphStyle("val", fontSize=9, fontName="Helvetica-Bold", alignment=2)
+    net_lbl = ParagraphStyle("net_lbl", fontSize=12, fontName="Helvetica-Bold",
+                              textColor=colors.HexColor("#1B5E20"))
+    net_val = ParagraphStyle("net_val", fontSize=12, fontName="Helvetica-Bold",
+                              alignment=2, textColor=colors.HexColor("#1B5E20"))
+    green_val = ParagraphStyle("green_val", fontSize=9, fontName="Helvetica-Bold",
+                                alignment=2, textColor=colors.HexColor("#2E7D32"))
+    red_val = ParagraphStyle("red_val", fontSize=9, fontName="Helvetica-Bold",
+                              alignment=2, textColor=colors.HexColor("#C62828"))
+    sig_style = ParagraphStyle("sig", fontSize=8, alignment=1, spaceBefore=4)
+
+    elements = []
+
+    for idx, sp in enumerate(records):
+        emp = emp_map.get(sp.employee_id)
+        if not emp:
+            continue
+        branch_name = bmap.get(emp.branch_id, "")
+        emp_name = (emp.name_ar or emp.name) if is_ar else emp.name
+
+        # ── Header ──
+        elements.append(Paragraph("WAHID MUDAWWARAH RESTAURANT", hdr_style))
+        elements.append(Paragraph("مطعم واحد مدوّرة", hdr_ar_style))
+        elements.append(Paragraph("PAY SLIP / قسيمة الراتب", sub_style))
+        month_label = sp.month or ""
+        if is_ar:
+            elements.append(Paragraph(f"الشهر: <b>{month_label}</b>", month_style))
+        else:
+            elements.append(Paragraph(f"Month: <b>{month_label}</b>", month_style))
+        elements.append(Spacer(1, 4 * mm))
+
+        # ── Employee Info ──
+        elements.append(Paragraph("Employee Information / معلومات الموظف", sect_style))
+        emp_info = [
+            [Paragraph("Staff No. / رقم الموظف", lbl), Paragraph(emp.staff_no or "—", val),
+             Paragraph("Name / الاسم", lbl), Paragraph(emp_name or "—", val)],
+            [Paragraph("Position / المسمى الوظيفي", lbl), Paragraph(emp.position or "—", val),
+             Paragraph("Branch / الفرع", lbl), Paragraph(branch_name or "—", val)],
+            [Paragraph("Civil ID / الرقم المدني", lbl), Paragraph(emp.civil_id or "—", val),
+             Paragraph("IBAN", lbl), Paragraph(emp.iban or "—", val)],
+            [Paragraph("Bank / البنك", lbl), Paragraph(emp.bank_name or "—", val),
+             Paragraph("Join Date / تاريخ الالتحاق", lbl),
+             Paragraph(str(emp.join_date) if emp.join_date else "—", val)],
+        ]
+        avail = A4[0] - 30 * mm
+        emp_t = Table(emp_info, colWidths=[avail * 0.22, avail * 0.28, avail * 0.22, avail * 0.28])
+        emp_t.setStyle(TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CCCCCC")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#FAFAFA")),
+            ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#FAFAFA")),
+        ]))
+        elements.append(emp_t)
+        elements.append(Spacer(1, 4 * mm))
+
+        # ── Salary Details ──
+        elements.append(Paragraph("Salary Details / تفاصيل الراتب", sect_style))
+
+        def _fmt(v):
+            return f"{v:.3f}"
+
+        salary_rows = [
+            [Paragraph("Basic Salary / الراتب الأساسي", lbl),
+             Paragraph(f"KD {_fmt(sp.basic_salary)}", val)],
+            [Paragraph("Days Worked / أيام العمل", lbl),
+             Paragraph(f"{sp.days_worked or 30} / {sp.total_days or 30}", val)],
+            [Paragraph("Period / الفترة", lbl),
+             Paragraph(f"{sp.period_start or '—'}  to  {sp.period_end or '—'}", val)],
+        ]
+        sal_t = Table(salary_rows, colWidths=[avail * 0.6, avail * 0.4])
+        sal_t.setStyle(TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CCCCCC")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(sal_t)
+        elements.append(Spacer(1, 3 * mm))
+
+        # ── Earnings ──
+        elements.append(Paragraph("Earnings / المستحقات", sect_style))
+        earn_rows = []
+        earn_items = [
+            ("Overtime / العمل الإضافي", sp.overtime or 0),
+            ("Bonus / مكافأة", sp.bonus or 0),
+            ("Incentive / حافز", sp.incentive or 0),
+            ("Leave Salary / راتب الإجازة", sp.leave_salary or 0),
+            ("Ticket Payment / تذكرة السفر", sp.ticket_payment or 0),
+            ("Housing Allowance / بدل سكن", sp.housing_allowance or 0),
+            ("Transport Allowance / بدل نقل", sp.transport_allowance or 0),
+            ("Food Allowance / بدل طعام", sp.food_allowance or 0),
+            ("Other Allowance / بدلات أخرى", sp.other_allowance or 0),
+        ]
+        for label_text, amount in earn_items:
+            if amount > 0:
+                earn_rows.append([
+                    Paragraph(label_text, lbl),
+                    Paragraph(f"+{_fmt(amount)}", green_val),
+                ])
+        total_earnings = sp.allowances or 0
+        earn_rows.append([
+            Paragraph("<b>Total Earnings / إجمالي المستحقات</b>", lbl),
+            Paragraph(f"<b>KD {_fmt(total_earnings)}</b>", green_val),
+        ])
+        earn_t = Table(earn_rows, colWidths=[avail * 0.6, avail * 0.4])
+        earn_style = [
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CCCCCC")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E8F5E9")),
+        ]
+        earn_t.setStyle(TableStyle(earn_style))
+        elements.append(earn_t)
+        elements.append(Spacer(1, 3 * mm))
+
+        # ── Deductions ──
+        elements.append(Paragraph("Deductions / الخصومات", sect_style))
+        ded_rows = []
+        ded_items = [
+            ("Absence Deduction / خصم غياب", sp.absence_deduction or 0),
+            ("Loan Deduction / خصم القرض", sp.loan_deduction or 0),
+            ("Penalty/Fine / غرامة", sp.penalty or 0),
+            ("Late Deduction / خصم تأخير", sp.late_deduction or 0),
+            ("Other Deduction / خصومات أخرى", sp.other_deduction or 0),
+            ("Advance / سلفة", sp.advance or 0),
+        ]
+        for label_text, amount in ded_items:
+            if amount > 0:
+                ded_rows.append([
+                    Paragraph(label_text, lbl),
+                    Paragraph(f"-{_fmt(amount)}", red_val),
+                ])
+        total_deductions = sp.deductions or 0
+        ded_rows.append([
+            Paragraph("<b>Total Deductions / إجمالي الخصومات</b>", lbl),
+            Paragraph(f"<b>KD {_fmt(total_deductions)}</b>", red_val),
+        ])
+        ded_t = Table(ded_rows, colWidths=[avail * 0.6, avail * 0.4])
+        ded_style = [
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CCCCCC")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#FFEBEE")),
+        ]
+        ded_t.setStyle(TableStyle(ded_style))
+        elements.append(ded_t)
+        elements.append(Spacer(1, 4 * mm))
+
+        # ── Net Salary ──
+        net_rows = [
+            [Paragraph("NET SALARY / صافي الراتب", net_lbl),
+             Paragraph(f"KD {_fmt(sp.net_salary or 0)}", net_val)],
+            [Paragraph("Payment Method / طريقة الدفع", lbl),
+             Paragraph("Bank Transfer / تحويل بنكي" if sp.payment_method == "bank_transfer" else "Cash / نقداً", val)],
+            [Paragraph("Status / الحالة", lbl),
+             Paragraph(sp.status.upper() if sp.status else "PENDING", val)],
+        ]
+        if sp.status == "paid" and sp.paid_date:
+            net_rows.append([
+                Paragraph("Paid Date / تاريخ الدفع", lbl),
+                Paragraph(str(sp.paid_date), val),
+            ])
+        net_t = Table(net_rows, colWidths=[avail * 0.6, avail * 0.4])
+        net_t.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 1.5, colors.HexColor("#1B5E20")),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CCCCCC")),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E8F5E9")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(net_t)
+        elements.append(Spacer(1, 10 * mm))
+
+        # ── Signatures ──
+        sig_rows = [[
+            Paragraph("____________________________<br/>Employee Signature<br/>توقيع الموظف", sig_style),
+            Paragraph("", sig_style),
+            Paragraph("____________________________<br/>Authorized Signature<br/>التوقيع المعتمد", sig_style),
+        ]]
+        sig_t = Table(sig_rows, colWidths=[avail * 0.4, avail * 0.2, avail * 0.4])
+        sig_t.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+            ("TOPPADDING", (0, 0), (-1, -1), 15),
+        ]))
+        elements.append(sig_t)
+
+        # Page break between slips (not after the last one)
+        if idx < len(records) - 1:
+            elements.append(PageBreak())
+
+    doc.build(elements)
+    buf.seek(0)
+    fname = f"payslips_{month or 'all'}"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={fname}.pdf"},
+    )
+
+
 @router.get("/salary/{fmt}")
 def export_salary(fmt: str, month: Optional[str] = None, lang: Optional[str] = None,
                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):

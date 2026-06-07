@@ -921,6 +921,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm mt-5">
                   {t("print_all_payslips")}
                 </button>
+                <button onClick={() => apiDownload(`/api/export/salary/slips/pdf?month=${salaryMonth}&lang=${i18n.language}`, `payslips_${salaryMonth}.pdf`)}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm mt-5">
+                  {t("download_payslips_pdf")}
+                </button>
               </>
             )}
           </div>

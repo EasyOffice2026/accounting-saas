@@ -278,6 +278,7 @@ export default {
   total_payable: "Payable",
   total_on_hold: "On Hold",
   print_all_payslips: "Print All Pay Slips",
+  download_payslips_pdf: "Download Payslips PDF",
   total_pending: "Total Pending",
   employee: "Employee",
   total_days: "Total Days",

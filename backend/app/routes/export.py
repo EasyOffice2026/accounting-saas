@@ -504,9 +504,14 @@ def export_salary_slips_pdf(
     q = db.query(SalaryPayment)
     if month:
         q = q.filter(SalaryPayment.month == month)
-    records = q.order_by(SalaryPayment.employee_id).all()
+    records = q.all()
     # Filter out employees with 0 actual salary
     records = [r for r in records if emp_map.get(r.employee_id) and (emp_map[r.employee_id].actual_salary or 0) > 0]
+    # Sort by branch then staff_no within each branch
+    records.sort(key=lambda r: (
+        bmap.get(emp_map[r.employee_id].branch_id, "") or "",
+        emp_map[r.employee_id].staff_no or "",
+    ))
 
     if not records:
         raise HTTPException(404, "No salary records found")

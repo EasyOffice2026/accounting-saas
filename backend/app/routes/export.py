@@ -479,6 +479,23 @@ def export_salary_slips_pdf(
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+
+    # Register DejaVuSans – supports Arabic glyphs
+    _dvs = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    _dvsb = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    if "DejaVuSans" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("DejaVuSans", _dvs))
+    if "DejaVuSans-Bold" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", _dvsb))
+
+    def _ar(text: str) -> str:
+        """Reshape and reorder Arabic text for PDF rendering."""
+        if not text:
+            return text
+        reshaped = arabic_reshaper.reshape(text)
+        return get_display(reshaped)
 
     is_ar = (lang or "en") == "ar"
     bmap = _branch_map_ar(db) if is_ar else _branch_map(db)
@@ -499,28 +516,32 @@ def export_salary_slips_pdf(
                             leftMargin=15 * mm, rightMargin=15 * mm,
                             topMargin=12 * mm, bottomMargin=12 * mm)
 
-    # Styles
+    # Styles – use DejaVuSans for Arabic glyph support
+    FONT = "DejaVuSans"
+    FONTB = "DejaVuSans-Bold"
     hdr_style = ParagraphStyle("hdr", fontSize=16, alignment=1, spaceAfter=2,
-                                fontName="Helvetica-Bold")
+                                fontName=FONTB)
     hdr_ar_style = ParagraphStyle("hdr_ar", fontSize=14, alignment=1, spaceAfter=2,
-                                   fontName="Helvetica")
+                                   fontName=FONT)
     sub_style = ParagraphStyle("sub", fontSize=12, alignment=1, spaceAfter=6,
-                                fontName="Helvetica-Bold", textColor=colors.HexColor("#555"))
-    month_style = ParagraphStyle("month", fontSize=10, alignment=1, spaceAfter=8)
-    sect_style = ParagraphStyle("sect", fontSize=10, fontName="Helvetica-Bold",
+                                fontName=FONTB, textColor=colors.HexColor("#555"))
+    month_style = ParagraphStyle("month", fontSize=10, alignment=1, spaceAfter=8,
+                                  fontName=FONT)
+    sect_style = ParagraphStyle("sect", fontSize=10, fontName=FONTB,
                                  backColor=colors.HexColor("#E8F5E9"),
                                  borderPadding=(4, 6, 4, 6), spaceAfter=4)
-    lbl = ParagraphStyle("lbl", fontSize=9, fontName="Helvetica")
-    val = ParagraphStyle("val", fontSize=9, fontName="Helvetica-Bold", alignment=2)
-    net_lbl = ParagraphStyle("net_lbl", fontSize=12, fontName="Helvetica-Bold",
+    lbl = ParagraphStyle("lbl", fontSize=9, fontName=FONT)
+    val = ParagraphStyle("val", fontSize=9, fontName=FONTB, alignment=2)
+    net_lbl = ParagraphStyle("net_lbl", fontSize=12, fontName=FONTB,
                               textColor=colors.HexColor("#1B5E20"))
-    net_val = ParagraphStyle("net_val", fontSize=12, fontName="Helvetica-Bold",
+    net_val = ParagraphStyle("net_val", fontSize=12, fontName=FONTB,
                               alignment=2, textColor=colors.HexColor("#1B5E20"))
-    green_val = ParagraphStyle("green_val", fontSize=9, fontName="Helvetica-Bold",
+    green_val = ParagraphStyle("green_val", fontSize=9, fontName=FONTB,
                                 alignment=2, textColor=colors.HexColor("#2E7D32"))
-    red_val = ParagraphStyle("red_val", fontSize=9, fontName="Helvetica-Bold",
+    red_val = ParagraphStyle("red_val", fontSize=9, fontName=FONTB,
                               alignment=2, textColor=colors.HexColor("#C62828"))
-    sig_style = ParagraphStyle("sig", fontSize=8, alignment=1, spaceBefore=4)
+    sig_style = ParagraphStyle("sig", fontSize=8, alignment=1, spaceBefore=4,
+                                fontName=FONT)
 
     elements = []
 
@@ -533,26 +554,30 @@ def export_salary_slips_pdf(
 
         # ── Header ──
         elements.append(Paragraph("WAHID MUDAWWARAH RESTAURANT", hdr_style))
-        elements.append(Paragraph("مطعم واحد مدوّرة", hdr_ar_style))
-        elements.append(Paragraph("PAY SLIP / قسيمة الراتب", sub_style))
+        elements.append(Paragraph(_ar("مطعم واحد مدوّرة"), hdr_ar_style))
+        elements.append(Paragraph(f"PAY SLIP / {_ar('قسيمة الراتب')}", sub_style))
         month_label = sp.month or ""
         if is_ar:
-            elements.append(Paragraph(f"الشهر: <b>{month_label}</b>", month_style))
+            elements.append(Paragraph(f"{_ar('الشهر')}: <b>{month_label}</b>", month_style))
         else:
             elements.append(Paragraph(f"Month: <b>{month_label}</b>", month_style))
         elements.append(Spacer(1, 4 * mm))
 
         # ── Employee Info ──
-        elements.append(Paragraph("Employee Information / معلومات الموظف", sect_style))
+        elements.append(Paragraph(f"Employee Information / {_ar('معلومات الموظف')}", sect_style))
+        _name_display = _ar(emp_name) if emp_name else "—"
+        _pos_display = _ar(emp.position) if emp.position else "—"
+        _branch_display = _ar(branch_name) if branch_name else "—"
+        _bank_display = _ar(emp.bank_name) if emp.bank_name else "—"
         emp_info = [
-            [Paragraph("Staff No. / رقم الموظف", lbl), Paragraph(emp.staff_no or "—", val),
-             Paragraph("Name / الاسم", lbl), Paragraph(emp_name or "—", val)],
-            [Paragraph("Position / المسمى الوظيفي", lbl), Paragraph(emp.position or "—", val),
-             Paragraph("Branch / الفرع", lbl), Paragraph(branch_name or "—", val)],
-            [Paragraph("Civil ID / الرقم المدني", lbl), Paragraph(emp.civil_id or "—", val),
+            [Paragraph(f"Staff No. / {_ar('رقم الموظف')}", lbl), Paragraph(emp.staff_no or "—", val),
+             Paragraph(f"Name / {_ar('الاسم')}", lbl), Paragraph(_name_display, val)],
+            [Paragraph(f"Position / {_ar('المسمى الوظيفي')}", lbl), Paragraph(_pos_display, val),
+             Paragraph(f"Branch / {_ar('الفرع')}", lbl), Paragraph(_branch_display, val)],
+            [Paragraph(f"Civil ID / {_ar('الرقم المدني')}", lbl), Paragraph(emp.civil_id or "—", val),
              Paragraph("IBAN", lbl), Paragraph(emp.iban or "—", val)],
-            [Paragraph("Bank / البنك", lbl), Paragraph(emp.bank_name or "—", val),
-             Paragraph("Join Date / تاريخ الالتحاق", lbl),
+            [Paragraph(f"Bank / {_ar('البنك')}", lbl), Paragraph(_bank_display, val),
+             Paragraph(f"Join Date / {_ar('تاريخ الالتحاق')}", lbl),
              Paragraph(str(emp.join_date) if emp.join_date else "—", val)],
         ]
         avail = A4[0] - 30 * mm
@@ -569,17 +594,17 @@ def export_salary_slips_pdf(
         elements.append(Spacer(1, 4 * mm))
 
         # ── Salary Details ──
-        elements.append(Paragraph("Salary Details / تفاصيل الراتب", sect_style))
+        elements.append(Paragraph(f"Salary Details / {_ar('تفاصيل الراتب')}", sect_style))
 
         def _fmt(v):
             return f"{v:.3f}"
 
         salary_rows = [
-            [Paragraph("Basic Salary / الراتب الأساسي", lbl),
+            [Paragraph(f"Basic Salary / {_ar('الراتب الأساسي')}", lbl),
              Paragraph(f"KD {_fmt(sp.basic_salary)}", val)],
-            [Paragraph("Days Worked / أيام العمل", lbl),
+            [Paragraph(f"Days Worked / {_ar('أيام العمل')}", lbl),
              Paragraph(f"{sp.days_worked or 30} / {sp.total_days or 30}", val)],
-            [Paragraph("Period / الفترة", lbl),
+            [Paragraph(f"Period / {_ar('الفترة')}", lbl),
              Paragraph(f"{sp.period_start or '—'}  to  {sp.period_end or '—'}", val)],
         ]
         sal_t = Table(salary_rows, colWidths=[avail * 0.6, avail * 0.4])
@@ -593,18 +618,18 @@ def export_salary_slips_pdf(
         elements.append(Spacer(1, 3 * mm))
 
         # ── Earnings ──
-        elements.append(Paragraph("Earnings / المستحقات", sect_style))
+        elements.append(Paragraph(f"Earnings / {_ar('المستحقات')}", sect_style))
         earn_rows = []
         earn_items = [
-            ("Overtime / العمل الإضافي", sp.overtime or 0),
-            ("Bonus / مكافأة", sp.bonus or 0),
-            ("Incentive / حافز", sp.incentive or 0),
-            ("Leave Salary / راتب الإجازة", sp.leave_salary or 0),
-            ("Ticket Payment / تذكرة السفر", sp.ticket_payment or 0),
-            ("Housing Allowance / بدل سكن", sp.housing_allowance or 0),
-            ("Transport Allowance / بدل نقل", sp.transport_allowance or 0),
-            ("Food Allowance / بدل طعام", sp.food_allowance or 0),
-            ("Other Allowance / بدلات أخرى", sp.other_allowance or 0),
+            (f"Overtime / {_ar('العمل الإضافي')}", sp.overtime or 0),
+            (f"Bonus / {_ar('مكافأة')}", sp.bonus or 0),
+            (f"Incentive / {_ar('حافز')}", sp.incentive or 0),
+            (f"Leave Salary / {_ar('راتب الإجازة')}", sp.leave_salary or 0),
+            (f"Ticket Payment / {_ar('تذكرة السفر')}", sp.ticket_payment or 0),
+            (f"Housing Allowance / {_ar('بدل سكن')}", sp.housing_allowance or 0),
+            (f"Transport Allowance / {_ar('بدل نقل')}", sp.transport_allowance or 0),
+            (f"Food Allowance / {_ar('بدل طعام')}", sp.food_allowance or 0),
+            (f"Other Allowance / {_ar('بدلات أخرى')}", sp.other_allowance or 0),
         ]
         for label_text, amount in earn_items:
             if amount > 0:
@@ -614,7 +639,7 @@ def export_salary_slips_pdf(
                 ])
         total_earnings = sp.allowances or 0
         earn_rows.append([
-            Paragraph("<b>Total Earnings / إجمالي المستحقات</b>", lbl),
+            Paragraph(f"<b>Total Earnings / {_ar('إجمالي المستحقات')}</b>", lbl),
             Paragraph(f"<b>KD {_fmt(total_earnings)}</b>", green_val),
         ])
         earn_t = Table(earn_rows, colWidths=[avail * 0.6, avail * 0.4])
@@ -630,15 +655,15 @@ def export_salary_slips_pdf(
         elements.append(Spacer(1, 3 * mm))
 
         # ── Deductions ──
-        elements.append(Paragraph("Deductions / الخصومات", sect_style))
+        elements.append(Paragraph(f"Deductions / {_ar('الخصومات')}", sect_style))
         ded_rows = []
         ded_items = [
-            ("Absence Deduction / خصم غياب", sp.absence_deduction or 0),
-            ("Loan Deduction / خصم القرض", sp.loan_deduction or 0),
-            ("Penalty/Fine / غرامة", sp.penalty or 0),
-            ("Late Deduction / خصم تأخير", sp.late_deduction or 0),
-            ("Other Deduction / خصومات أخرى", sp.other_deduction or 0),
-            ("Advance / سلفة", sp.advance or 0),
+            (f"Absence Deduction / {_ar('خصم غياب')}", sp.absence_deduction or 0),
+            (f"Loan Deduction / {_ar('خصم القرض')}", sp.loan_deduction or 0),
+            (f"Penalty/Fine / {_ar('غرامة')}", sp.penalty or 0),
+            (f"Late Deduction / {_ar('خصم تأخير')}", sp.late_deduction or 0),
+            (f"Other Deduction / {_ar('خصومات أخرى')}", sp.other_deduction or 0),
+            (f"Advance / {_ar('سلفة')}", sp.advance or 0),
         ]
         for label_text, amount in ded_items:
             if amount > 0:
@@ -648,7 +673,7 @@ def export_salary_slips_pdf(
                 ])
         total_deductions = sp.deductions or 0
         ded_rows.append([
-            Paragraph("<b>Total Deductions / إجمالي الخصومات</b>", lbl),
+            Paragraph(f"<b>Total Deductions / {_ar('إجمالي الخصومات')}</b>", lbl),
             Paragraph(f"<b>KD {_fmt(total_deductions)}</b>", red_val),
         ])
         ded_t = Table(ded_rows, colWidths=[avail * 0.6, avail * 0.4])
@@ -665,16 +690,16 @@ def export_salary_slips_pdf(
 
         # ── Net Salary ──
         net_rows = [
-            [Paragraph("NET SALARY / صافي الراتب", net_lbl),
+            [Paragraph(f"NET SALARY / {_ar('صافي الراتب')}", net_lbl),
              Paragraph(f"KD {_fmt(sp.net_salary or 0)}", net_val)],
-            [Paragraph("Payment Method / طريقة الدفع", lbl),
-             Paragraph("Bank Transfer / تحويل بنكي" if sp.payment_method == "bank_transfer" else "Cash / نقداً", val)],
-            [Paragraph("Status / الحالة", lbl),
+            [Paragraph(f"Payment Method / {_ar('طريقة الدفع')}", lbl),
+             Paragraph(f"Bank Transfer / {_ar('تحويل بنكي')}" if sp.payment_method == "bank_transfer" else f"Cash / {_ar('نقداً')}", val)],
+            [Paragraph(f"Status / {_ar('الحالة')}", lbl),
              Paragraph(sp.status.upper() if sp.status else "PENDING", val)],
         ]
         if sp.status == "paid" and sp.paid_date:
             net_rows.append([
-                Paragraph("Paid Date / تاريخ الدفع", lbl),
+                Paragraph(f"Paid Date / {_ar('تاريخ الدفع')}", lbl),
                 Paragraph(str(sp.paid_date), val),
             ])
         net_t = Table(net_rows, colWidths=[avail * 0.6, avail * 0.4])
@@ -691,9 +716,9 @@ def export_salary_slips_pdf(
 
         # ── Signatures ──
         sig_rows = [[
-            Paragraph("____________________________<br/>Employee Signature<br/>توقيع الموظف", sig_style),
+            Paragraph(f"____________________________<br/>Employee Signature<br/>{_ar('توقيع الموظف')}", sig_style),
             Paragraph("", sig_style),
-            Paragraph("____________________________<br/>Authorized Signature<br/>التوقيع المعتمد", sig_style),
+            Paragraph(f"____________________________<br/>Authorized Signature<br/>{_ar('التوقيع المعتمد')}", sig_style),
         ]]
         sig_t = Table(sig_rows, colWidths=[avail * 0.4, avail * 0.2, avail * 0.4])
         sig_t.setStyle(TableStyle([

@@ -10,6 +10,7 @@ import HRPage from "./pages/HRPage";
 import CashPage from "./pages/CashPage";
 import SettingsPage from "./pages/SettingsPage";
 import TransfersPage from "./pages/TransfersPage";
+import ContractsPage from "./pages/ContractsPage";
 import "./i18n";
 
 function ProtectedRoutes() {
@@ -25,6 +26,7 @@ function ProtectedRoutes() {
         <Route path="/hr" element={<HRPage />} />
         <Route path="/cash" element={<CashPage />} />
         <Route path="/transfers" element={<TransfersPage />} />
+        <Route path="/contracts" element={<ContractsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>

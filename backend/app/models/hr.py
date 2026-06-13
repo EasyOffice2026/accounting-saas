@@ -187,3 +187,20 @@ class Resignation(Base):
     # Status
     status = Column(String, default="draft")  # draft, submitted, approved, rejected, completed
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class Contract(Base):
+    __tablename__ = "contracts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    kind = Column(String, nullable=True)
+    place = Column(String, nullable=True)
+    value = Column(Float, default=0)
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    monthly_payment = Column(Float, default=0)
+    payment_day = Column(Integer, default=1)  # day of month for reminder
+    notes = Column(Text, nullable=True)
+    status = Column(String, default="active")  # active, expired, cancelled
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

@@ -151,6 +151,26 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE advance_loans ADD COLUMN deduction_month TEXT"))
                 conn.commit()
 
+        # Contracts table
+        if "contracts" not in insp.get_table_names():
+            conn.execute(text("""
+                CREATE TABLE contracts (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    kind TEXT,
+                    place TEXT,
+                    value FLOAT DEFAULT 0,
+                    start_date DATE,
+                    end_date DATE,
+                    monthly_payment FLOAT DEFAULT 0,
+                    payment_day INTEGER DEFAULT 1,
+                    notes TEXT,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+
 
 def _seed_data():
     from app.database import SessionLocal

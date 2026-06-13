@@ -5,7 +5,7 @@ from typing import Optional
 import calendar
 
 from app.database import get_db
-from app.models.hr import Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, LeaveRecord, Resignation
+from app.models.hr import Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, LeaveRecord, Resignation, Contract
 from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
@@ -1180,5 +1180,94 @@ def delete_resignation(res_id: int, db: Session = Depends(get_db),
     if not r:
         raise HTTPException(404, "Resignation not found")
     db.delete(r)
+    db.commit()
+    return {"ok": True}
+
+
+# --- Contracts & Subscriptions ---
+def _contract_to_dict(c):
+    return {
+        "id": c.id, "name": c.name or "", "kind": c.kind or "",
+        "place": c.place or "", "value": c.value or 0,
+        "start_date": str(c.start_date) if c.start_date else "",
+        "end_date": str(c.end_date) if c.end_date else "",
+        "monthly_payment": c.monthly_payment or 0,
+        "payment_day": c.payment_day or 1,
+        "notes": c.notes or "", "status": c.status or "active",
+        "created_at": str(c.created_at) if c.created_at else "",
+    }
+
+
+@router.get("/contracts")
+def list_contracts(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    rows = db.query(Contract).order_by(Contract.id.desc()).all()
+    return [_contract_to_dict(c) for c in rows]
+
+
+@router.post("/contracts")
+def create_contract(
+    name: str = Form(...),
+    kind: str = Form(""), place: str = Form(""),
+    value: float = Form(0), start_date: str = Form(""),
+    end_date: str = Form(""), monthly_payment: float = Form(0),
+    payment_day: int = Form(1), notes: str = Form(""),
+    status: str = Form("active"),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    c = Contract(
+        name=name, kind=kind or None, place=place or None,
+        value=value, monthly_payment=monthly_payment,
+        payment_day=payment_day, notes=notes or None, status=status,
+        start_date=date.fromisoformat(start_date) if start_date else None,
+        end_date=date.fromisoformat(end_date) if end_date else None,
+    )
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return _contract_to_dict(c)
+
+
+@router.put("/contracts/{contract_id}")
+def update_contract(
+    contract_id: int,
+    name: str = Form(...),
+    kind: str = Form(""), place: str = Form(""),
+    value: float = Form(0), start_date: str = Form(""),
+    end_date: str = Form(""), monthly_payment: float = Form(0),
+    payment_day: int = Form(1), notes: str = Form(""),
+    status: str = Form("active"),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    c = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not c:
+        raise HTTPException(404, "Contract not found")
+    c.name = name
+    c.kind = kind or None
+    c.place = place or None
+    c.value = value
+    c.monthly_payment = monthly_payment
+    c.payment_day = payment_day
+    c.notes = notes or None
+    c.status = status
+    c.start_date = date.fromisoformat(start_date) if start_date else None
+    c.end_date = date.fromisoformat(end_date) if end_date else None
+    db.commit()
+    db.refresh(c)
+    return _contract_to_dict(c)
+
+
+@router.delete("/contracts/{contract_id}")
+def delete_contract(contract_id: int, db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    c = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not c:
+        raise HTTPException(404, "Contract not found")
+    db.delete(c)
     db.commit()
     return {"ok": True}

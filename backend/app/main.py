@@ -116,6 +116,9 @@ def _migrate_columns():
             for sal_col in ["work_permit_salary", "actual_salary"]:
                 if sal_col not in cols:
                     conn.execute(text(f"ALTER TABLE employees ADD COLUMN {sal_col} FLOAT DEFAULT 0"))
+            for date_col in ["last_working_date", "residency_expiry", "health_card_expiry"]:
+                if date_col not in cols:
+                    conn.execute(text(f"ALTER TABLE employees ADD COLUMN {date_col} DATE"))
             conn.commit()
 
         # Salary payments: add new fields

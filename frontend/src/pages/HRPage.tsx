@@ -8,7 +8,8 @@ interface Employee {
   civil_id: string; position: string; phone: string; salary: number;
   work_permit_salary: number; actual_salary: number;
   iban: string; bank_name: string; salary_transfer_method: string; employer: string;
-  join_date: string; termination_date: string | null; is_active: boolean;
+  join_date: string; termination_date: string | null; last_working_date: string | null;
+  residency_expiry: string | null; health_card_expiry: string | null; is_active: boolean;
 }
 interface SalaryRecord {
   id: number; employee_id: number; staff_no: string; name: string; name_ar: string;
@@ -150,12 +151,16 @@ export default function HRPage() {
   const [editingResignation, setEditingResignation] = useState<ResignationRecord | null>(null);
   const [resEmpId, setResEmpId] = useState<number | null>(null);
 
+  // Employer list (unique, no duplicates)
+  const [employers, setEmployers] = useState<string[]>([]);
+
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager = currentUser.role === "owner" || currentUser.role === "manager";
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);
     apiGet("/api/hr/employees").then(setEmployees);
+    apiGet("/api/hr/employers").then(setEmployers);
   }, []);
 
   useEffect(() => {
@@ -192,6 +197,7 @@ export default function HRPage() {
       setShowForm(false);
       setEditingEmp(null);
       apiGet("/api/hr/employees").then(setEmployees);
+      apiGet("/api/hr/employers").then(setEmployers);
     } catch (err: unknown) { alert((err as Error).message); }
   };
 
@@ -407,9 +413,12 @@ export default function HRPage() {
         <div class="fields">
           <div class="field"><span class="field-label">المسمى الوظيفي / Position:</span><span class="field-value">${emp.position || "—"}</span></div>
           <div class="field"><span class="field-label">الفرع / Branch:</span><span class="field-value">${branch}</span></div>
-          <div class="field"><span class="field-label">جهة العمل / Employer:</span><span class="field-value">${emp.employer === "mudawwarah" ? "واحد مدوره / Mudawwarah" : "أخرى / Other"}</span></div>
+          <div class="field"><span class="field-label">جهة العمل / Employer:</span><span class="field-value">${emp.employer || "—"}</span></div>
           <div class="field"><span class="field-label">تاريخ الالتحاق / Join Date:</span><span class="field-value">${emp.join_date || "—"}</span></div>
-          <div class="field"><span class="field-label">تاريخ الانتهاء / Termination Date:</span><span class="field-value">${emp.termination_date || "—"}</span></div>
+          <div class="field"><span class="field-label">تاريخ الاستقالة / Resignation Date:</span><span class="field-value">${emp.termination_date || "—"}</span></div>
+          <div class="field"><span class="field-label">آخر يوم عمل / Last Working Date:</span><span class="field-value">${emp.last_working_date || "—"}</span></div>
+          <div class="field"><span class="field-label">انتهاء الإقامة / Residency Expiry:</span><span class="field-value">${emp.residency_expiry || "—"}</span></div>
+          <div class="field"><span class="field-label">انتهاء البطاقة الصحية / Health Card Expiry:</span><span class="field-value">${emp.health_card_expiry || "—"}</span></div>
         </div>
       </div>
       <div class="section">
@@ -816,10 +825,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("employer_label")}</label>
-                  <select name="employer" defaultValue={editingEmp?.employer || "mudawwarah"} className="w-full px-3 py-2 border rounded-lg text-sm">
-                    <option value="mudawwarah">Mudawwarah</option>
-                    <option value="other">{t("other")}</option>
-                  </select>
+                  <input list="employer-list" name="employer" defaultValue={editingEmp?.employer || ""} placeholder={t("employer_label")} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <datalist id="employer-list">
+                    {employers.map(e => <option key={e} value={e} />)}
+                  </datalist>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("join_date")}</label>
@@ -828,6 +837,18 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("termination_date")}</label>
                   <input type="date" name="termination_date" defaultValue={editingEmp?.termination_date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("last_working_date")}</label>
+                  <input type="date" name="last_working_date" defaultValue={editingEmp?.last_working_date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("residency_expiry")}</label>
+                  <input type="date" name="residency_expiry" defaultValue={editingEmp?.residency_expiry || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("health_card_expiry")}</label>
+                  <input type="date" name="health_card_expiry" defaultValue={editingEmp?.health_card_expiry || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
               </div>
               <button type="submit"
@@ -853,12 +874,14 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-3 py-3 text-left">{t("civil_id")}</th>
                   <th className="px-3 py-3 text-left">{t("phone")}</th>
                   <th className="px-3 py-3 text-left">{t("employer_label")}</th>
+                  <th className="px-3 py-3 text-left">{t("residency_expiry")}</th>
+                  <th className="px-3 py-3 text-left">{t("health_card_expiry")}</th>
                   {isManager && <th className="px-3 py-3 text-center">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {employees.length === 0 ? (
-                  <tr><td colSpan={isManager ? 8 : 7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={isManager ? 10 : 9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : employees.filter(emp => {
                   if (!empSearch) return true;
                   const q = empSearch.toLowerCase();
@@ -871,7 +894,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <td className="px-3 py-3">{emp.position}</td>
                     <td className="px-3 py-3">{emp.civil_id}</td>
                     <td className="px-3 py-3">{emp.phone}</td>
-                    <td className="px-3 py-3">{emp.employer === "mudawwarah" ? "Mudawwarah" : t("other")}</td>
+                    <td className="px-3 py-3">{emp.employer || "—"}</td>
+                    <td className="px-3 py-3">{emp.residency_expiry || "—"}</td>
+                    <td className="px-3 py-3">{emp.health_card_expiry || "—"}</td>
                     {isManager && (
                       <td className="px-3 py-3 text-center">
                         <div className="flex gap-2 justify-center">
@@ -2021,7 +2046,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       [t("name_en"), "name_en"], [t("name_ar_label"), "name_ar"],
                       [t("civil_id"), "civil_id"], [t("nationality"), "nationality"],
                       [t("job_title"), "job_title"], [t("department_branch"), "department_branch"],
-                      [t("date_of_joining"), "date_of_joining"], [t("last_working_day"), "last_working_day"],
+                      [t("date_of_joining"), "date_of_joining"],
+                      [t("resignation_date"), "resignation_date"],
+                      [t("last_working_day"), "last_working_day"],
                       [t("mobile_label"), "mobile"], [t("email_label"), "email"],
                     ].map(([label, key]) => (
                       <div key={key} className="flex border-b py-1">

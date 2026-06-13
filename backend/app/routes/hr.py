@@ -38,13 +38,23 @@ def list_employees(branch_id: Optional[int] = None, db: Session = Depends(get_db
             "actual_salary": 0 if hide_salary else (emp.actual_salary or 0),
             "iban": emp.iban or "", "bank_name": emp.bank_name or "",
             "salary_transfer_method": emp.salary_transfer_method or "cash",
-            "employer": emp.employer or "mudawwarah",
+            "employer": emp.employer or "",
             "join_date": str(emp.join_date) if emp.join_date else "",
             "termination_date": str(emp.termination_date) if emp.termination_date else "",
+            "last_working_date": str(emp.last_working_date) if emp.last_working_date else "",
+            "residency_expiry": str(emp.residency_expiry) if emp.residency_expiry else "",
+            "health_card_expiry": str(emp.health_card_expiry) if emp.health_card_expiry else "",
             "is_active": emp.is_active,
         }
         result.append(d)
     return result
+
+
+@router.get("/employers")
+def list_employers(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """Return unique employer names for dropdown (no duplicates)."""
+    rows = db.query(Employee.employer).filter(Employee.employer != None, Employee.employer != "").distinct().all()
+    return sorted(set(r[0] for r in rows if r[0]))
 
 
 @router.post("/employees")
@@ -57,9 +67,12 @@ def create_employee(
     actual_salary: float = Form(0),
     iban: str = Form(""), bank_name: str = Form(""),
     salary_transfer_method: str = Form("cash"),
-    employer: str = Form("mudawwarah"),
+    employer: str = Form(""),
     join_date: str = Form(""),
     termination_date: str = Form(""),
+    last_working_date: str = Form(""),
+    residency_expiry: str = Form(""),
+    health_card_expiry: str = Form(""),
     db: Session = Depends(get_db), _=Depends(get_current_user),
 ):
     # Duplicate Civil ID check
@@ -76,9 +89,12 @@ def create_employee(
         salary=salary, work_permit_salary=work_permit_salary,
         actual_salary=actual_salary,
         iban=iban or None, bank_name=bank_name or None,
-        salary_transfer_method=salary_transfer_method, employer=employer,
+        salary_transfer_method=salary_transfer_method, employer=employer or None,
         join_date=date.fromisoformat(join_date) if join_date else None,
         termination_date=date.fromisoformat(termination_date) if termination_date else None,
+        last_working_date=date.fromisoformat(last_working_date) if last_working_date else None,
+        residency_expiry=date.fromisoformat(residency_expiry) if residency_expiry else None,
+        health_card_expiry=date.fromisoformat(health_card_expiry) if health_card_expiry else None,
     )
     db.add(emp)
     db.commit()
@@ -97,9 +113,12 @@ def update_employee(
     actual_salary: float = Form(0),
     iban: str = Form(""), bank_name: str = Form(""),
     salary_transfer_method: str = Form("cash"),
-    employer: str = Form("mudawwarah"),
+    employer: str = Form(""),
     join_date: str = Form(""),
     termination_date: str = Form(""),
+    last_working_date: str = Form(""),
+    residency_expiry: str = Form(""),
+    health_card_expiry: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if user.role not in SALARY_VISIBLE_ROLES:
@@ -125,9 +144,12 @@ def update_employee(
     emp.iban = iban or None
     emp.bank_name = bank_name or None
     emp.salary_transfer_method = salary_transfer_method
-    emp.employer = employer
+    emp.employer = employer or None
     emp.join_date = date.fromisoformat(join_date) if join_date else None
     emp.termination_date = date.fromisoformat(termination_date) if termination_date else None
+    emp.last_working_date = date.fromisoformat(last_working_date) if last_working_date else None
+    emp.residency_expiry = date.fromisoformat(residency_expiry) if residency_expiry else None
+    emp.health_card_expiry = date.fromisoformat(health_card_expiry) if health_card_expiry else None
     db.commit()
     db.refresh(emp)
     return emp
@@ -304,6 +326,14 @@ def generate_monthly_payroll(
         if existing and existing.status in ("paid", "on_hold"):
             continue
 
+        # If employee has a last_working_date in this month, cap the period
+        emp_period_end = p_end
+        emp_period_days = period_working_days
+        if emp.last_working_date and p_start <= emp.last_working_date <= p_end:
+            emp_period_end = emp.last_working_date
+            emp_period_days = (emp.last_working_date - p_start).days + 1
+            emp_period_days = min(max(emp_period_days, 0), 30)
+
         # Auto-calculate leave/absence days for this month
         leave_recs = db.query(LeaveRecord).filter(
             LeaveRecord.employee_id == emp.id,
@@ -312,14 +342,14 @@ def generate_monthly_payroll(
         unpaid_absence_days = sum(lr.days for lr in leave_recs if not lr.is_paid)
         paid_leave_days = sum(lr.days for lr in leave_recs if lr.is_paid)
         total_leave_days = unpaid_absence_days + paid_leave_days
-        actual_days_worked = max(0, period_working_days - total_leave_days)
+        actual_days_worked = max(0, emp_period_days - total_leave_days)
 
         # Absence deduction (only for unpaid leaves)
         per_day = emp.actual_salary / total_days if total_days > 0 else 0
         absence_ded = round(per_day * unpaid_absence_days, 3)
 
-        # Pro-rate salary if period < 30 days
-        prorated_salary = round(per_day * period_working_days, 3)
+        # Pro-rate salary based on actual period days
+        prorated_salary = round(per_day * emp_period_days, 3)
 
         # Auto-calculate loan deduction from active loans with matching deduction_month
         active_loans = db.query(AdvanceLoan).filter(
@@ -358,7 +388,7 @@ def generate_monthly_payroll(
             sp.basic_salary = emp.actual_salary
             sp.total_days = total_days
             # Preserve custom period dates if already set by user edit
-            if sp.period_start and sp.period_end and (sp.period_start != p_start or sp.period_end != p_end):
+            if sp.period_start and sp.period_end and (sp.period_start != p_start or sp.period_end != emp_period_end):
                 custom_days = (sp.period_end - sp.period_start).days + 1
                 custom_working_days = min(max(custom_days, 0), 30)
                 sp.days_worked = max(0, custom_working_days - total_leave_days)
@@ -367,7 +397,7 @@ def generate_monthly_payroll(
             else:
                 sp.days_worked = actual_days_worked
                 sp.period_start = p_start
-                sp.period_end = p_end
+                sp.period_end = emp_period_end
             sp.other_allowance = other_benefit_total
             sp.allowances = fixed_allowances
             sp.absence_deduction = absence_ded
@@ -392,7 +422,7 @@ def generate_monthly_payroll(
                 total_days=total_days,
                 days_worked=actual_days_worked,
                 period_start=p_start,
-                period_end=p_end,
+                period_end=emp_period_end,
                 last_workplace="",
                 housing_allowance=0, transport_allowance=0,
                 food_allowance=0, other_allowance=other_benefit_total,
@@ -1049,6 +1079,13 @@ def create_resignation(
         resignation_date=date.fromisoformat(resignation_date) if resignation_date else None,
     )
     db.add(r)
+    # Sync dates to employee record
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    if emp:
+        if resignation_date:
+            emp.termination_date = date.fromisoformat(resignation_date)
+        if last_working_day:
+            emp.last_working_date = date.fromisoformat(last_working_day)
     db.commit()
     db.refresh(r)
     return _resignation_to_dict(r)
@@ -1122,6 +1159,13 @@ def update_resignation(
     r.final_settlement_amount = final_settlement_amount
     r.finance_date = date.fromisoformat(finance_date) if finance_date else None
     r.status = status
+    # Sync dates to employee record
+    emp = db.query(Employee).filter(Employee.id == r.employee_id).first()
+    if emp:
+        if resignation_date:
+            emp.termination_date = date.fromisoformat(resignation_date)
+        if last_working_day:
+            emp.last_working_date = date.fromisoformat(last_working_day)
     db.commit()
     db.refresh(r)
     return _resignation_to_dict(r)

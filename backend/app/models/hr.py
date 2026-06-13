@@ -20,9 +20,12 @@ class Employee(Base):
     iban = Column(String, nullable=True)
     bank_name = Column(String, nullable=True)
     salary_transfer_method = Column(String, default="cash")  # cash, bank
-    employer = Column(String, default="mudawwarah")  # mudawwarah, other
+    employer = Column(String, nullable=True)  # free-text, unique list for dropdown
     join_date = Column(Date, nullable=True)
-    termination_date = Column(Date, nullable=True)
+    termination_date = Column(Date, nullable=True)  # resignation/termination date
+    last_working_date = Column(Date, nullable=True)  # actual last day of work
+    residency_expiry = Column(Date, nullable=True)
+    health_card_expiry = Column(Date, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

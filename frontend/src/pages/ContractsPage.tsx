@@ -9,18 +9,33 @@ interface ContractRecord {
   notes: string; status: string; created_at: string;
 }
 
+const DEFAULT_CONTRACT_TYPES = ["Rent Contract", "Legal Contract", "Internet Contract"];
+
 export default function ContractsPage() {
   const { t } = useTranslation();
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ContractRecord | null>(null);
+  const [customType, setCustomType] = useState("");
+  const [selectedKind, setSelectedKind] = useState("");
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager = currentUser.role === "owner" || currentUser.role === "manager";
 
+  // Build unique contract types list from defaults + existing contracts
+  const contractTypes = Array.from(new Set([
+    ...DEFAULT_CONTRACT_TYPES,
+    ...contracts.map(c => c.kind).filter(k => k && !DEFAULT_CONTRACT_TYPES.includes(k))
+  ]));
+
   useEffect(() => {
     apiGet("/api/hr/contracts").then(setContracts);
   }, []);
+
+  useEffect(() => {
+    if (editing) setSelectedKind(editing.kind || "");
+    else setSelectedKind("");
+  }, [editing]);
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -56,8 +71,18 @@ export default function ContractsPage() {
               <input type="text" name="name" defaultValue={editing?.name || ""} required className="w-full px-3 py-2 border rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">{t("contract_kind")}</label>
-              <input type="text" name="kind" defaultValue={editing?.kind || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+              <label className="block text-sm font-medium mb-1">{t("contract_type")}</label>
+              <select value={selectedKind} onChange={e => { setSelectedKind(e.target.value); setCustomType(""); }}
+                className="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="">{t("select")}</option>
+                {contractTypes.map(k => <option key={k} value={k}>{k}</option>)}
+                <option value="__custom__">{t("add_new_type")}</option>
+              </select>
+              {selectedKind === "__custom__" && (
+                <input type="text" value={customType} onChange={e => setCustomType(e.target.value)}
+                  placeholder={t("enter_new_type")} className="w-full px-3 py-2 border rounded-lg text-sm mt-2" />
+              )}
+              <input type="hidden" name="kind" value={selectedKind === "__custom__" ? customType : selectedKind} />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">{t("contract_place")}</label>
@@ -131,7 +156,7 @@ export default function ContractsPage() {
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="px-3 py-3 text-left">{t("contract_name")}</th>
-              <th className="px-3 py-3 text-left">{t("contract_kind")}</th>
+              <th className="px-3 py-3 text-left">{t("contract_type")}</th>
               <th className="px-3 py-3 text-left">{t("contract_place")}</th>
               <th className="px-3 py-3 text-right">{t("contract_value")}</th>
               <th className="px-3 py-3 text-left">{t("start_date")}</th>

@@ -7,7 +7,6 @@ import SalesPage from "./pages/SalesPage";
 import PurchasesPage from "./pages/PurchasesPage";
 import ExpensesPage from "./pages/ExpensesPage";
 import HRPage from "./pages/HRPage";
-import AttendancePage from "./pages/AttendancePage";
 import CashPage from "./pages/CashPage";
 import SettingsPage from "./pages/SettingsPage";
 import TransfersPage from "./pages/TransfersPage";
@@ -24,7 +23,6 @@ function ProtectedRoutes() {
         <Route path="/purchases" element={<PurchasesPage />} />
         <Route path="/expenses" element={<ExpensesPage />} />
         <Route path="/hr" element={<HRPage />} />
-        <Route path="/attendance" element={<AttendancePage />} />
         <Route path="/cash" element={<CashPage />} />
         <Route path="/transfers" element={<TransfersPage />} />
         <Route path="/settings" element={<SettingsPage />} />

@@ -12,7 +12,7 @@ from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/api/hr", tags=["hr"])
 
-SALARY_VISIBLE_ROLES = ("owner", "manager")
+SALARY_VISIBLE_ROLES = ("owner", "manager", "accountant")
 
 
 # --- Employees ---
@@ -223,16 +223,16 @@ def list_salary_payments(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized to view salary data")
     q = db.query(SalaryPayment)
     if month:
         q = q.filter(SalaryPayment.month == month)
     if employee_id:
         q = q.filter(SalaryPayment.employee_id == employee_id)
-    if user.role == "staff" and user.branch_id:
-        q = q.filter(SalaryPayment.branch_id == user.branch_id)
     rows = q.order_by(SalaryPayment.month.desc(), SalaryPayment.id).all()
 
-    hide_salary = user.role not in SALARY_VISIBLE_ROLES
+    hide_salary = False
 
     # Get employee info for staff_no and position
     emp_ids = list({r.employee_id for r in rows})

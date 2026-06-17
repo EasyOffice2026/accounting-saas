@@ -13,6 +13,7 @@ from app.models.cash import CashBalance
 from app.models.branch import Branch
 from app.utils.auth import get_current_user
 from app.models.user import User
+from app.routes.hr import SALARY_VISIBLE_ROLES
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
@@ -468,7 +469,7 @@ def export_salary_slips_pdf(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in SALARY_VISIBLE_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized")
 
     from reportlab.lib.pagesizes import A4
@@ -749,7 +750,7 @@ def export_salary_slips_pdf(
 @router.get("/salary/{fmt}")
 def export_salary(fmt: str, month: Optional[str] = None, lang: Optional[str] = None,
                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in SALARY_VISIBLE_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized")
     language = lang or "en"
     header, data = _salary_data(db, user, month, lang=language)

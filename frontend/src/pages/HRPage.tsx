@@ -1997,28 +1997,77 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 <h2 className="text-xl font-bold">{t("resignation_form")}</h2>
                 <div className="flex gap-2">
                   <button onClick={() => {
-                    const printContent = document.getElementById("resignation-print");
-                    if (!printContent) return;
+                    const r = editingResignation;
                     const w = window.open("", "_blank");
                     if (!w) return;
+                    const consent = r.dues_cleared_consent;
                     w.document.write(`<html><head><title>${t("resignation_form")}</title>
                       <style>
-                        body { font-family: Arial, sans-serif; padding: 20px; direction: ltr; }
-                        .header { text-align: center; margin-bottom: 20px; }
-                        .header h1 { font-size: 18px; margin: 4px 0; }
-                        .section { margin: 16px 0; border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
-                        .section h3 { font-size: 14px; font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 8px; }
-                        .field { display: flex; border-bottom: 1px solid #eee; padding: 4px 0; font-size: 13px; }
-                        .field-label { width: 200px; font-weight: bold; }
-                        .consent-box { background: #f0fdf4; border: 2px solid #16a34a; border-radius: 8px; padding: 16px; margin: 16px 0; }
-                        .consent-box h3 { color: #16a34a; }
-                        .signature-line { border-bottom: 1px solid #333; min-width: 200px; display: inline-block; margin: 0 8px; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-                        td, th { border: 1px solid #ccc; padding: 6px; font-size: 12px; text-align: left; }
-                        @media print { body { padding: 0; } }
-                      </style></head><body>`);
-                    w.document.write(printContent.innerHTML);
-                    w.document.write("</body></html>");
+                        @page { size: A4; margin: 12mm 15mm; }
+                        * { box-sizing: border-box; margin: 0; padding: 0; }
+                        body { font-family: Arial, sans-serif; font-size: 11px; line-height: 1.3; color: #222; }
+                        .page { width: 100%; max-height: 257mm; overflow: hidden; }
+                        .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 6px; margin-bottom: 8px; }
+                        .header .company { font-size: 13px; font-weight: bold; }
+                        .header .title { font-size: 16px; font-weight: bold; margin: 3px 0; }
+                        .header .ref { font-size: 10px; color: #555; }
+                        .section { border: 1px solid #bbb; border-radius: 4px; padding: 6px 8px; margin-bottom: 6px; }
+                        .section-title { font-size: 11px; font-weight: bold; background: #f3f4f6; padding: 3px 6px; margin: -6px -8px 6px -8px; border-bottom: 1px solid #bbb; border-radius: 4px 4px 0 0; }
+                        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 12px; }
+                        .info-row { display: flex; padding: 2px 0; border-bottom: 1px dotted #ddd; font-size: 10.5px; }
+                        .info-label { font-weight: bold; min-width: 120px; color: #444; }
+                        .info-value { flex: 1; }
+                        .reason-text { min-height: 20px; font-size: 10.5px; }
+                        .settlement-table { width: 100%; border-collapse: collapse; }
+                        .settlement-table td { padding: 2px 4px; font-size: 10.5px; border-bottom: 1px solid #eee; }
+                        .settlement-table td:last-child { text-align: right; font-weight: bold; }
+                        .checklist-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px 8px; }
+                        .check-item { font-size: 10.5px; padding: 1px 0; }
+                        .consent-box { border: 2px solid ${consent ? "#16a34a" : "#ca8a04"}; background: ${consent ? "#f0fdf4" : "#fefce8"}; border-radius: 4px; padding: 6px 8px; margin-bottom: 6px; }
+                        .consent-title { font-size: 11px; font-weight: bold; color: ${consent ? "#16a34a" : "#ca8a04"}; margin-bottom: 4px; }
+                        .consent-text { font-size: 9.5px; color: #555; margin-bottom: 4px; line-height: 1.4; }
+                        .consent-status { font-size: 10.5px; font-weight: bold; color: ${consent ? "#16a34a" : "#ca8a04"}; }
+                        .sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; }
+                        .sig-box { border-top: 1px solid #333; padding-top: 3px; font-size: 10px; text-align: center; }
+                        @media print { body { padding: 0; } .page { max-height: none; } }
+                      </style></head><body><div class="page">
+                      <div class="header">
+                        <div class="company">Wahid Mudawwarah Restaurant &middot; مطعم واحد مدوّرة</div>
+                        <div class="title">RESIGNATION FORM &middot; نموذج استقالة</div>
+                        <div class="ref">Ref: HR-RES-${r.id.toString().padStart(4, "0")} &nbsp;&nbsp; Date: ${r.resignation_date || "—"}</div>
+                      </div>
+                      <div class="section">
+                        <div class="section-title">${t("employee_info")}</div>
+                        <div class="info-grid">
+                          ${[[t("name_en"), r.name_en], [t("name_ar_label"), r.name_ar], [t("civil_id"), r.civil_id], [t("job_title"), r.job_title], [t("department_branch"), r.department_branch], [t("date_of_joining"), r.date_of_joining], [t("resignation_date"), r.resignation_date], [t("last_working_day"), r.last_working_day], [t("mobile_label"), r.mobile]].map(([l, v]) => `<div class="info-row"><span class="info-label">${l}</span><span class="info-value">${v || "—"}</span></div>`).join("")}
+                        </div>
+                      </div>
+                      <div class="section">
+                        <div class="section-title">${t("reason_for_resignation")}</div>
+                        <div class="reason-text">${r.reason || "—"}</div>
+                      </div>
+                      <div class="section">
+                        <div class="section-title">${t("finance_settlement")}</div>
+                        <table class="settlement-table">
+                          ${[[t("last_salary_paid_amount"), r.last_salary_paid_amount], [t("end_of_service"), r.end_of_service], [t("leave_encashment"), r.leave_encashment], [t("deductions_loans"), r.deductions_amount], [t("final_settlement_amount"), r.final_settlement_amount]].map(([l, v]) => `<tr><td>${l}</td><td>KWD ${(Number(v) || 0).toFixed(3)}</td></tr>`).join("")}
+                        </table>
+                      </div>
+                      <div class="section">
+                        <div class="section-title">${t("clearance_checklist")}</div>
+                        <div class="checklist-grid">
+                          ${[["company_id_returned", t("company_id_returned")], ["uniform_returned", t("uniform_returned")], ["locker_keys_handed", t("locker_keys_handed")], ["equipment_returned", t("equipment_returned")], ["loans_cleared", t("loans_advances_cleared")], ["handover_completed", t("handover_completed")]].map(([k, l]) => `<div class="check-item">${(r as unknown as Record<string, boolean>)[k] ? "☑" : "☐"} ${l}</div>`).join("")}
+                        </div>
+                      </div>
+                      <div class="consent-box">
+                        <div class="consent-title">${t("dues_consent_title")}</div>
+                        <div class="consent-text">${t("dues_consent_text")}</div>
+                        <div class="consent-status">${consent ? "☑ " + t("consent_confirmed") : "☐ " + t("consent_pending")}${r.consent_date ? " &nbsp;&nbsp; " + t("date") + ": " + r.consent_date : ""}</div>
+                        <div class="sig-grid">
+                          <div class="sig-box">${t("employee_signature")}</div>
+                          <div class="sig-box">${t("company_representative")}</div>
+                        </div>
+                      </div>
+                    </div></body></html>`);
                     w.document.close();
                     w.print();
                   }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">

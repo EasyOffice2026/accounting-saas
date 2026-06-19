@@ -56,7 +56,8 @@ interface ResignationRecord {
   gm_name: string; gm_status: string; gm_date: string;
   finance_manager_name: string;
   last_salary_paid_amount: number; end_of_service: number;
-  leave_encashment: number; deductions_amount: number; final_settlement_amount: number;
+  leave_encashment: number; other_earnings: number;
+  deductions_amount: number; other_deductions: number; final_settlement_amount: number;
   finance_date: string;
   dues_cleared_consent: boolean; consent_date: string;
   status: string; created_at: string;
@@ -2020,7 +2021,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                         .reason-text { min-height: 20px; font-size: 10.5px; }
                         .settlement-table { width: 100%; border-collapse: collapse; }
                         .settlement-table td { padding: 2px 4px; font-size: 10.5px; border-bottom: 1px solid #eee; }
-                        .settlement-table td:last-child { text-align: right; font-weight: bold; }
+                        .settlement-table td:last-child { text-align: right; }
+                        .settlement-table .sub-header td { background: #f9fafb; font-size: 10px; padding: 3px 4px; border-bottom: 1px solid #ddd; }
+                        .settlement-table .subtotal td { background: #f0f4f8; border-top: 1px solid #bbb; border-bottom: 1px solid #bbb; }
+                        .settlement-table .net-total td { background: #e8f5e9; border-top: 2px solid #333; font-size: 11px; padding: 4px; }
                         .checklist-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px 8px; }
                         .check-item { font-size: 10.5px; padding: 1px 0; }
                         .consent-box { border: 2px solid ${consent ? "#16a34a" : "#ca8a04"}; background: ${consent ? "#f0fdf4" : "#fefce8"}; border-radius: 4px; padding: 6px 8px; margin-bottom: 6px; }
@@ -2049,7 +2053,13 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       <div class="section">
                         <div class="section-title">${t("finance_settlement")}</div>
                         <table class="settlement-table">
-                          ${[[t("last_salary_paid_amount"), r.last_salary_paid_amount], [t("end_of_service"), r.end_of_service], [t("leave_encashment"), r.leave_encashment], [t("deductions_loans"), r.deductions_amount], [t("final_settlement_amount"), r.final_settlement_amount]].map(([l, v]) => `<tr><td>${l}</td><td>KWD ${(Number(v) || 0).toFixed(3)}</td></tr>`).join("")}
+                          <tr class="sub-header"><td colspan="2"><b>${t("earnings")}</b></td></tr>
+                          ${[[t("last_salary_paid_amount"), r.last_salary_paid_amount], [t("end_of_service"), r.end_of_service], [t("leave_encashment"), r.leave_encashment], [t("other_earnings"), r.other_earnings]].map(([l, v]) => `<tr><td>${l}</td><td>KWD ${(Number(v) || 0).toFixed(3)}</td></tr>`).join("")}
+                          <tr class="subtotal"><td><b>${t("total_earnings")}</b></td><td><b>KWD ${((Number(r.last_salary_paid_amount)||0)+(Number(r.end_of_service)||0)+(Number(r.leave_encashment)||0)+(Number(r.other_earnings)||0)).toFixed(3)}</b></td></tr>
+                          <tr class="sub-header"><td colspan="2"><b>${t("deductions")}</b></td></tr>
+                          ${[[t("deductions_loans"), r.deductions_amount], [t("other_deductions"), r.other_deductions]].map(([l, v]) => `<tr><td>${l}</td><td>KWD ${(Number(v) || 0).toFixed(3)}</td></tr>`).join("")}
+                          <tr class="subtotal"><td><b>${t("total_deductions")}</b></td><td><b>KWD ${((Number(r.deductions_amount)||0)+(Number(r.other_deductions)||0)).toFixed(3)}</b></td></tr>
+                          <tr class="net-total"><td><b>${t("net_settlement_amount")}</b></td><td><b>KWD ${((Number(r.last_salary_paid_amount)||0)+(Number(r.end_of_service)||0)+(Number(r.leave_encashment)||0)+(Number(r.other_earnings)||0)-(Number(r.deductions_amount)||0)-(Number(r.other_deductions)||0)).toFixed(3)}</b></td></tr>
                         </table>
                       </div>
                       <div class="section">
@@ -2119,18 +2129,40 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("finance_settlement")}</h3>
                   <table className="w-full border-collapse text-sm">
                     <tbody>
+                      <tr className="bg-gray-50"><td colSpan={2} className="py-1 px-2 font-bold text-xs text-gray-600">{t("earnings")}</td></tr>
                       {[
                         [t("last_salary_paid_amount"), editingResignation.last_salary_paid_amount],
                         [t("end_of_service"), editingResignation.end_of_service],
                         [t("leave_encashment"), editingResignation.leave_encashment],
-                        [t("deductions_loans"), editingResignation.deductions_amount],
-                        [t("final_settlement_amount"), editingResignation.final_settlement_amount],
+                        [t("other_earnings"), editingResignation.other_earnings],
                       ].map(([label, val]) => (
                         <tr key={label as string} className="border-b">
-                          <td className="py-2 font-medium">{label}</td>
-                          <td className="py-2 text-right">KWD {(val as number || 0).toFixed(3)}</td>
+                          <td className="py-1.5 font-medium">{label}</td>
+                          <td className="py-1.5 text-right">KWD {(val as number || 0).toFixed(3)}</td>
                         </tr>
                       ))}
+                      <tr className="bg-blue-50 border-y border-gray-300">
+                        <td className="py-1.5 font-bold">{t("total_earnings")}</td>
+                        <td className="py-1.5 text-right font-bold">KWD {((editingResignation.last_salary_paid_amount || 0) + (editingResignation.end_of_service || 0) + (editingResignation.leave_encashment || 0) + (editingResignation.other_earnings || 0)).toFixed(3)}</td>
+                      </tr>
+                      <tr className="bg-gray-50"><td colSpan={2} className="py-1 px-2 font-bold text-xs text-gray-600">{t("deductions")}</td></tr>
+                      {[
+                        [t("deductions_loans"), editingResignation.deductions_amount],
+                        [t("other_deductions"), editingResignation.other_deductions],
+                      ].map(([label, val]) => (
+                        <tr key={label as string} className="border-b">
+                          <td className="py-1.5 font-medium">{label}</td>
+                          <td className="py-1.5 text-right">KWD {(val as number || 0).toFixed(3)}</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-red-50 border-y border-gray-300">
+                        <td className="py-1.5 font-bold">{t("total_deductions")}</td>
+                        <td className="py-1.5 text-right font-bold">KWD {((editingResignation.deductions_amount || 0) + (editingResignation.other_deductions || 0)).toFixed(3)}</td>
+                      </tr>
+                      <tr className="bg-green-100 border-t-2 border-gray-800">
+                        <td className="py-2 font-bold text-green-800">{t("net_settlement_amount")}</td>
+                        <td className="py-2 text-right font-bold text-green-800">KWD {((editingResignation.last_salary_paid_amount || 0) + (editingResignation.end_of_service || 0) + (editingResignation.leave_encashment || 0) + (editingResignation.other_earnings || 0) - (editingResignation.deductions_amount || 0) - (editingResignation.other_deductions || 0)).toFixed(3)}</td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -2202,6 +2234,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 checkboxes.forEach(cb => {
                   if (!fd.has(cb)) fd.set(cb, "false");
                 });
+                const totalEarn = (parseFloat(fd.get("last_salary_paid_amount") as string) || 0) + (parseFloat(fd.get("end_of_service") as string) || 0) + (parseFloat(fd.get("leave_encashment") as string) || 0) + (parseFloat(fd.get("other_earnings") as string) || 0);
+                const totalDed = (parseFloat(fd.get("deductions_amount") as string) || 0) + (parseFloat(fd.get("other_deductions") as string) || 0);
+                fd.set("final_settlement_amount", String(totalEarn - totalDed));
                 await apiFetch(`/api/hr/resignations/${editingResignation.id}`, { method: "PUT", body: fd });
                 const updated = await apiGet("/api/hr/resignations");
                 setResignations(updated);
@@ -2259,7 +2294,8 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 {/* Finance Settlement */}
                 <div className="border rounded-lg p-3">
                   <h4 className="font-medium text-sm mb-2">{t("finance_settlement")}</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <p className="text-xs text-gray-500 mb-2">{t("earnings")}</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                     <div>
                       <label className="block text-xs font-medium mb-1">{t("last_salary_paid_amount")}</label>
                       <input type="number" step="0.001" name="last_salary_paid_amount" defaultValue={editingResignation.last_salary_paid_amount} className="w-full px-3 py-1.5 border rounded text-sm" />
@@ -2273,12 +2309,19 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       <input type="number" step="0.001" name="leave_encashment" defaultValue={editingResignation.leave_encashment} className="w-full px-3 py-1.5 border rounded text-sm" />
                     </div>
                     <div>
+                      <label className="block text-xs font-medium mb-1">{t("other_earnings")}</label>
+                      <input type="number" step="0.001" name="other_earnings" defaultValue={editingResignation.other_earnings} className="w-full px-3 py-1.5 border rounded text-sm" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-2">{t("deductions")}</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
                       <label className="block text-xs font-medium mb-1">{t("deductions_loans")}</label>
                       <input type="number" step="0.001" name="deductions_amount" defaultValue={editingResignation.deductions_amount} className="w-full px-3 py-1.5 border rounded text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1">{t("final_settlement_amount")}</label>
-                      <input type="number" step="0.001" name="final_settlement_amount" defaultValue={editingResignation.final_settlement_amount} className="w-full px-3 py-1.5 border rounded text-sm" />
+                      <label className="block text-xs font-medium mb-1">{t("other_deductions")}</label>
+                      <input type="number" step="0.001" name="other_deductions" defaultValue={editingResignation.other_deductions} className="w-full px-3 py-1.5 border rounded text-sm" />
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1">{t("date")}</label>

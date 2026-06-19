@@ -158,6 +158,10 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE resignations ADD COLUMN dues_cleared_consent BOOLEAN DEFAULT FALSE"))
             if "consent_date" not in cols:
                 conn.execute(text("ALTER TABLE resignations ADD COLUMN consent_date DATE"))
+            if "other_earnings" not in cols:
+                conn.execute(text("ALTER TABLE resignations ADD COLUMN other_earnings FLOAT DEFAULT 0"))
+            if "other_deductions" not in cols:
+                conn.execute(text("ALTER TABLE resignations ADD COLUMN other_deductions FLOAT DEFAULT 0"))
             conn.commit()
 
         # Contracts table

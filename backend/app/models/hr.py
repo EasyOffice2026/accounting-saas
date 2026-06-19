@@ -181,7 +181,9 @@ class Resignation(Base):
     last_salary_paid_amount = Column(Float, default=0)
     end_of_service = Column(Float, default=0)
     leave_encashment = Column(Float, default=0)
+    other_earnings = Column(Float, default=0)
     deductions_amount = Column(Float, default=0)
+    other_deductions = Column(Float, default=0)
     final_settlement_amount = Column(Float, default=0)
     finance_date = Column(Date, nullable=True)
     # Dues clearance consent

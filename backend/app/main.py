@@ -151,6 +151,15 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE advance_loans ADD COLUMN deduction_month TEXT"))
                 conn.commit()
 
+        # Resignation table - add dues_cleared_consent columns
+        if "resignations" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("resignations")]
+            if "dues_cleared_consent" not in cols:
+                conn.execute(text("ALTER TABLE resignations ADD COLUMN dues_cleared_consent BOOLEAN DEFAULT FALSE"))
+            if "consent_date" not in cols:
+                conn.execute(text("ALTER TABLE resignations ADD COLUMN consent_date DATE"))
+            conn.commit()
+
         # Contracts table
         if "contracts" not in insp.get_table_names():
             conn.execute(text("""

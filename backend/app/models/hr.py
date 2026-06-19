@@ -184,6 +184,9 @@ class Resignation(Base):
     deductions_amount = Column(Float, default=0)
     final_settlement_amount = Column(Float, default=0)
     finance_date = Column(Date, nullable=True)
+    # Dues clearance consent
+    dues_cleared_consent = Column(Boolean, default=False)
+    consent_date = Column(Date, nullable=True)
     # Status
     status = Column(String, default="draft")  # draft, submitted, approved, rejected, completed
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

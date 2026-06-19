@@ -58,6 +58,7 @@ interface ResignationRecord {
   last_salary_paid_amount: number; end_of_service: number;
   leave_encashment: number; deductions_amount: number; final_settlement_amount: number;
   finance_date: string;
+  dues_cleared_consent: boolean; consent_date: string;
   status: string; created_at: string;
 }
 
@@ -2005,15 +2006,13 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                         body { font-family: Arial, sans-serif; padding: 20px; direction: ltr; }
                         .header { text-align: center; margin-bottom: 20px; }
                         .header h1 { font-size: 18px; margin: 4px 0; }
-                        .header h2 { font-size: 14px; margin: 4px 0; color: #666; }
-                        .section { margin: 16px 0; }
+                        .section { margin: 16px 0; border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
                         .section h3 { font-size: 14px; font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 8px; }
                         .field { display: flex; border-bottom: 1px solid #eee; padding: 4px 0; font-size: 13px; }
                         .field-label { width: 200px; font-weight: bold; }
-                        .field-value { flex: 1; }
-                        .checklist { list-style: none; padding: 0; }
-                        .checklist li { padding: 3px 0; font-size: 13px; }
-                        .approval-box { border: 1px solid #ccc; padding: 10px; margin: 8px 0; }
+                        .consent-box { background: #f0fdf4; border: 2px solid #16a34a; border-radius: 8px; padding: 16px; margin: 16px 0; }
+                        .consent-box h3 { color: #16a34a; }
+                        .signature-line { border-bottom: 1px solid #333; min-width: 200px; display: inline-block; margin: 0 8px; }
                         table { width: 100%; border-collapse: collapse; margin-top: 8px; }
                         td, th { border: 1px solid #ccc; padding: 6px; font-size: 12px; text-align: left; }
                         @media print { body { padding: 0; } }
@@ -2039,18 +2038,18 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <p className="text-sm">Ref: HR-RES-{editingResignation.id.toString().padStart(4, "0")} &nbsp;&nbsp; {t("date")}: {editingResignation.resignation_date || "—"}</p>
                 </div>
 
-                {/* Section 1: Employee Info */}
+                {/* Section 1: Employee Details */}
                 <div className="section border rounded-lg p-4 mb-4">
                   <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("employee_info")}</h3>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     {[
                       [t("name_en"), "name_en"], [t("name_ar_label"), "name_ar"],
-                      [t("civil_id"), "civil_id"], [t("nationality"), "nationality"],
+                      [t("civil_id"), "civil_id"],
                       [t("job_title"), "job_title"], [t("department_branch"), "department_branch"],
                       [t("date_of_joining"), "date_of_joining"],
                       [t("resignation_date"), "resignation_date"],
                       [t("last_working_day"), "last_working_day"],
-                      [t("mobile_label"), "mobile"], [t("email_label"), "email"],
+                      [t("mobile_label"), "mobile"],
                     ].map(([label, key]) => (
                       <div key={key} className="flex border-b py-1">
                         <span className="w-40 font-medium text-gray-600">{label}</span>
@@ -2066,7 +2065,28 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <p className="text-sm min-h-[40px]">{editingResignation.reason || "—"}</p>
                 </div>
 
-                {/* Section 3: Clearance */}
+                {/* Section 3: Final Settlement */}
+                <div className="section border rounded-lg p-4 mb-4">
+                  <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("finance_settlement")}</h3>
+                  <table className="w-full border-collapse text-sm">
+                    <tbody>
+                      {[
+                        [t("last_salary_paid_amount"), editingResignation.last_salary_paid_amount],
+                        [t("end_of_service"), editingResignation.end_of_service],
+                        [t("leave_encashment"), editingResignation.leave_encashment],
+                        [t("deductions_loans"), editingResignation.deductions_amount],
+                        [t("final_settlement_amount"), editingResignation.final_settlement_amount],
+                      ].map(([label, val]) => (
+                        <tr key={label as string} className="border-b">
+                          <td className="py-2 font-medium">{label}</td>
+                          <td className="py-2 text-right">KWD {(val as number || 0).toFixed(3)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Section 4: Clearance Checklist */}
                 <div className="section border rounded-lg p-4 mb-4">
                   <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("clearance_checklist")}</h3>
                   <div className="grid grid-cols-2 gap-1 text-sm">
@@ -2077,8 +2097,6 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       ["equipment_returned", t("equipment_returned")],
                       ["loans_cleared", t("loans_advances_cleared")],
                       ["handover_completed", t("handover_completed")],
-                      ["final_settlement_calculated", t("final_settlement_calc")],
-                      ["final_salary_paid", t("final_salary_eos_paid")],
                     ].map(([key, label]) => (
                       <div key={key} className="flex items-center gap-2 py-1">
                         <span>{(editingResignation as unknown as Record<string, boolean>)[key] ? "☑" : "☐"}</span>
@@ -2088,53 +2106,39 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   </div>
                 </div>
 
-                {/* Section 4: Declaration */}
-                <div className="section border rounded-lg p-4 mb-4">
-                  <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("employee_declaration")}</h3>
-                  <p className="text-xs text-gray-600 mb-2">{t("declaration_text")}</p>
-                  <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
-                    <div className="border-b pb-1">Employee Signature / توقيع الموظف: _______________</div>
-                    <div className="border-b pb-1">{t("date")}: _______________</div>
+                {/* Section 5: Employee Consent - Dues Received */}
+                <div className={`section rounded-lg p-4 mb-4 border-2 ${editingResignation.dues_cleared_consent ? "bg-green-50 border-green-500" : "bg-yellow-50 border-yellow-400"}`}>
+                  <h3 className={`font-semibold text-sm mb-3 border-b pb-1 ${editingResignation.dues_cleared_consent ? "text-green-700" : "text-yellow-700"}`}>
+                    {t("dues_consent_title")}
+                  </h3>
+                  <p className="text-sm mb-3 leading-relaxed">{t("dues_consent_text")}</p>
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="font-medium">{t("employee_consent_status")}:</span>
+                    {editingResignation.dues_cleared_consent ? (
+                      <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">☑ {t("consent_confirmed")}</span>
+                    ) : (
+                      <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-bold">☐ {t("consent_pending")}</span>
+                    )}
+                    {editingResignation.consent_date && (
+                      <span className="text-gray-500 text-xs">{t("date")}: {editingResignation.consent_date}</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
+                    <div className="border-b pb-1">{t("employee_signature")}: _______________</div>
+                    <div className="border-b pb-1">{t("company_representative")}: _______________</div>
                   </div>
                 </div>
 
-                {/* Section 5: Approvals & Finance */}
+                {/* Section 6: Status */}
                 <div className="section border rounded-lg p-4 mb-4">
-                  <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("management_approvals")}</h3>
-                  <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                    <div className="border p-3 rounded">
-                      <p className="font-medium mb-1">{t("ops_manager")} / مدير العمليات</p>
-                      <p>{t("name")}: {editingResignation.ops_manager_name || "_______________"}</p>
-                      <p>{t("status")}: {editingResignation.ops_manager_status === "approved" ? "☑ " + t("approved") : editingResignation.ops_manager_status === "rejected" ? "☑ " + t("rejected") : "☐ " + t("pending")}</p>
-                      <p>{t("date")}: {editingResignation.ops_manager_date || "_______________"}</p>
-                    </div>
-                    <div className="border p-3 rounded">
-                      <p className="font-medium mb-1">{t("general_manager")} / المدير العام</p>
-                      <p>{t("name")}: {editingResignation.gm_name || "_______________"}</p>
-                      <p>{t("status")}: {editingResignation.gm_status === "approved" ? "☑ " + t("approved") : editingResignation.gm_status === "rejected" ? "☑ " + t("rejected") : "☐ " + t("pending")}</p>
-                      <p>{t("date")}: {editingResignation.gm_date || "_______________"}</p>
-                    </div>
-                  </div>
-                  <div className="border p-3 rounded text-sm">
-                    <p className="font-medium mb-2">{t("finance_settlement")}</p>
-                    <p>{t("name")}: {editingResignation.finance_manager_name || "_______________"}</p>
-                    <table className="w-full mt-2 border-collapse">
-                      <tbody>
-                        {[
-                          [t("last_salary_paid_amount"), editingResignation.last_salary_paid_amount],
-                          [t("end_of_service"), editingResignation.end_of_service],
-                          [t("leave_encashment"), editingResignation.leave_encashment],
-                          [t("deductions_loans"), editingResignation.deductions_amount],
-                          [t("final_settlement_amount"), editingResignation.final_settlement_amount],
-                        ].map(([label, val]) => (
-                          <tr key={label as string} className="border-b">
-                            <td className="py-1 font-medium">{label}</td>
-                            <td className="py-1 text-right">KWD {(val as number || 0).toFixed(3)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <p className="mt-2">{t("date")}: {editingResignation.finance_date || "_______________"}</p>
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="font-semibold">{t("status")}:</span>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      editingResignation.status === "completed" ? "bg-green-100 text-green-700" :
+                      editingResignation.status === "approved" ? "bg-blue-100 text-blue-700" :
+                      editingResignation.status === "rejected" ? "bg-red-100 text-red-700" :
+                      "bg-gray-100 text-gray-700"
+                    }`}>{t(editingResignation.status) || editingResignation.status}</span>
                   </div>
                 </div>
               </div>
@@ -2143,10 +2147,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
               <form onSubmit={async (e) => {
                 e.preventDefault();
                 const fd = new FormData(e.currentTarget);
-                // Checkboxes need explicit handling
                 const checkboxes = ["company_id_returned", "uniform_returned", "locker_keys_handed",
                   "equipment_returned", "loans_cleared", "handover_completed",
-                  "final_settlement_calculated", "final_salary_paid"];
+                  "final_settlement_calculated", "final_salary_paid", "dues_cleared_consent"];
                 checkboxes.forEach(cb => {
                   if (!fd.has(cb)) fd.set(cb, "false");
                 });
@@ -2157,6 +2160,8 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 if (found) setEditingResignation(found);
               }} className="border-t pt-4 space-y-4">
                 <h3 className="font-semibold">{t("edit")}</h3>
+
+                {/* Basic Info */}
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-1">{t("name_en")}</label>
@@ -2171,10 +2176,6 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <input name="civil_id" defaultValue={editingResignation.civil_id} className="w-full px-3 py-2 border rounded-lg text-sm" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">{t("nationality")}</label>
-                    <input name="nationality" defaultValue={editingResignation.nationality} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
-                  <div>
                     <label className="block text-sm font-medium mb-1">{t("job_title")}</label>
                     <input name="job_title" defaultValue={editingResignation.job_title} className="w-full px-3 py-2 border rounded-lg text-sm" />
                   </div>
@@ -2187,6 +2188,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <input type="date" name="date_of_joining" defaultValue={editingResignation.date_of_joining} className="w-full px-3 py-2 border rounded-lg text-sm" />
                   </div>
                   <div>
+                    <label className="block text-sm font-medium mb-1">{t("resignation_date")}</label>
+                    <input type="date" name="resignation_date" defaultValue={editingResignation.resignation_date} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium mb-1">{t("last_working_day")}</label>
                     <input type="date" name="last_working_day" defaultValue={editingResignation.last_working_day} className="w-full px-3 py-2 border rounded-lg text-sm" />
                   </div>
@@ -2194,76 +2199,18 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <label className="block text-sm font-medium mb-1">{t("mobile_label")}</label>
                     <input name="mobile" defaultValue={editingResignation.mobile} className="w-full px-3 py-2 border rounded-lg text-sm" />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("email_label")}</label>
-                    <input name="email" defaultValue={editingResignation.email} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("resignation_date")}</label>
-                    <input type="date" name="resignation_date" defaultValue={editingResignation.resignation_date} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
                 </div>
+
+                {/* Reason */}
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("reason_for_resignation")}</label>
-                  <textarea name="reason" defaultValue={editingResignation.reason} className="w-full px-3 py-2 border rounded-lg text-sm" rows={3} />
+                  <textarea name="reason" defaultValue={editingResignation.reason} className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
                 </div>
 
-                {/* Clearance checkboxes */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">{t("clearance_checklist")}</label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    {[
-                      ["company_id_returned", t("company_id_returned")],
-                      ["uniform_returned", t("uniform_returned")],
-                      ["locker_keys_handed", t("locker_keys_handed")],
-                      ["equipment_returned", t("equipment_returned")],
-                      ["loans_cleared", t("loans_advances_cleared")],
-                      ["handover_completed", t("handover_completed")],
-                      ["final_settlement_calculated", t("final_settlement_calc")],
-                      ["final_salary_paid", t("final_salary_eos_paid")],
-                    ].map(([key, label]) => (
-                      <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="checkbox" name={key} value="true"
-                          defaultChecked={(editingResignation as unknown as Record<string, boolean>)[key]}
-                          className="rounded" />
-                        <span>{label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Management approvals */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="border rounded-lg p-3">
-                    <h4 className="font-medium text-sm mb-2">{t("ops_manager")}</h4>
-                    <input name="ops_manager_name" placeholder={t("name")} defaultValue={editingResignation.ops_manager_name} className="w-full px-3 py-1.5 border rounded text-sm mb-2" />
-                    <select name="ops_manager_status" defaultValue={editingResignation.ops_manager_status} className="w-full px-3 py-1.5 border rounded text-sm mb-2">
-                      <option value="pending">{t("pending")}</option>
-                      <option value="approved">{t("approved")}</option>
-                      <option value="rejected">{t("rejected")}</option>
-                    </select>
-                    <input type="date" name="ops_manager_date" defaultValue={editingResignation.ops_manager_date} className="w-full px-3 py-1.5 border rounded text-sm" />
-                  </div>
-                  <div className="border rounded-lg p-3">
-                    <h4 className="font-medium text-sm mb-2">{t("general_manager")}</h4>
-                    <input name="gm_name" placeholder={t("name")} defaultValue={editingResignation.gm_name} className="w-full px-3 py-1.5 border rounded text-sm mb-2" />
-                    <select name="gm_status" defaultValue={editingResignation.gm_status} className="w-full px-3 py-1.5 border rounded text-sm mb-2">
-                      <option value="pending">{t("pending")}</option>
-                      <option value="approved">{t("approved")}</option>
-                      <option value="rejected">{t("rejected")}</option>
-                    </select>
-                    <input type="date" name="gm_date" defaultValue={editingResignation.gm_date} className="w-full px-3 py-1.5 border rounded text-sm" />
-                  </div>
-                </div>
-
-                {/* Finance */}
+                {/* Finance Settlement */}
                 <div className="border rounded-lg p-3">
                   <h4 className="font-medium text-sm mb-2">{t("finance_settlement")}</h4>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium mb-1">{t("name")}</label>
-                      <input name="finance_manager_name" defaultValue={editingResignation.finance_manager_name} className="w-full px-3 py-1.5 border rounded text-sm" />
-                    </div>
                     <div>
                       <label className="block text-xs font-medium mb-1">{t("last_salary_paid_amount")}</label>
                       <input type="number" step="0.001" name="last_salary_paid_amount" defaultValue={editingResignation.last_salary_paid_amount} className="w-full px-3 py-1.5 border rounded text-sm" />
@@ -2289,9 +2236,59 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       <input type="date" name="finance_date" defaultValue={editingResignation.finance_date} className="w-full px-3 py-1.5 border rounded text-sm" />
                     </div>
                   </div>
+                  {/* Hidden fields for unused but required form params */}
+                  <input type="hidden" name="finance_manager_name" value={editingResignation.finance_manager_name || ""} />
                 </div>
 
-                {/* Status */}
+                {/* Clearance checkboxes */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">{t("clearance_checklist")}</label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {[
+                      ["company_id_returned", t("company_id_returned")],
+                      ["uniform_returned", t("uniform_returned")],
+                      ["locker_keys_handed", t("locker_keys_handed")],
+                      ["equipment_returned", t("equipment_returned")],
+                      ["loans_cleared", t("loans_advances_cleared")],
+                      ["handover_completed", t("handover_completed")],
+                    ].map(([key, label]) => (
+                      <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="checkbox" name={key} value="true"
+                          defaultChecked={(editingResignation as unknown as Record<string, boolean>)[key]}
+                          className="rounded" />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Dues Consent */}
+                <div className="bg-green-50 border-2 border-green-300 rounded-lg p-4">
+                  <h4 className="font-semibold text-sm text-green-700 mb-2">{t("dues_consent_title")}</h4>
+                  <p className="text-xs text-gray-600 mb-3">{t("dues_consent_text")}</p>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer font-medium">
+                      <input type="checkbox" name="dues_cleared_consent" value="true"
+                        defaultChecked={editingResignation.dues_cleared_consent}
+                        className="rounded w-5 h-5 text-green-600" />
+                      <span>{t("consent_checkbox_label")}</span>
+                    </label>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">{t("consent_date_label")}</label>
+                      <input type="date" name="consent_date" defaultValue={editingResignation.consent_date} className="px-3 py-1.5 border rounded text-sm" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hidden fields for management approvals (keep data) */}
+                <input type="hidden" name="ops_manager_name" value={editingResignation.ops_manager_name || ""} />
+                <input type="hidden" name="ops_manager_status" value={editingResignation.ops_manager_status || "pending"} />
+                <input type="hidden" name="ops_manager_date" value={editingResignation.ops_manager_date || ""} />
+                <input type="hidden" name="gm_name" value={editingResignation.gm_name || ""} />
+                <input type="hidden" name="gm_status" value={editingResignation.gm_status || "pending"} />
+                <input type="hidden" name="gm_date" value={editingResignation.gm_date || ""} />
+
+                {/* Status + Save */}
                 <div className="flex items-center gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-1">{t("status")}</label>
@@ -2322,13 +2319,14 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <th className="px-4 py-3 text-left">{t("department_branch")}</th>
                     <th className="px-4 py-3 text-left">{t("resignation_date")}</th>
                     <th className="px-4 py-3 text-left">{t("last_working_day")}</th>
+                    <th className="px-4 py-3 text-center">{t("dues_cleared")}</th>
                     <th className="px-4 py-3 text-left">{t("status")}</th>
                     <th className="px-4 py-3 text-left">{t("actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {resignations.length === 0 ? (
-                    <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                   ) : resignations.map(r => (
                     <tr key={r.id} className="border-b hover:bg-gray-50">
                       <td className="px-4 py-3 font-mono">HR-RES-{r.id.toString().padStart(4, "0")}</td>
@@ -2336,6 +2334,13 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       <td className="px-4 py-3">{r.department_branch || "—"}</td>
                       <td className="px-4 py-3">{r.resignation_date || "—"}</td>
                       <td className="px-4 py-3">{r.last_working_day || "—"}</td>
+                      <td className="px-4 py-3 text-center">
+                        {r.dues_cleared_consent ? (
+                          <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">☑ {t("cleared")}</span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">☐ {t("pending")}</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                           r.status === "completed" ? "bg-green-100 text-green-700" :

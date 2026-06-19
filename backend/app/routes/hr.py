@@ -1039,6 +1039,8 @@ def _resignation_to_dict(r):
         "deductions_amount": r.deductions_amount or 0,
         "final_settlement_amount": r.final_settlement_amount or 0,
         "finance_date": str(r.finance_date) if r.finance_date else "",
+        "dues_cleared_consent": r.dues_cleared_consent if r.dues_cleared_consent else False,
+        "consent_date": str(r.consent_date) if r.consent_date else "",
         "status": r.status or "draft",
         "created_at": str(r.created_at) if r.created_at else "",
     }
@@ -1116,6 +1118,8 @@ def update_resignation(
     deductions_amount: float = Form(0),
     final_settlement_amount: float = Form(0),
     finance_date: str = Form(""),
+    dues_cleared_consent: bool = Form(False),
+    consent_date: str = Form(""),
     status: str = Form("draft"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
@@ -1158,6 +1162,8 @@ def update_resignation(
     r.deductions_amount = deductions_amount
     r.final_settlement_amount = final_settlement_amount
     r.finance_date = date.fromisoformat(finance_date) if finance_date else None
+    r.dues_cleared_consent = dues_cleared_consent
+    r.consent_date = date.fromisoformat(consent_date) if consent_date else None
     r.status = status
     # Sync dates to employee record
     emp = db.query(Employee).filter(Employee.id == r.employee_id).first()

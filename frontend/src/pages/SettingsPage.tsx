@@ -70,6 +70,7 @@ interface UserItem {
   role: string;
   branch_id: number | null;
   is_active: boolean;
+  allowed_tabs: string[] | null;
 }
 
 interface BranchItem {
@@ -319,6 +320,83 @@ export default function SettingsPage() {
 
   const currentUser = useAuth().user;
 
+  // Permissions management
+  const ALL_MAIN_TABS = [
+    { key: "dashboard", label: "tab_dashboard" },
+    { key: "sales", label: "tab_sales" },
+    { key: "purchases", label: "tab_purchases" },
+    { key: "expenses", label: "tab_expenses" },
+    { key: "hr", label: "tab_hr" },
+    { key: "cash", label: "tab_cash" },
+    { key: "transfers", label: "tab_transfers" },
+    { key: "contracts", label: "tab_contracts" },
+  ];
+  const ALL_HR_TABS = [
+    { key: "hr_employees", label: "tab_hr_employees" },
+    { key: "hr_salary", label: "tab_hr_salary" },
+    { key: "hr_transfers", label: "tab_hr_transfers" },
+    { key: "hr_loans", label: "tab_hr_loans" },
+    { key: "hr_benefits", label: "tab_hr_benefits" },
+    { key: "hr_deductions", label: "tab_hr_deductions" },
+    { key: "hr_leaves", label: "tab_hr_leaves" },
+    { key: "hr_resignation", label: "tab_hr_resignation" },
+  ];
+  const ALL_TABS = [...ALL_MAIN_TABS, ...ALL_HR_TABS];
+  const ALL_TAB_KEYS = ALL_TABS.map(t => t.key);
+
+  const [permEditing, setPermEditing] = useState<number | null>(null);
+  const [permTabs, setPermTabs] = useState<string[]>([]);
+  const [permAllAccess, setPermAllAccess] = useState(true);
+  const [permMsg, setPermMsg] = useState("");
+  const [permMsgType, setPermMsgType] = useState<"success" | "error">("success");
+  const [permSaving, setPermSaving] = useState(false);
+
+  const startEditPerm = (u: UserItem) => {
+    setPermEditing(u.id);
+    if (!u.allowed_tabs) {
+      setPermAllAccess(true);
+      setPermTabs([...ALL_TAB_KEYS]);
+    } else {
+      setPermAllAccess(false);
+      setPermTabs([...u.allowed_tabs]);
+    }
+  };
+
+  const togglePermTab = (key: string) => {
+    setPermTabs(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+    setPermAllAccess(false);
+  };
+
+  const togglePermAllAccess = () => {
+    if (permAllAccess) {
+      setPermAllAccess(false);
+      setPermTabs([]);
+    } else {
+      setPermAllAccess(true);
+      setPermTabs([...ALL_TAB_KEYS]);
+    }
+  };
+
+  const savePerm = async (userId: number) => {
+    setPermSaving(true);
+    try {
+      const body = permAllAccess ? { allowed_tabs: null } : { allowed_tabs: permTabs };
+      const res = await apiFetch(`/api/users/${userId}/permissions`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setPermMsg(t("permissions_saved")); setPermMsgType("success");
+      loadUsers();
+      setPermEditing(null);
+    } catch {
+      setPermMsg(t("permissions_error")); setPermMsgType("error");
+    }
+    setPermSaving(false);
+    setTimeout(() => setPermMsg(""), 5000);
+  };
+
   return (
     <div>
       <h2 className="text-2xl font-bold text-gray-800 mb-6">{t("settings")}</h2>
@@ -448,6 +526,114 @@ export default function SettingsPage() {
           </table>
         </div>
       </div>
+
+      {/* User Permissions (owner only) */}
+      {currentUser?.role === "owner" && (
+        <div className="bg-white p-6 rounded-xl shadow-sm border max-w-5xl mb-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold">{t("user_permissions")}</h3>
+            <p className="text-sm text-gray-500">{t("user_permissions_desc")}</p>
+          </div>
+
+          {permMsg && (
+            <div className={`p-3 rounded mb-4 text-sm ${
+              permMsgType === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+            }`}>{permMsg}</div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left">{t("username")}</th>
+                  <th className="px-3 py-2 text-left">{t("full_name")}</th>
+                  <th className="px-3 py-2 text-left">{t("role")}</th>
+                  <th className="px-3 py-2 text-left">{t("status")}</th>
+                  <th className="px-3 py-2 text-left">{t("actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.filter(u => u.role !== "owner").map(u => (
+                  <tr key={u.id} className="border-t">
+                    <td className="px-3 py-2 font-medium">{u.username}</td>
+                    <td className="px-3 py-2">{u.full_name}</td>
+                    <td className="px-3 py-2">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        u.role === "manager" ? "bg-blue-100 text-blue-700" :
+                        u.role === "accountant" ? "bg-amber-100 text-amber-700" :
+                        "bg-gray-100 text-gray-700"
+                      }`}>{t(u.role)}</span>
+                    </td>
+                    <td className="px-3 py-2">
+                      {u.allowed_tabs ? (
+                        <span className="text-xs text-orange-600">{u.allowed_tabs.length} tabs</span>
+                      ) : (
+                        <span className="text-xs text-green-600">{t("all_access")}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <button onClick={() => permEditing === u.id ? setPermEditing(null) : startEditPerm(u)}
+                        className="text-blue-600 hover:underline text-xs">
+                        {permEditing === u.id ? t("cancel") : t("edit")}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {permEditing && (() => {
+            const editUser = users.find(u => u.id === permEditing);
+            if (!editUser) return null;
+            return (
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-medium text-sm">
+                    {editUser.full_name} ({editUser.username})
+                  </h4>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={permAllAccess} onChange={togglePermAllAccess}
+                      className="rounded" />
+                    {t("all_access")}
+                  </label>
+                </div>
+
+                {!permAllAccess && (
+                  <>
+                    <p className="text-xs text-gray-500 mb-2 font-medium">{t("dashboard")} & {t("sales")}</p>
+                    <div className="grid grid-cols-4 gap-2 mb-3">
+                      {ALL_MAIN_TABS.map(tab => (
+                        <label key={tab.key} className="flex items-center gap-2 text-sm bg-white px-3 py-2 rounded border cursor-pointer hover:bg-emerald-50">
+                          <input type="checkbox" checked={permTabs.includes(tab.key)}
+                            onChange={() => togglePermTab(tab.key)} className="rounded" />
+                          {t(tab.label)}
+                        </label>
+                      ))}
+                    </div>
+
+                    <p className="text-xs text-gray-500 mb-2 font-medium">{t("hr")} Sub-Tabs</p>
+                    <div className="grid grid-cols-4 gap-2 mb-3">
+                      {ALL_HR_TABS.map(tab => (
+                        <label key={tab.key} className="flex items-center gap-2 text-sm bg-white px-3 py-2 rounded border cursor-pointer hover:bg-emerald-50">
+                          <input type="checkbox" checked={permTabs.includes(tab.key)}
+                            onChange={() => togglePermTab(tab.key)} className="rounded" />
+                          {t(tab.label)}
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                <button onClick={() => savePerm(permEditing)} disabled={permSaving}
+                  className="px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm disabled:opacity-50">
+                  {permSaving ? "..." : t("save_permissions")}
+                </button>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       <div className="bg-white p-6 rounded-xl shadow-sm border max-w-2xl">
         <h3 className="text-lg font-semibold mb-4">{t("email_settings")}</h3>

@@ -25,6 +25,7 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
             "full_name": user.full_name,
             "role": user.role,
             "branch_id": user.branch_id,
+            "allowed_tabs": user.get_allowed_tabs(),
         },
     }
 
@@ -37,4 +38,5 @@ def me(user: User = Depends(get_current_user)):
         "full_name": user.full_name,
         "role": user.role,
         "branch_id": user.branch_id,
+        "allowed_tabs": user.get_allowed_tabs(),
     }

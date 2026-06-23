@@ -95,6 +95,12 @@ export default function Layout() {
         <nav className="mt-1">
           {navItems
             .filter(item => !item.roles || item.roles.includes(user?.role || ""))
+            .filter(item => {
+              if (user?.role === "owner") return true;
+              if (!user?.allowed_tabs) return true;
+              const tabKey = item.key === "cash_management" ? "cash" : item.key === "internal_transfer" ? "transfers" : item.key === "contracts_tab" ? "contracts" : item.key;
+              return user.allowed_tabs.includes(tabKey);
+            })
             .map(({ path, icon: Icon, key }) => (
             <Link
               key={path}

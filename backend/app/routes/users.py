@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Form
+from fastapi import APIRouter, Depends, HTTPException, Form, Body
 from sqlalchemy.orm import Session
 from typing import Optional
+import json
 
 from app.database import get_db
 from app.models.user import User
@@ -22,6 +23,7 @@ def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_u
             "role": u.role,
             "branch_id": u.branch_id,
             "is_active": u.is_active,
+            "allowed_tabs": u.get_allowed_tabs(),
         }
         for u in users
     ]
@@ -110,3 +112,23 @@ def delete_user(
     db.delete(target)
     db.commit()
     return {"message": "User deleted"}
+
+
+@router.put("/{user_id}/permissions")
+def update_user_permissions(
+    user_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "owner":
+        raise HTTPException(403, "Only owner can manage permissions")
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(404, "User not found")
+    tabs = payload.get("allowed_tabs")
+    if tabs is not None and not isinstance(tabs, list):
+        raise HTTPException(400, "allowed_tabs must be a list or null")
+    target.set_allowed_tabs(tabs)
+    db.commit()
+    return {"message": "Permissions updated", "allowed_tabs": target.get_allowed_tabs()}

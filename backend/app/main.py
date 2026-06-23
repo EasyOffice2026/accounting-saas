@@ -238,6 +238,13 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE transfer_order_lines ADD COLUMN item_name_ar TEXT"))
                 conn.commit()
 
+        # Users: add allowed_tabs
+        if "users" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("users")]
+            if "allowed_tabs" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN allowed_tabs TEXT"))
+                conn.commit()
+
 
 def _seed_data():
     from app.database import SessionLocal

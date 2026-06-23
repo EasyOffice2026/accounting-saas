@@ -7,6 +7,7 @@ interface UserInfo {
   full_name: string;
   role: string;
   branch_id: number | null;
+  allowed_tabs: string[] | null;
 }
 
 interface AuthCtx {

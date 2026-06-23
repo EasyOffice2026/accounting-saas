@@ -52,6 +52,7 @@ export default function PurchasesPage() {
   // Invoice state
   const [invoices, setInvoices] = useState<InvoiceI[]>([]);
   const [payingInvoice, setPayingInvoice] = useState<InvoiceI | null>(null);
+  const [invoiceSupplierFilter, setInvoiceSupplierFilter] = useState<number | null>(null);
 
   // Ledger state
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
@@ -890,7 +891,17 @@ export default function PurchasesPage() {
 
       {/* ========== INVOICES TAB ========== */}
       {tab === "invoices" && (
-        <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+        <div>
+          <div className="bg-white p-4 rounded-xl shadow-sm border mb-4">
+            <label className="block text-sm font-medium mb-2">{t("select_supplier")}</label>
+            <select value={invoiceSupplierFilter || ""}
+              onChange={e => setInvoiceSupplierFilter(e.target.value ? Number(e.target.value) : null)}
+              className="w-full max-w-sm px-3 py-2 border rounded-lg text-sm">
+              <option value="">{t("all_suppliers")}</option>
+              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -906,9 +917,13 @@ export default function PurchasesPage() {
               </tr>
             </thead>
             <tbody>
-              {invoices.length === 0 ? (
+              {(() => {
+                const filtered = invoiceSupplierFilter
+                  ? invoices.filter(inv => inv.supplier_id === invoiceSupplierFilter)
+                  : invoices;
+                return filtered.length === 0 ? (
                 <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{t("no_invoices")}</td></tr>
-              ) : invoices.map(inv => (
+              ) : filtered.map(inv => (
                 <tr key={inv.id} className="border-b hover:bg-gray-50">
                   <td className="px-4 py-3">{inv.id}</td>
                   <td className="px-4 py-3">{inv.purchase_order_id}</td>
@@ -941,9 +956,11 @@ export default function PurchasesPage() {
                     )}
                   </td>
                 </tr>
-              ))}
+              ));
+              })()}
             </tbody>
           </table>
+        </div>
         </div>
       )}
 

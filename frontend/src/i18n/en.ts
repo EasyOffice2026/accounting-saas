@@ -157,6 +157,7 @@ export default {
   catalog_loaded: "Items loaded from supplier catalog",
   select_product: "Select Product",
   select_products: "Select Products to Order",
+  all_suppliers: "All Suppliers",
   add_item: "Add Item",
   edit_item: "Edit Item",
   item_name_ar: "Item Name (Arabic)",

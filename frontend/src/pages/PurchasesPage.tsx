@@ -37,6 +37,7 @@ export default function PurchasesPage() {
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [items, setItems] = useState([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
   const [orderSupplierId, setOrderSupplierId] = useState<number | null>(null);
+  const [orderCatalogItems, setOrderCatalogItems] = useState<SupplierItemI[]>([]);
 
   // Catalog state
   const [catalogSupplierId, setCatalogSupplierId] = useState<number | null>(null);
@@ -128,14 +129,23 @@ export default function PurchasesPage() {
   const loadSupplierItemsForOrder = async (suppId: number) => {
     setOrderSupplierId(suppId);
     const catItems: SupplierItemI[] = await apiGet(`/api/purchases/suppliers/${suppId}/items`);
-    if (catItems.length > 0) {
-      setItems(catItems.map(ci => ({
-        item_name: ci.item_name, quantity: "1", unit: ci.unit,
-        unit_price: ci.unit_price.toFixed(3), total: ci.unit_price.toFixed(3),
-      })));
-    } else {
-      setItems([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
-    }
+    setOrderCatalogItems(catItems);
+    setItems([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
+  };
+
+  const selectCatalogProduct = (itemIndex: number, catalogItemId: string) => {
+    if (!catalogItemId) return;
+    const ci = orderCatalogItems.find(c => c.id === Number(catalogItemId));
+    if (!ci) return;
+    const updated = [...items];
+    updated[itemIndex] = {
+      item_name: ci.item_name,
+      quantity: "1",
+      unit: ci.unit,
+      unit_price: ci.unit_price.toFixed(3),
+      total: ci.unit_price.toFixed(3),
+    };
+    setItems(updated);
   };
 
   const addItem = () => setItems([...items, { item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
@@ -490,10 +500,24 @@ export default function PurchasesPage() {
               <h3 className="font-semibold">{t("items")}</h3>
               <div className="space-y-2">
                 {items.map((item, i) => (
-                  <div key={i} className="grid grid-cols-6 gap-2 items-center">
-                    <input placeholder={t("item_name")} value={item.item_name}
-                      onChange={e => updateItem(i, "item_name", e.target.value)}
-                      className="px-2 py-1.5 border rounded text-sm" required />
+                  <div key={i} className="grid grid-cols-7 gap-2 items-center">
+                    {orderCatalogItems.length > 0 ? (
+                      <select
+                        value={orderCatalogItems.find(c => c.item_name === item.item_name)?.id || ""}
+                        onChange={e => selectCatalogProduct(i, e.target.value)}
+                        className="px-2 py-1.5 border rounded text-sm col-span-2" required>
+                        <option value="">{t("select_product")}</option>
+                        {orderCatalogItems.map(ci => (
+                          <option key={ci.id} value={ci.id}>
+                            {ci.item_name} ({ci.unit} - KD {ci.unit_price.toFixed(3)})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input placeholder={t("item_name")} value={item.item_name}
+                        onChange={e => updateItem(i, "item_name", e.target.value)}
+                        className="px-2 py-1.5 border rounded text-sm col-span-2" required />
+                    )}
                     <input type="number" step="0.01" placeholder={t("quantity")} value={item.quantity}
                       onChange={e => updateItem(i, "quantity", e.target.value)}
                       className="px-2 py-1.5 border rounded text-sm" />

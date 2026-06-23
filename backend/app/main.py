@@ -231,6 +231,13 @@ def _migrate_columns():
                 conn.execute(text("UPDATE contracts SET brand_id = 1 WHERE brand_id IS NULL"))
                 conn.commit()
 
+        # Transfer order lines: add item_name_ar
+        if "transfer_order_lines" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("transfer_order_lines")]
+            if "item_name_ar" not in cols:
+                conn.execute(text("ALTER TABLE transfer_order_lines ADD COLUMN item_name_ar TEXT"))
+                conn.commit()
+
 
 def _seed_data():
     from app.database import SessionLocal

@@ -93,6 +93,7 @@ def list_transfer_orders(db: Session = Depends(get_db), user: User = Depends(get
                 "id": l.id,
                 "item_id": l.item_id,
                 "item_name": l.item_name,
+                "item_name_ar": l.item_name_ar,
                 "requested_qty": l.requested_qty,
                 "dispatched_qty": l.dispatched_qty,
                 "received_qty": l.received_qty,
@@ -129,6 +130,7 @@ def create_transfer_order(
             transfer_order_id=order.id,
             item_id=int(item["item_id"]),
             item_name=item["item_name"],
+            item_name_ar=item.get("item_name_ar") or None,
             requested_qty=float(item["requested_qty"]),
             unit=item.get("unit", "pcs"),
         )

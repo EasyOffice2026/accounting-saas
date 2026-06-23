@@ -34,6 +34,7 @@ class TransferOrderLine(Base):
     transfer_order_id = Column(Integer, ForeignKey("transfer_orders.id"), nullable=False)
     item_id = Column(Integer, ForeignKey("transfer_items.id"), nullable=False)
     item_name = Column(String, nullable=False)
+    item_name_ar = Column(String, nullable=True)
     requested_qty = Column(Float, nullable=False)
     dispatched_qty = Column(Float, nullable=True)
     received_qty = Column(Float, nullable=True)

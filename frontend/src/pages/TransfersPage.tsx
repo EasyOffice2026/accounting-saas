@@ -6,7 +6,7 @@ import { useAuth } from "../contexts/AuthContext";
 interface Branch { id: number; name: string; is_central_kitchen: boolean; }
 interface TItem { id: number; name: string; name_ar: string; unit: string; }
 interface OrderLine {
-  id: number; item_id: number; item_name: string;
+  id: number; item_id: number; item_name: string; item_name_ar: string | null;
   requested_qty: number; dispatched_qty: number | null; received_qty: number | null; unit: string;
 }
 interface TOrder {
@@ -99,6 +99,7 @@ export default function TransfersPage() {
         return {
           item_id: Number(id),
           item_name: item?.name || "",
+          item_name_ar: item?.name_ar || "",
           requested_qty: qty,
           unit: item?.unit || "pcs",
         };
@@ -141,7 +142,7 @@ export default function TransfersPage() {
   const pendingOrders = orders.filter(o => o.status !== "received");
   const historyOrders = orders.filter(o => o.status === "received");
 
-  const itemName = (item: TItem) => i18n.language === "ar" && item.name_ar ? item.name_ar : item.name;
+  const lineName = (line: OrderLine) => i18n.language === "ar" && line.item_name_ar ? line.item_name_ar : line.item_name;
 
   return (
     <div>
@@ -219,8 +220,8 @@ export default function TransfersPage() {
                   <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : items.map(item => (
                   <tr key={item.id} className="border-b hover:bg-gray-50">
-                    <td className="px-4 py-3">{item.name}</td>
-                    <td className="px-4 py-3">{item.name_ar}</td>
+                    <td className="px-4 py-3 font-medium">{item.name}</td>
+                    <td className="px-4 py-3" dir="rtl">{item.name_ar || "—"}</td>
                     <td className="px-4 py-3">{item.unit}</td>
                     {isOwnerManager && (
                       <td className="px-4 py-3 text-center">
@@ -277,7 +278,13 @@ export default function TransfersPage() {
                         onClick={() => toggleItem(item.id)}>
                         <input type="checkbox" checked={isChecked} readOnly
                           className="w-4 h-4 text-emerald-600 rounded" />
-                        <span className="flex-1 text-sm font-medium">{itemName(item)}</span>
+                        <span className="flex-1 text-sm font-medium">
+                          {i18n.language === "ar" ? (
+                            <>{item.name_ar || item.name} <span className="text-xs text-gray-400">({item.name})</span></>
+                          ) : (
+                            <>{item.name} {item.name_ar && <span className="text-xs text-gray-400" dir="rtl">({item.name_ar})</span>}</>
+                          )}
+                        </span>
                         <span className="text-xs text-gray-400 w-12">{item.unit}</span>
                         {isChecked && (
                           <input type="number" step="0.01" min="0.01"
@@ -353,7 +360,11 @@ export default function TransfersPage() {
                   <tbody>
                     {order.lines.map(line => (
                       <tr key={line.id} className="border-t">
-                        <td className="px-4 py-2">{line.item_name}</td>
+                        <td className="px-4 py-2">
+                          {lineName(line)}
+                          {i18n.language === "ar" && line.item_name && <span className="text-xs text-gray-400 ml-1">({line.item_name})</span>}
+                          {i18n.language !== "ar" && line.item_name_ar && <span className="text-xs text-gray-400 ml-1" dir="rtl">({line.item_name_ar})</span>}
+                        </td>
                         <td className="px-4 py-2 text-right font-mono">{line.requested_qty}</td>
                         <td className="px-4 py-2 text-right font-mono">{line.dispatched_qty ?? "-"}</td>
                         <td className="px-4 py-2 text-right font-mono">{line.received_qty ?? "-"}</td>
@@ -399,7 +410,11 @@ export default function TransfersPage() {
                 <tbody>
                   {order.lines.map(line => (
                     <tr key={line.id} className="border-t">
-                      <td className="px-4 py-2">{line.item_name}</td>
+                      <td className="px-4 py-2">
+                        {lineName(line)}
+                        {i18n.language === "ar" && line.item_name && <span className="text-xs text-gray-400 ml-1">({line.item_name})</span>}
+                        {i18n.language !== "ar" && line.item_name_ar && <span className="text-xs text-gray-400 ml-1" dir="rtl">({line.item_name_ar})</span>}
+                      </td>
                       <td className="px-4 py-2 text-right font-mono">{line.requested_qty}</td>
                       <td className="px-4 py-2 text-right font-mono">{line.dispatched_qty ?? "-"}</td>
                       <td className="px-4 py-2 text-right font-mono">{line.received_qty ?? "-"}</td>
@@ -424,7 +439,11 @@ export default function TransfersPage() {
             <div className="space-y-2">
               {actionOrder.lines.map((line, idx) => (
                 <div key={line.id} className="flex items-center gap-3">
-                  <span className="flex-1 text-sm">{line.item_name}</span>
+                  <span className="flex-1 text-sm">
+                    {lineName(line)}
+                    {i18n.language === "ar" && line.item_name && <span className="text-xs text-gray-400 ml-1">({line.item_name})</span>}
+                    {i18n.language !== "ar" && line.item_name_ar && <span className="text-xs text-gray-400 ml-1" dir="rtl">({line.item_name_ar})</span>}
+                  </span>
                   <span className="text-xs text-gray-400 w-20 text-right">
                     {actionType === "dispatch" ? `${t("requested")}: ${line.requested_qty}` : `${t("dispatched")}: ${line.dispatched_qty ?? line.requested_qty}`}
                   </span>

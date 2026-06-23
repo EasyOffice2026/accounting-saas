@@ -91,6 +91,54 @@ def create_supplier(name: str = Form(...), email: str = Form(""),
     return s
 
 
+@router.delete("/suppliers/{supplier_id}")
+def delete_supplier(supplier_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s:
+        raise HTTPException(404, "Supplier not found")
+    # Soft-delete supplier and its items
+    s.is_active = False
+    db.query(SupplierItem).filter(SupplierItem.supplier_id == supplier_id).update({"is_active": False})
+    db.commit()
+    return {"status": "deleted"}
+
+
+@router.delete("/orders/{order_id}")
+def delete_order(order_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    order = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(404, "Order not found")
+    # Delete related records
+    db.query(PurchaseItem).filter(PurchaseItem.purchase_order_id == order_id).delete()
+    db.query(ReceivingItem).filter(
+        ReceivingItem.receiving_order_id.in_(
+            db.query(ReceivingOrder.id).filter(ReceivingOrder.purchase_order_id == order_id)
+        )
+    ).delete(synchronize_session=False)
+    db.query(ReceivingOrder).filter(ReceivingOrder.purchase_order_id == order_id).delete()
+    db.query(DeliveryOrder).filter(DeliveryOrder.purchase_order_id == order_id).delete()
+    db.query(Invoice).filter(Invoice.purchase_order_id == order_id).delete()
+    db.delete(order)
+    db.commit()
+    return {"status": "deleted"}
+
+
+@router.delete("/invoices/{invoice_id}")
+def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not inv:
+        raise HTTPException(404, "Invoice not found")
+    db.delete(inv)
+    db.commit()
+    return {"status": "deleted"}
+
+
 # --- Supplier Items (Catalog) ---
 @router.get("/suppliers/{supplier_id}/items")
 def list_supplier_items(supplier_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):

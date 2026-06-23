@@ -156,6 +156,7 @@ export default {
   select_supplier: "اختر المورد",
   catalog_loaded: "تم تحميل الأصناف من كتالوج المورد",
   select_product: "اختر المنتج",
+  select_products: "اختر المنتجات للطلب",
   add_item: "إضافة صنف",
   edit_item: "تعديل الصنف",
   item_name_ar: "اسم الصنف (عربي)",

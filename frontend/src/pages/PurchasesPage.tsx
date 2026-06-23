@@ -126,26 +126,52 @@ export default function PurchasesPage() {
     setCatalogItems(res);
   };
 
+  const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<number>>(new Set());
+  const [catalogQuantities, setCatalogQuantities] = useState<Record<number, string>>({});
+
   const loadSupplierItemsForOrder = async (suppId: number) => {
     setOrderSupplierId(suppId);
     const catItems: SupplierItemI[] = await apiGet(`/api/purchases/suppliers/${suppId}/items`);
     setOrderCatalogItems(catItems);
-    setItems([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
+    setSelectedCatalogIds(new Set());
+    setCatalogQuantities({});
+    setItems([]);
   };
 
-  const selectCatalogProduct = (itemIndex: number, catalogItemId: string) => {
-    if (!catalogItemId) return;
-    const ci = orderCatalogItems.find(c => c.id === Number(catalogItemId));
-    if (!ci) return;
-    const updated = [...items];
-    updated[itemIndex] = {
-      item_name: ci.item_name,
-      quantity: "1",
-      unit: ci.unit,
-      unit_price: ci.unit_price.toFixed(3),
-      total: ci.unit_price.toFixed(3),
-    };
-    setItems(updated);
+  const toggleCatalogItem = (ci: SupplierItemI) => {
+    const newSet = new Set(selectedCatalogIds);
+    const newQty = { ...catalogQuantities };
+    if (newSet.has(ci.id)) {
+      newSet.delete(ci.id);
+      delete newQty[ci.id];
+    } else {
+      newSet.add(ci.id);
+      newQty[ci.id] = "1";
+    }
+    setSelectedCatalogIds(newSet);
+    setCatalogQuantities(newQty);
+    // Sync items array for form submission
+    const selected = orderCatalogItems.filter(c => newSet.has(c.id));
+    setItems(selected.map(c => ({
+      item_name: c.item_name,
+      quantity: newQty[c.id] || "1",
+      unit: c.unit,
+      unit_price: c.unit_price.toFixed(3),
+      total: (parseFloat(newQty[c.id] || "1") * c.unit_price).toFixed(3),
+    })));
+  };
+
+  const updateCatalogQty = (ciId: number, qty: string) => {
+    const newQty = { ...catalogQuantities, [ciId]: qty };
+    setCatalogQuantities(newQty);
+    const selected = orderCatalogItems.filter(c => selectedCatalogIds.has(c.id));
+    setItems(selected.map(c => ({
+      item_name: c.item_name,
+      quantity: newQty[c.id] || "1",
+      unit: c.unit,
+      unit_price: c.unit_price.toFixed(3),
+      total: (parseFloat(newQty[c.id] || "1") * c.unit_price).toFixed(3),
+    })));
   };
 
   const addItem = () => setItems([...items, { item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
@@ -497,50 +523,91 @@ export default function PurchasesPage() {
                 </div>
               </div>
 
-              <h3 className="font-semibold">{t("items")}</h3>
-              <div className="space-y-2">
-                {items.map((item, i) => (
-                  <div key={i} className="grid grid-cols-7 gap-2 items-center">
-                    {orderCatalogItems.length > 0 ? (
-                      <select
-                        value={orderCatalogItems.find(c => c.item_name === item.item_name)?.id || ""}
-                        onChange={e => selectCatalogProduct(i, e.target.value)}
-                        className="px-2 py-1.5 border rounded text-sm col-span-2" required>
-                        <option value="">{t("select_product")}</option>
-                        {orderCatalogItems.map(ci => (
-                          <option key={ci.id} value={ci.id}>
-                            {ci.item_name} ({ci.unit} - KD {ci.unit_price.toFixed(3)})
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input placeholder={t("item_name")} value={item.item_name}
-                        onChange={e => updateItem(i, "item_name", e.target.value)}
-                        className="px-2 py-1.5 border rounded text-sm col-span-2" required />
-                    )}
-                    <input type="number" step="0.01" placeholder={t("quantity")} value={item.quantity}
-                      onChange={e => updateItem(i, "quantity", e.target.value)}
-                      className="px-2 py-1.5 border rounded text-sm" />
-                    <input placeholder={t("unit")} value={item.unit}
-                      onChange={e => updateItem(i, "unit", e.target.value)}
-                      className="px-2 py-1.5 border rounded text-sm" />
-                    <input type="number" step="0.001" placeholder={t("unit_price")} value={item.unit_price}
-                      onChange={e => updateItem(i, "unit_price", e.target.value)}
-                      className="px-2 py-1.5 border rounded text-sm" />
-                    <input readOnly value={item.total} className="px-2 py-1.5 border rounded text-sm bg-gray-50" />
-                    <button type="button" onClick={() => removeItem(i)}
-                      className="text-red-500 hover:text-red-700 text-sm">✕</button>
+              {orderCatalogItems.length > 0 ? (
+                <>
+                  <h3 className="font-semibold">{t("select_products")} <span className="text-sm text-gray-400 font-normal">({selectedCatalogIds.size} {t("selected")})</span></h3>
+                  <div className="bg-gray-50 rounded-lg border max-h-96 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-100 border-b sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-center w-10"></th>
+                          <th className="px-3 py-2 text-left">{t("item_name")}</th>
+                          <th className="px-3 py-2 text-left">{t("item_name_ar")}</th>
+                          <th className="px-3 py-2 text-left">{t("unit")}</th>
+                          <th className="px-3 py-2 text-right">{t("unit_price")} (KD)</th>
+                          <th className="px-3 py-2 text-center w-24">{t("quantity")}</th>
+                          <th className="px-3 py-2 text-right w-24">{t("total")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {orderCatalogItems.map(ci => {
+                          const isSelected = selectedCatalogIds.has(ci.id);
+                          const qty = catalogQuantities[ci.id] || "1";
+                          return (
+                            <tr key={ci.id} className={`border-b cursor-pointer hover:bg-blue-50 ${isSelected ? "bg-emerald-50" : ""}`}
+                              onClick={() => toggleCatalogItem(ci)}>
+                              <td className="px-3 py-2 text-center">
+                                <input type="checkbox" checked={isSelected} readOnly
+                                  className="w-4 h-4 accent-emerald-600" />
+                              </td>
+                              <td className="px-3 py-2 font-medium">{ci.item_name}</td>
+                              <td className="px-3 py-2 text-gray-500" dir="rtl">{ci.item_name_ar || "—"}</td>
+                              <td className="px-3 py-2">{ci.unit}</td>
+                              <td className="px-3 py-2 text-right font-mono">{ci.unit_price.toFixed(3)}</td>
+                              <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                                {isSelected && (
+                                  <input type="number" step="0.01" min="0.01" value={qty}
+                                    onChange={e => updateCatalogQty(ci.id, e.target.value)}
+                                    className="w-20 px-2 py-1 border rounded text-sm text-center" />
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono">
+                                {isSelected ? `${(parseFloat(qty) * ci.unit_price).toFixed(3)}` : "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-              </div>
-              <div className="flex items-center justify-between">
-                <button type="button" onClick={addItem} className="text-sm text-emerald-600 hover:underline">
-                  + {t("add_new")} {t("items")}
-                </button>
-                <span className="text-sm font-semibold">
-                  {t("total")}: KD {items.reduce((s, it) => s + parseFloat(it.total || "0"), 0).toFixed(3)}
-                </span>
-              </div>
+                  <div className="text-right font-semibold">
+                    {t("total")}: KD {items.reduce((s, it) => s + parseFloat(it.total || "0"), 0).toFixed(3)}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 className="font-semibold">{t("items")}</h3>
+                  <div className="space-y-2">
+                    {items.map((item, i) => (
+                      <div key={i} className="grid grid-cols-6 gap-2 items-center">
+                        <input placeholder={t("item_name")} value={item.item_name}
+                          onChange={e => updateItem(i, "item_name", e.target.value)}
+                          className="px-2 py-1.5 border rounded text-sm" required />
+                        <input type="number" step="0.01" placeholder={t("quantity")} value={item.quantity}
+                          onChange={e => updateItem(i, "quantity", e.target.value)}
+                          className="px-2 py-1.5 border rounded text-sm" />
+                        <input placeholder={t("unit")} value={item.unit}
+                          onChange={e => updateItem(i, "unit", e.target.value)}
+                          className="px-2 py-1.5 border rounded text-sm" />
+                        <input type="number" step="0.001" placeholder={t("unit_price")} value={item.unit_price}
+                          onChange={e => updateItem(i, "unit_price", e.target.value)}
+                          className="px-2 py-1.5 border rounded text-sm" />
+                        <input readOnly value={item.total} className="px-2 py-1.5 border rounded text-sm bg-gray-50" />
+                        <button type="button" onClick={() => removeItem(i)}
+                          className="text-red-500 hover:text-red-700 text-sm">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <button type="button" onClick={addItem} className="text-sm text-emerald-600 hover:underline">
+                      + {t("add_new")} {t("items")}
+                    </button>
+                    <span className="text-sm font-semibold">
+                      {t("total")}: KD {items.reduce((s, it) => s + parseFloat(it.total || "0"), 0).toFixed(3)}
+                    </span>
+                  </div>
+                </>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-1">{t("attachment")}</label>
                 <div className="flex gap-2">

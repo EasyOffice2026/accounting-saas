@@ -831,7 +831,9 @@ def reject_transfer(
 # --- Advance / Loan ---
 @router.get("/loans")
 def list_loans(employee_id: Optional[int] = None, brand_id: Optional[int] = None,
-               db: Session = Depends(get_db), _=Depends(get_current_user)):
+               db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
     q = db.query(AdvanceLoan)
     if employee_id:
         q = q.filter(AdvanceLoan.employee_id == employee_id)
@@ -923,7 +925,9 @@ def delete_loan(loan_id: int, db: Session = Depends(get_db),
 @router.get("/benefits-deductions")
 def list_benefits_deductions(employee_id: Optional[int] = None, month: Optional[str] = None,
                              brand_id: Optional[int] = None,
-                             db: Session = Depends(get_db), _=Depends(get_current_user)):
+                             db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
     q = db.query(StaffBenefitDeduction)
     if employee_id:
         q = q.filter(StaffBenefitDeduction.employee_id == employee_id)

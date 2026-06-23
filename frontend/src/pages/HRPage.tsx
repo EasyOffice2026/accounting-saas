@@ -752,7 +752,11 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
-        {(["employees", "salary", "transfers", "loans", "benefits", "deductions", "leaves", "resignation"] as Tab[]).filter(tb => tb !== "salary" || canViewSalary).map(tb => {
+        {(["employees", "salary", "transfers", "loans", "benefits", "deductions", "leaves", "resignation"] as Tab[]).filter(tb => {
+          const restrictedTabs: Tab[] = ["salary", "loans", "deductions", "resignation"];
+          if (restrictedTabs.includes(tb) && !canViewSalary) return false;
+          return true;
+        }).map(tb => {
           const label = tb === "benefits" ? "benefits_tab" : tb === "deductions" ? "deductions_tab" : tb === "loans" ? "advance_loan" : tb === "transfers" ? "staff_transfers" : tb === "leaves" ? "leaves_absences" : tb;
           return (
             <button key={tb} onClick={() => setTab(tb)}

@@ -95,6 +95,17 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE purchase_orders ADD COLUMN category_id INTEGER"))
             conn.commit()
 
+        # Supplier items: add missing columns
+        if "supplier_items" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("supplier_items")]
+            if "category_id" not in cols:
+                conn.execute(text("ALTER TABLE supplier_items ADD COLUMN category_id INTEGER"))
+            if "item_name_ar" not in cols:
+                conn.execute(text("ALTER TABLE supplier_items ADD COLUMN item_name_ar TEXT"))
+            if "packaging" not in cols:
+                conn.execute(text("ALTER TABLE supplier_items ADD COLUMN packaging TEXT"))
+            conn.commit()
+
         # Expenses: add missing columns
         if "expenses" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("expenses")]

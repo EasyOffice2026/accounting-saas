@@ -485,4 +485,18 @@ export default {
   due_on_day: "due on day",
   expired: "Expired",
   cancelled: "Cancelled",
+
+  // Brand / Multi-tenant
+  select_company: "Select Company",
+  select_company_desc: "Choose the company you want to work with",
+  group_view: "Group View",
+  group_view_desc: "Consolidated data across all brands",
+  group_view_banner: "Showing consolidated data across all brands",
+  brand_management: "Brand Management",
+  add_brand: "Add Brand",
+  edit_brand: "Edit Brand",
+  delete_brand: "Delete Brand",
+  brand_name_en: "Brand Name (English)",
+  brand_name_ar: "Brand Name (Arabic)",
+  new: "New",
 };

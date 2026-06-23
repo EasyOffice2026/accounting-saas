@@ -10,6 +10,7 @@ from app.models.purchase import Supplier
 from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
+from app.routes.hr import _brand_branch_ids
 
 router = APIRouter(prefix="/api/expenses", tags=["expenses"])
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
@@ -31,11 +32,15 @@ def create_category(name: str = Form(...), name_ar: str = Form(""),
 
 
 @router.get("/")
-def list_expenses(branch_id: Optional[int] = None, db: Session = Depends(get_db),
+def list_expenses(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
+                  db: Session = Depends(get_db),
                   user: User = Depends(get_current_user)):
     q = db.query(Expense)
+    bb_ids = _brand_branch_ids(db, brand_id)
     if branch_id:
         q = q.filter(Expense.branch_id == branch_id)
+    elif bb_ids is not None:
+        q = q.filter(Expense.branch_id.in_(bb_ids))
     elif user.role == "staff" and user.branch_id:
         q = q.filter(Expense.branch_id == user.branch_id)
     return q.order_by(Expense.date.desc()).all()

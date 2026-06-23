@@ -9,6 +9,7 @@ from app.models.purchase import PurchaseOrder
 from app.models.expense import Expense
 from app.utils.auth import get_current_user
 from app.models.user import User
+from app.routes.hr import _brand_branch_ids
 
 router = APIRouter(prefix="/api/cash", tags=["cash"])
 
@@ -16,16 +17,20 @@ router = APIRouter(prefix="/api/cash", tags=["cash"])
 @router.get("/transactions")
 def list_transactions(
     branch_id: int = Query(None),
+    brand_id: int = Query(None),
     date_from: str = Query(None),
     date_to: str = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     q = db.query(CashTransaction)
+    bb_ids = _brand_branch_ids(db, brand_id)
     if user.role == "staff" and user.branch_id:
         q = q.filter(CashTransaction.branch_id == user.branch_id)
     elif branch_id:
         q = q.filter(CashTransaction.branch_id == branch_id)
+    elif bb_ids is not None:
+        q = q.filter(CashTransaction.branch_id.in_(bb_ids))
     if date_from:
         q = q.filter(CashTransaction.date >= date_from)
     if date_to:

@@ -3,6 +3,16 @@ from datetime import datetime, timezone
 from app.database import Base
 
 
+class Brand(Base):
+    __tablename__ = "brands"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name_en = Column(String, nullable=False)
+    name_ar = Column(String, nullable=True)
+    status = Column(String, default="active")  # active, inactive
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class Employee(Base):
     __tablename__ = "employees"
 
@@ -198,6 +208,7 @@ class Contract(Base):
     __tablename__ = "contracts"
 
     id = Column(Integer, primary_key=True, index=True)
+    brand_id = Column(Integer, ForeignKey("brands.id"), nullable=True)
     name = Column(String, nullable=False)
     kind = Column(String, nullable=True)
     place = Column(String, nullable=True)

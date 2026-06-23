@@ -11,6 +11,7 @@ from app.models.hr import Employee
 from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
+from app.routes.hr import _brand_branch_ids
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -25,12 +26,17 @@ def _sum_sales(rows):
 
 
 @router.get("/")
-def dashboard(branch_id: Optional[int] = None, db: Session = Depends(get_db),
+def dashboard(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
+              db: Session = Depends(get_db),
               user: User = Depends(get_current_user)):
+    bb_ids = _brand_branch_ids(db, brand_id)
+
     def apply_branch(q, model):
         bid = branch_id or (user.branch_id if user.role == "staff" else None)
         if bid:
             q = q.filter(model.branch_id == bid)
+        elif bb_ids is not None:
+            q = q.filter(model.branch_id.in_(bb_ids))
         return q
 
     sales = apply_branch(db.query(Sale), Sale).all()
@@ -55,6 +61,8 @@ def dashboard(branch_id: Optional[int] = None, db: Session = Depends(get_db),
     staff_bid = branch_id or (user.branch_id if user.role == "staff" else None)
     if staff_bid:
         branches = db.query(Branch).filter(Branch.id == staff_bid).all()
+    elif bb_ids is not None:
+        branches = db.query(Branch).filter(Branch.id.in_(bb_ids)).all()
     else:
         branches = db.query(Branch).all()
     branch_data = []

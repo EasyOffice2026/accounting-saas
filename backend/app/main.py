@@ -164,11 +164,41 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE resignations ADD COLUMN other_deductions FLOAT DEFAULT 0"))
             conn.commit()
 
+        # Brands table
+        if "brands" not in insp.get_table_names():
+            conn.execute(text("""
+                CREATE TABLE brands (
+                    id SERIAL PRIMARY KEY,
+                    name_en TEXT NOT NULL,
+                    name_ar TEXT,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+
+        # Seed default brand and assign to existing branches/contracts
+        from app.models.hr import Brand
+        brand_count = conn.execute(text("SELECT COUNT(*) FROM brands")).scalar()
+        if brand_count == 0:
+            conn.execute(text("INSERT INTO brands (name_en, name_ar, status) VALUES ('Mudawwarah', 'مدوّرة', 'active')"))
+            conn.commit()
+
+        # Add brand_id to branches
+        if "branches" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("branches")]
+            if "brand_id" not in cols:
+                conn.execute(text("ALTER TABLE branches ADD COLUMN brand_id INTEGER REFERENCES brands(id)"))
+                # Assign all existing branches to brand 1 (Mudawwarah)
+                conn.execute(text("UPDATE branches SET brand_id = 1 WHERE brand_id IS NULL"))
+                conn.commit()
+
         # Contracts table
         if "contracts" not in insp.get_table_names():
             conn.execute(text("""
                 CREATE TABLE contracts (
                     id SERIAL PRIMARY KEY,
+                    brand_id INTEGER REFERENCES brands(id),
                     name TEXT NOT NULL,
                     kind TEXT,
                     place TEXT,
@@ -183,6 +213,12 @@ def _migrate_columns():
                 )
             """))
             conn.commit()
+        else:
+            cols = [c["name"] for c in insp.get_columns("contracts")]
+            if "brand_id" not in cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN brand_id INTEGER REFERENCES brands(id)"))
+                conn.execute(text("UPDATE contracts SET brand_id = 1 WHERE brand_id IS NULL"))
+                conn.commit()
 
 
 def _seed_data():

@@ -13,7 +13,7 @@ from app.models.cash import CashBalance
 from app.models.branch import Branch
 from app.utils.auth import get_current_user
 from app.models.user import User
-from app.routes.hr import SALARY_VISIBLE_ROLES
+from app.routes.hr import SALARY_VISIBLE_ROLES, _brand_branch_ids
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
@@ -214,11 +214,14 @@ def _respond(fmt: str, header: List[str], data: List[list], filename: str, title
 
 # ── Data extraction helpers ─────────────────────────────────────────
 
-def _sales_data(db, user, branch_id):
+def _sales_data(db, user, branch_id, brand_id=None):
     bmap = _branch_map(db)
     q = db.query(Sale)
+    bb_ids = _brand_branch_ids(db, brand_id)
     if branch_id:
         q = q.filter(Sale.branch_id == branch_id)
+    elif bb_ids is not None:
+        q = q.filter(Sale.branch_id.in_(bb_ids))
     elif user.role == "staff" and user.branch_id:
         q = q.filter(Sale.branch_id == user.branch_id)
     rows = q.order_by(Sale.date.desc()).all()
@@ -247,11 +250,14 @@ def _sales_data(db, user, branch_id):
     return header, data
 
 
-def _purchases_data(db, user, branch_id):
+def _purchases_data(db, user, branch_id, brand_id=None):
     bmap = _branch_map(db)
     q = db.query(PurchaseOrder)
+    bb_ids = _brand_branch_ids(db, brand_id)
     if branch_id:
         q = q.filter(PurchaseOrder.branch_id == branch_id)
+    elif bb_ids is not None:
+        q = q.filter(PurchaseOrder.branch_id.in_(bb_ids))
     elif user.role == "staff" and user.branch_id:
         q = q.filter(PurchaseOrder.branch_id == user.branch_id)
     rows = q.order_by(PurchaseOrder.date.desc()).all()
@@ -261,11 +267,14 @@ def _purchases_data(db, user, branch_id):
     return header, data
 
 
-def _expenses_data(db, user, branch_id):
+def _expenses_data(db, user, branch_id, brand_id=None):
     bmap = _branch_map(db)
     q = db.query(Expense)
+    bb_ids = _brand_branch_ids(db, brand_id)
     if branch_id:
         q = q.filter(Expense.branch_id == branch_id)
+    elif bb_ids is not None:
+        q = q.filter(Expense.branch_id.in_(bb_ids))
     elif user.role == "staff" and user.branch_id:
         q = q.filter(Expense.branch_id == user.branch_id)
     rows = q.order_by(Expense.date.desc()).all()
@@ -275,11 +284,14 @@ def _expenses_data(db, user, branch_id):
     return header, data
 
 
-def _hr_data(db, user, branch_id):
+def _hr_data(db, user, branch_id, brand_id=None):
     bmap = _branch_map(db)
     q = db.query(Employee)
+    bb_ids = _brand_branch_ids(db, brand_id)
     if branch_id:
         q = q.filter(Employee.branch_id == branch_id)
+    elif bb_ids is not None:
+        q = q.filter(Employee.branch_id.in_(bb_ids))
     elif user.role == "staff" and user.branch_id:
         q = q.filter(Employee.branch_id == user.branch_id)
     rows = q.order_by(Employee.name).all()
@@ -294,11 +306,14 @@ def _hr_data(db, user, branch_id):
     return header, data
 
 
-def _cash_data(db, user, branch_id):
+def _cash_data(db, user, branch_id, brand_id=None):
     bmap = _branch_map(db)
     q = db.query(CashBalance)
+    bb_ids = _brand_branch_ids(db, brand_id)
     if branch_id:
         q = q.filter(CashBalance.branch_id == branch_id)
+    elif bb_ids is not None:
+        q = q.filter(CashBalance.branch_id.in_(bb_ids))
     rows = q.order_by(CashBalance.date.desc()).all()
     header = ["Date", "Branch", "Opening Balance", "Cash Sales", "Petty Cash In",
               "Cash Purchases", "Cash Expenses", "Cash Withdrawn", "Deposited", "Closing Balance"]
@@ -308,13 +323,16 @@ def _cash_data(db, user, branch_id):
     return header, data
 
 
-def _salary_data(db, user, month, lang: str = "en"):
+def _salary_data(db, user, month, lang: str = "en", brand_id=None):
     is_ar = lang == "ar"
     bmap = _branch_map_ar(db) if is_ar else _branch_map(db)
     emp_map = {e.id: e for e in db.query(Employee).all()}
     q = db.query(SalaryPayment)
     if month:
         q = q.filter(SalaryPayment.month == month)
+    bb_ids = _brand_branch_ids(db, brand_id)
+    if bb_ids is not None:
+        q = q.filter(SalaryPayment.branch_id.in_(bb_ids))
     rows = q.order_by(SalaryPayment.month.desc()).all()
     if is_ar:
         header = ["الشهر", "رقم الموظف", "الاسم", "المنصب", "الفرع", "أيام العمل",
@@ -424,37 +442,37 @@ def _salary_data(db, user, month, lang: str = "en"):
 # ── Unified endpoints: /api/export/{module}/{format} ────────────────
 
 @router.get("/sales/{fmt}")
-def export_sales(fmt: str, branch_id: Optional[int] = None,
+def export_sales(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[int] = None,
                  db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    header, data = _sales_data(db, user, branch_id)
+    header, data = _sales_data(db, user, branch_id, brand_id=brand_id)
     return _respond(fmt, header, data, "sales", "Sales Report")
 
 
 @router.get("/purchases/{fmt}")
-def export_purchases(fmt: str, branch_id: Optional[int] = None,
+def export_purchases(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[int] = None,
                      db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    header, data = _purchases_data(db, user, branch_id)
+    header, data = _purchases_data(db, user, branch_id, brand_id=brand_id)
     return _respond(fmt, header, data, "purchases", "Purchases Report")
 
 
 @router.get("/expenses/{fmt}")
-def export_expenses(fmt: str, branch_id: Optional[int] = None,
+def export_expenses(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[int] = None,
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    header, data = _expenses_data(db, user, branch_id)
+    header, data = _expenses_data(db, user, branch_id, brand_id=brand_id)
     return _respond(fmt, header, data, "expenses", "Expenses Report")
 
 
 @router.get("/hr/{fmt}")
-def export_hr(fmt: str, branch_id: Optional[int] = None,
+def export_hr(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[int] = None,
               db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    header, data = _hr_data(db, user, branch_id)
+    header, data = _hr_data(db, user, branch_id, brand_id=brand_id)
     return _respond(fmt, header, data, "employees", "Employees Report")
 
 
 @router.get("/cash/{fmt}")
-def export_cash(fmt: str, branch_id: Optional[int] = None,
+def export_cash(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[int] = None,
                 db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    header, data = _cash_data(db, user, branch_id)
+    header, data = _cash_data(db, user, branch_id, brand_id=brand_id)
     return _respond(fmt, header, data, "cash_management", "Cash Management Report")
 
 
@@ -466,6 +484,7 @@ def export_cash(fmt: str, branch_id: Optional[int] = None,
 def export_salary_slips_pdf(
     month: Optional[str] = None,
     lang: Optional[str] = None,
+    brand_id: Optional[int] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -505,6 +524,9 @@ def export_salary_slips_pdf(
     q = db.query(SalaryPayment)
     if month:
         q = q.filter(SalaryPayment.month == month)
+    bb_ids = _brand_branch_ids(db, brand_id)
+    if bb_ids is not None:
+        q = q.filter(SalaryPayment.branch_id.in_(bb_ids))
     records = q.all()
     # Filter out employees with 0 actual salary
     records = [r for r in records if emp_map.get(r.employee_id) and (emp_map[r.employee_id].actual_salary or 0) > 0]
@@ -749,10 +771,11 @@ def export_salary_slips_pdf(
 
 @router.get("/salary/{fmt}")
 def export_salary(fmt: str, month: Optional[str] = None, lang: Optional[str] = None,
+                  brand_id: Optional[int] = None,
                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if user.role not in SALARY_VISIBLE_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized")
     language = lang or "en"
-    header, data = _salary_data(db, user, month, lang=language)
+    header, data = _salary_data(db, user, month, lang=language, brand_id=brand_id)
     title = f"كشف الرواتب - {month or 'الكل'}" if language == "ar" else f"Salary Sheet - {month or 'All'}"
     return _respond(fmt, header, data, f"salary_{month or 'all'}", title, summary_rows=3)

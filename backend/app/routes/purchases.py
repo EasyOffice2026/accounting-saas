@@ -12,6 +12,7 @@ from app.models.purchase import (
 from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
+from app.routes.hr import _brand_branch_ids
 
 router = APIRouter(prefix="/api/purchases", tags=["purchases"])
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
@@ -151,11 +152,15 @@ def delete_supplier_item(item_id: int, db: Session = Depends(get_db), _=Depends(
 
 # --- Purchase Orders ---
 @router.get("/orders")
-def list_orders(branch_id: Optional[int] = None, db: Session = Depends(get_db),
+def list_orders(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
+                db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
     q = db.query(PurchaseOrder)
+    bb_ids = _brand_branch_ids(db, brand_id)
     if branch_id:
         q = q.filter(PurchaseOrder.branch_id == branch_id)
+    elif bb_ids is not None:
+        q = q.filter(PurchaseOrder.branch_id.in_(bb_ids))
     elif user.role == "staff" and user.branch_id:
         q = q.filter(PurchaseOrder.branch_id == user.branch_id)
     return q.order_by(PurchaseOrder.date.desc()).all()

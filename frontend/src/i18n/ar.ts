@@ -484,4 +484,18 @@ export default {
   due_on_day: "مستحق في يوم",
   expired: "منتهي",
   cancelled: "ملغى",
+
+  // Brand / Multi-tenant
+  select_company: "اختر الشركة",
+  select_company_desc: "اختر الشركة التي تريد العمل بها",
+  group_view: "عرض المجموعة",
+  group_view_desc: "بيانات موحدة عبر جميع العلامات التجارية",
+  group_view_banner: "عرض البيانات الموحدة عبر جميع العلامات التجارية",
+  brand_management: "إدارة العلامات التجارية",
+  add_brand: "إضافة علامة تجارية",
+  edit_brand: "تعديل العلامة التجارية",
+  delete_brand: "حذف العلامة التجارية",
+  brand_name_en: "اسم العلامة التجارية (إنجليزي)",
+  brand_name_ar: "اسم العلامة التجارية (عربي)",
+  new: "جديد",
 };

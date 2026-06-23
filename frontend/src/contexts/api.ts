@@ -1,3 +1,19 @@
+function _injectBrandId(path: string): string {
+  // Auto-inject brand_id query param from localStorage
+  const saved = localStorage.getItem("selectedBrandId");
+  if (!saved || saved === "group") return path; // group = no filter
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}brand_id=${saved}`;
+}
+
+function _injectBrandIdForm(body: FormData | URLSearchParams): void {
+  const saved = localStorage.getItem("selectedBrandId");
+  if (!saved || saved === "group") return;
+  if (!body.has("brand_id")) {
+    body.append("brand_id", saved);
+  }
+}
+
 export async function apiFetch(path: string, opts: RequestInit = {}) {
   const token = localStorage.getItem("token");
   const headers: Record<string, string> = {
@@ -5,7 +21,10 @@ export async function apiFetch(path: string, opts: RequestInit = {}) {
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(path, { ...opts, headers });
+  // Auto-inject brand_id for GET requests
+  const finalPath = (!opts.method || opts.method === "GET") ? _injectBrandId(path) : path;
+
+  const res = await fetch(finalPath, { ...opts, headers });
   if (res.status === 401) {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -20,6 +39,7 @@ export async function apiGet(path: string) {
 }
 
 export async function apiPost(path: string, body: FormData | URLSearchParams) {
+  _injectBrandIdForm(body);
   const res = await apiFetch(path, { method: "POST", body });
   return res.json();
 }

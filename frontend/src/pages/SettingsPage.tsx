@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiFetch } from "../contexts/api";
+import BrandManagementPage from "./BrandManagementPage";
+import { useAuth } from "../contexts/AuthContext";
 
 interface SmtpConfig {
   smtp_host: string;
@@ -315,9 +317,18 @@ export default function SettingsPage() {
     return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : "-";
   };
 
+  const currentUser = useAuth().user;
+
   return (
     <div>
       <h2 className="text-2xl font-bold text-gray-800 mb-6">{t("settings")}</h2>
+
+      {/* Brand Management (owner only) */}
+      {currentUser?.role === "owner" && (
+        <div className="mb-6">
+          <BrandManagementPage />
+        </div>
+      )}
 
       {/* User Management */}
       <div className="bg-white p-6 rounded-xl shadow-sm border max-w-4xl mb-6">

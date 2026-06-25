@@ -10,6 +10,7 @@ class TransferItem(Base):
     name = Column(String, nullable=False)
     name_ar = Column(String, nullable=True)
     unit = Column(String, default="pcs")
+    category = Column(String, default="food")  # food, packaging
     is_active = Column(Boolean, default=True)
 
 

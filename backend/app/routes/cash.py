@@ -35,15 +35,24 @@ def list_transactions(
         q = q.filter(CashTransaction.date >= date_from)
     if date_to:
         q = q.filter(CashTransaction.date <= date_to)
-    rows = q.order_by(CashTransaction.date.desc()).all()
-    return [
-        {
+    rows = q.order_by(CashTransaction.date.asc(), CashTransaction.id.asc()).all()
+    # Calculate running balance
+    balance = 0.0
+    result = []
+    for r in rows:
+        if r.txn_type == "opening_balance":
+            balance = r.amount
+        elif r.txn_type == "cash_in":
+            balance += r.amount
+        else:  # cash_out
+            balance -= r.amount
+        result.append({
             "id": r.id, "branch_id": r.branch_id, "date": str(r.date),
             "txn_type": r.txn_type, "category": r.category,
             "amount": r.amount, "reference": r.reference, "notes": r.notes,
-        }
-        for r in rows
-    ]
+            "balance": round(balance, 3),
+        })
+    return result
 
 
 @router.post("/transactions")
@@ -116,12 +125,37 @@ def cash_summary(
         CashTransaction.category == "deposit",
     ).scalar()
 
-    # Get previous day's closing balance as opening
-    bal = db.query(CashBalance).filter(
-        CashBalance.branch_id == branch_id,
-        CashBalance.date < target_date,
-    ).order_by(CashBalance.date.desc()).first()
-    opening_balance = bal.closing_balance if bal else 0
+    # Get opening balance: use the most recent opening_balance transaction up to target_date
+    ob_txn = db.query(CashTransaction).filter(
+        CashTransaction.branch_id == branch_id,
+        CashTransaction.date <= target_date,
+        CashTransaction.txn_type == "opening_balance",
+    ).order_by(CashTransaction.date.desc(), CashTransaction.id.desc()).first()
+
+    if ob_txn:
+        # Start from the opening balance, add all cash_in and subtract cash_out between ob date and target
+        opening_balance = ob_txn.amount
+        # Add transactions between opening balance date and target date (exclusive of target date itself)
+        prior_in = db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
+            CashTransaction.branch_id == branch_id,
+            CashTransaction.date >= ob_txn.date,
+            CashTransaction.date < target_date,
+            CashTransaction.txn_type == "cash_in",
+        ).scalar()
+        prior_out = db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
+            CashTransaction.branch_id == branch_id,
+            CashTransaction.date >= ob_txn.date,
+            CashTransaction.date < target_date,
+            CashTransaction.txn_type == "cash_out",
+        ).scalar()
+        opening_balance = opening_balance + float(prior_in) - float(prior_out)
+    else:
+        # Fallback to CashBalance table
+        bal = db.query(CashBalance).filter(
+            CashBalance.branch_id == branch_id,
+            CashBalance.date < target_date,
+        ).order_by(CashBalance.date.desc()).first()
+        opening_balance = bal.closing_balance if bal else 0
 
     total_in = float(cash_sales) + float(cash_in_manual)
     total_out = float(cash_purchases) + float(cash_expenses) + float(cash_out_manual) + float(deposits)

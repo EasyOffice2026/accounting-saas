@@ -4,7 +4,7 @@ import { apiGet, apiPost } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Branch { id: number; name: string; is_central_kitchen: boolean; }
-interface TItem { id: number; name: string; name_ar: string; unit: string; }
+interface TItem { id: number; name: string; name_ar: string; unit: string; category: string; }
 interface OrderLine {
   id: number; item_id: number; item_name: string; item_name_ar: string | null;
   requested_qty: number; dispatched_qty: number | null; received_qty: number | null; unit: string;
@@ -27,7 +27,11 @@ export default function TransfersPage() {
   const [showItemForm, setShowItemForm] = useState(false);
   const [editItem, setEditItem] = useState<TItem | null>(null);
 
+  // Category filter for items
+  const [itemCategory, setItemCategory] = useState<"food" | "packaging">("food");
+
   // Request form state - checklist approach
+  const [requestCategory, setRequestCategory] = useState<"food" | "packaging">("food");
   const [checkedItems, setCheckedItems] = useState<Record<number, string>>({});
 
   // Dispatch/Receive modal
@@ -177,10 +181,22 @@ export default function TransfersPage() {
       {/* ========== ITEMS TAB ========== */}
       {tab === "items" && (
         <>
+          {/* Category selector */}
+          <div className="flex gap-2 mb-4">
+            <button onClick={() => setItemCategory("food")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${itemCategory === "food" ? "bg-emerald-600 text-white" : "bg-gray-200 text-gray-700"}`}>
+              {t("food_items")}
+            </button>
+            <button onClick={() => setItemCategory("packaging")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${itemCategory === "packaging" ? "bg-orange-500 text-white" : "bg-gray-200 text-gray-700"}`}>
+              {t("packaging_items")}
+            </button>
+          </div>
+
           {showItemForm && (
             <form onSubmit={handleItemSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-4 space-y-4">
               <h3 className="font-semibold">{editItem ? t("edit_item") : t("add_item")}</h3>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("item_name")}</label>
                   <input name="name" required defaultValue={editItem?.name || ""}
@@ -194,9 +210,16 @@ export default function TransfersPage() {
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("unit")}</label>
                   <select name="unit" defaultValue={editItem?.unit || "pcs"} className="w-full px-3 py-2 border rounded-lg text-sm">
-                    {["pcs", "kg", "g", "liter", "ml", "box", "carton", "pack", "bag", "bottle", "can", "tray"].map(u =>
+                    {["pcs", "kg", "g", "liter", "ml", "box", "carton", "pack", "bag", "bottle", "can", "tray", "roll", "sheet"].map(u =>
                       <option key={u} value={u}>{u}</option>
                     )}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("category")}</label>
+                  <select name="category" defaultValue={editItem?.category || itemCategory} className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="food">{t("food_items")}</option>
+                    <option value="packaging">{t("packaging_items")}</option>
                   </select>
                 </div>
               </div>
@@ -216,9 +239,9 @@ export default function TransfersPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.length === 0 ? (
+                {items.filter(i => (i.category || "food") === itemCategory).length === 0 ? (
                   <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : items.map(item => (
+                ) : items.filter(i => (i.category || "food") === itemCategory).map(item => (
                   <tr key={item.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium">{item.name}</td>
                     <td className="px-4 py-3" dir="rtl">{item.name_ar || "—"}</td>
@@ -267,8 +290,19 @@ export default function TransfersPage() {
 
               <div>
                 <label className="text-sm font-medium mb-2 block">{t("select_items")}</label>
+                {/* Category selector */}
+                <div className="flex gap-2 mb-3">
+                  <button type="button" onClick={() => setRequestCategory("food")}
+                    className={`px-3 py-1.5 rounded text-xs font-medium ${requestCategory === "food" ? "bg-emerald-600 text-white" : "bg-gray-200 text-gray-700"}`}>
+                    {t("food_items")}
+                  </button>
+                  <button type="button" onClick={() => setRequestCategory("packaging")}
+                    className={`px-3 py-1.5 rounded text-xs font-medium ${requestCategory === "packaging" ? "bg-orange-500 text-white" : "bg-gray-200 text-gray-700"}`}>
+                    {t("packaging_items")}
+                  </button>
+                </div>
                 <div className="border rounded-lg divide-y max-h-80 overflow-y-auto">
-                  {items.map(item => {
+                  {items.filter(i => (i.category || "food") === requestCategory).map(item => {
                     const isChecked = checkedItems[item.id] !== undefined;
                     return (
                       <div key={item.id}
@@ -296,7 +330,7 @@ export default function TransfersPage() {
                       </div>
                     );
                   })}
-                  {items.length === 0 && (
+                  {items.filter(i => (i.category || "food") === requestCategory).length === 0 && (
                     <div className="px-4 py-6 text-center text-gray-400 text-sm">{t("no_data")}</div>
                   )}
                 </div>

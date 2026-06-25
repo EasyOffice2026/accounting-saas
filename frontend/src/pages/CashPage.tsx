@@ -13,7 +13,7 @@ interface CashSummary {
 interface CashTxn {
   id: number; branch_id: number; date: string;
   txn_type: string; category: string; amount: number;
-  reference: string; notes: string;
+  reference: string; notes: string; balance: number;
 }
 
 export default function CashPage() {
@@ -45,7 +45,7 @@ export default function CashPage() {
 
   const loadData = () => {
     apiGet(`/api/cash/summary?branch_id=${branchId}&summary_date=${selectedDate}`).then(setSummary);
-    apiGet(`/api/cash/transactions?branch_id=${branchId}&date_from=${selectedDate}&date_to=${selectedDate}`).then(setTransactions);
+    apiGet(`/api/cash/transactions?branch_id=${branchId}`).then(setTransactions);
   };
 
 
@@ -54,7 +54,7 @@ export default function CashPage() {
     const fd = new FormData(e.currentTarget);
     const params = new URLSearchParams({
       branch_id: branchId,
-      txn_date: selectedDate,
+      txn_date: fd.get("txn_date") as string || selectedDate,
       txn_type: fd.get("txn_type") as string,
       category: fd.get("category") as string,
       amount: fd.get("amount") as string,
@@ -214,10 +214,16 @@ export default function CashPage() {
 
           {showTxnForm && (
             <form onSubmit={handleAddTxn} className="bg-white p-6 rounded-xl shadow-sm border mb-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">{t("cash_in")} / {t("cash_out")}</label>
+                  <label className="block text-xs text-gray-500 mb-1">{t("date")}</label>
+                  <input type="date" name="txn_date" defaultValue={selectedDate}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">{t("type")}</label>
                   <select name="txn_type" className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="opening_balance">{t("opening_balance")}</option>
                     <option value="cash_in">{t("cash_in")}</option>
                     <option value="cash_out">{t("cash_out")}</option>
                   </select>
@@ -225,9 +231,13 @@ export default function CashPage() {
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">{t("category")}</label>
                   <select name="category" className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="opening_balance">{t("opening_balance")}</option>
                     <option value="petty_cash">{t("petty_cash")}</option>
                     <option value="deposit">{t("deposit")}</option>
                     <option value="withdrawal">{t("withdrawal")}</option>
+                    <option value="sales">{t("sales")}</option>
+                    <option value="purchase">{t("purchases")}</option>
+                    <option value="expense">{t("expenses")}</option>
                     <option value="other">{t("other")}</option>
                   </select>
                 </div>
@@ -240,10 +250,10 @@ export default function CashPage() {
                   <label className="block text-xs text-gray-500 mb-1">{t("reference")}</label>
                   <input name="reference" className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">{t("notes")}</label>
-                <textarea name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">{t("notes")}</label>
+                  <input name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
               </div>
               <button type="submit"
                 className="px-6 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
@@ -253,32 +263,44 @@ export default function CashPage() {
           )}
 
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-            <table className="w-full text-sm min-w-[600px]">
+            <table className="w-full text-sm min-w-[700px]">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left">{t("date")}</th>
-                  <th className="px-4 py-3 text-left">{t("cash_in")} / {t("cash_out")}</th>
+                  <th className="px-4 py-3 text-left">{t("type")}</th>
                   <th className="px-4 py-3 text-left">{t("category")}</th>
-                  <th className="px-4 py-3 text-right">{t("amount")}</th>
+                  <th className="px-4 py-3 text-right">{t("cash_in")}</th>
+                  <th className="px-4 py-3 text-right">{t("cash_out")}</th>
+                  <th className="px-4 py-3 text-right font-bold">{t("balance")}</th>
                   <th className="px-4 py-3 text-left">{t("reference")}</th>
-                  <th className="px-4 py-3 text-left">{t("notes")}</th>
                 </tr>
               </thead>
               <tbody>
                 {transactions.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : transactions.map(txn => (
-                  <tr key={txn.id} className="border-b hover:bg-gray-50">
+                  <tr key={txn.id} className={`border-b hover:bg-gray-50 ${txn.txn_type === "opening_balance" ? "bg-blue-50" : ""}`}>
                     <td className="px-4 py-3">{txn.date}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs ${txn.txn_type === "cash_in" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                        {txn.txn_type === "cash_in" ? t("cash_in") : t("cash_out")}
+                      <span className={`px-2 py-0.5 rounded text-xs ${
+                        txn.txn_type === "opening_balance" ? "bg-blue-100 text-blue-700" :
+                        txn.txn_type === "cash_in" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                      }`}>
+                        {txn.txn_type === "opening_balance" ? t("opening_balance") :
+                         txn.txn_type === "cash_in" ? t("cash_in") : t("cash_out")}
                       </span>
                     </td>
                     <td className="px-4 py-3">{txn.category}</td>
-                    <td className="px-4 py-3 text-right font-medium">KD {txn.amount.toFixed(3)}</td>
-                    <td className="px-4 py-3">{txn.reference || "-"}</td>
-                    <td className="px-4 py-3">{txn.notes || "-"}</td>
+                    <td className="px-4 py-3 text-right font-medium text-green-600">
+                      {txn.txn_type === "cash_in" ? `KD ${txn.amount.toFixed(3)}` : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium text-red-600">
+                      {txn.txn_type === "cash_out" ? `KD ${txn.amount.toFixed(3)}` : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold">
+                      KD {txn.balance.toFixed(3)}
+                    </td>
+                    <td className="px-4 py-3">{txn.reference || txn.notes || "-"}</td>
                   </tr>
                 ))}
               </tbody>

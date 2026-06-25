@@ -23,11 +23,12 @@ def list_transfer_items(db: Session = Depends(get_db), _=Depends(get_current_use
 @router.post("/items")
 def create_transfer_item(
     name: str = Form(...), name_ar: str = Form(""), unit: str = Form("pcs"),
+    category: str = Form("food"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if user.role not in ("owner", "manager"):
         raise HTTPException(403, "Only owner/manager can manage transfer items")
-    item = TransferItem(name=name, name_ar=name_ar or None, unit=unit)
+    item = TransferItem(name=name, name_ar=name_ar or None, unit=unit, category=category)
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -38,6 +39,7 @@ def create_transfer_item(
 def update_transfer_item(
     item_id: int,
     name: str = Form(...), name_ar: str = Form(""), unit: str = Form("pcs"),
+    category: str = Form("food"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if user.role not in ("owner", "manager"):
@@ -48,6 +50,7 @@ def update_transfer_item(
     item.name = name
     item.name_ar = name_ar or None
     item.unit = unit
+    item.category = category
     db.commit()
     db.refresh(item)
     return item

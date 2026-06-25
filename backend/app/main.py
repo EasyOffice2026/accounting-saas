@@ -238,6 +238,13 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE transfer_order_lines ADD COLUMN item_name_ar TEXT"))
                 conn.commit()
 
+        # Transfer items: add category
+        if "transfer_items" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("transfer_items")]
+            if "category" not in cols:
+                conn.execute(text("ALTER TABLE transfer_items ADD COLUMN category TEXT DEFAULT 'food'"))
+                conn.commit()
+
         # Users: add allowed_tabs
         if "users" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("users")]

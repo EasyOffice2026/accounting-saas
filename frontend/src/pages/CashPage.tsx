@@ -26,7 +26,6 @@ export default function CashPage() {
   const [transactions, setTransactions] = useState<CashTxn[]>([]);
   const [tab, setTab] = useState<"summary" | "transactions">("summary");
   const [showTxnForm, setShowTxnForm] = useState(false);
-  const [depositAmount, setDepositAmount] = useState("0");
 
   useEffect(() => {
     apiGet("/api/branches/").then((bs: Branch[]) => {
@@ -49,16 +48,6 @@ export default function CashPage() {
     apiGet(`/api/cash/transactions?branch_id=${branchId}&date_from=${selectedDate}&date_to=${selectedDate}`).then(setTransactions);
   };
 
-  const handleSaveBalance = async () => {
-    const params = new URLSearchParams({
-      branch_id: branchId,
-      balance_date: selectedDate,
-      opening_balance: String(summary?.opening_balance || 0),
-      deposited: depositAmount,
-    });
-    await apiFetch(`/api/cash/save-balance?${params}`, { method: "POST" });
-    loadData();
-  };
 
   const handleAddTxn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -210,19 +199,7 @@ export default function CashPage() {
             </div>
           </div>
 
-          {/* Deposit Entry */}
-          <div className="mt-4 flex gap-3 items-end">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">{t("deposited")}</label>
-              <input type="number" step="0.001" value={depositAmount}
-                onChange={e => setDepositAmount(e.target.value)}
-                className="px-3 py-2 border rounded-lg text-sm w-40" />
-            </div>
-            <button onClick={handleSaveBalance}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
-              {t("save_balance")}
-            </button>
-          </div>
+
         </div>
       )}
 

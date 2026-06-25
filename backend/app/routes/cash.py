@@ -174,9 +174,9 @@ def cash_summary(
 
     opening_balance = ob_start + (prior_sales + prior_cash_in) - (prior_purchases + prior_expenses + prior_cash_out)
 
-    total_in = float(cash_sales) + float(cash_in_manual)
+    total_in = float(opening_balance) + float(cash_sales) + float(cash_in_manual)
     total_out = float(cash_purchases) + float(cash_expenses) + float(cash_out_manual) + float(deposits)
-    closing_balance = float(opening_balance) + total_in - total_out
+    closing_balance = total_in - total_out
 
     return {
         "date": str(target_date),

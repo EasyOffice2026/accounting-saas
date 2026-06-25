@@ -77,6 +77,15 @@ interface BranchItem {
   id: number;
   name: string;
   name_ar: string;
+  brand_id: number | null;
+  is_central_kitchen: boolean;
+  is_active: boolean;
+}
+
+interface BrandItem {
+  id: number;
+  name_en: string;
+  name_ar: string;
 }
 
 export default function SettingsPage() {
@@ -146,6 +155,23 @@ export default function SettingsPage() {
   const [uMsg, setUMsg] = useState("");
   const [uMsgType, setUMsgType] = useState<"success" | "error">("success");
 
+  // Branch Management state
+  const [brandsList, setBrandsList] = useState<BrandItem[]>([]);
+  const [showBranchForm, setShowBranchForm] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<BranchItem | null>(null);
+  const [brName, setBrName] = useState("");
+  const [brNameAr, setBrNameAr] = useState("");
+  const [brBrandId, setBrBrandId] = useState<string>("");
+  const [brIsCK, setBrIsCK] = useState(false);
+  const [brMsg, setBrMsg] = useState("");
+  const [brMsgType, setBrMsgType] = useState<"success" | "error">("success");
+
+  const loadBranches = () => {
+    apiGet("/api/branches/").then((data) => {
+      if (Array.isArray(data)) setBranchesList(data);
+    });
+  };
+
   const loadUsers = () => {
     apiGet("/api/users/").then((data) => {
       if (Array.isArray(data)) setUsers(data);
@@ -194,8 +220,9 @@ export default function SettingsPage() {
       if (Array.isArray(data)) setFcPaymentMaps(data);
     });
     loadUsers();
-    apiGet("/api/branches/").then((data) => {
-      if (Array.isArray(data)) setBranchesList(data);
+    loadBranches();
+    apiGet("/api/hr/brands").then((data) => {
+      if (Array.isArray(data)) setBrandsList(data);
     });
   }, []);
 
@@ -318,6 +345,64 @@ export default function SettingsPage() {
     return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : "-";
   };
 
+  const getBrandName = (bid: number | null) => {
+    if (!bid) return "—";
+    const b = brandsList.find(x => x.id === bid);
+    return b ? (i18n.language === "ar" ? (b.name_ar || b.name_en) : b.name_en) : "—";
+  };
+
+  const resetBranchForm = () => {
+    setBrName(""); setBrNameAr(""); setBrBrandId(""); setBrIsCK(false);
+    setEditingBranch(null); setShowBranchForm(false);
+  };
+
+  const handleEditBranch = (b: BranchItem) => {
+    setEditingBranch(b);
+    setBrName(b.name);
+    setBrNameAr(b.name_ar);
+    setBrBrandId(b.brand_id ? String(b.brand_id) : "");
+    setBrIsCK(b.is_central_kitchen);
+    setShowBranchForm(true);
+  };
+
+  const handleSaveBranch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const fd = new URLSearchParams();
+    fd.append("name", brName);
+    fd.append("name_ar", brNameAr);
+    fd.append("is_central_kitchen", String(brIsCK));
+    if (brBrandId) fd.append("brand_id", brBrandId);
+    try {
+      if (editingBranch) {
+        const res = await apiFetch(`/api/branches/${editingBranch.id}`, { method: "PUT", body: fd });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Error"); }
+        setBrMsg(t("saved")); setBrMsgType("success");
+      } else {
+        const res = await apiFetch("/api/branches/", { method: "POST", body: fd });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Error"); }
+        setBrMsg(t("saved")); setBrMsgType("success");
+      }
+      loadBranches();
+      resetBranchForm();
+    } catch (err: unknown) {
+      setBrMsg((err as Error).message); setBrMsgType("error");
+    }
+    setTimeout(() => setBrMsg(""), 5000);
+  };
+
+  const handleDeleteBranch = async (bid: number) => {
+    if (!confirm(t("confirm_delete"))) return;
+    try {
+      const res = await apiFetch(`/api/branches/${bid}`, { method: "DELETE" });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Error"); }
+      setBrMsg(t("deleted")); setBrMsgType("success");
+      loadBranches();
+    } catch (err: unknown) {
+      setBrMsg((err as Error).message); setBrMsgType("error");
+    }
+    setTimeout(() => setBrMsg(""), 5000);
+  };
+
   const currentUser = useAuth().user;
 
   // Permissions management
@@ -405,6 +490,103 @@ export default function SettingsPage() {
       {currentUser?.role === "owner" && (
         <div className="mb-6">
           <BrandManagementPage />
+        </div>
+      )}
+
+      {/* Branch Management (owner, manager, accountant) */}
+      {["owner", "manager", "accountant"].includes(currentUser?.role || "") && (
+        <div className="bg-white p-6 rounded-xl shadow-sm border max-w-4xl mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">{t("branch_management")}</h3>
+              <p className="text-sm text-gray-500">{t("branch_management_desc")}</p>
+            </div>
+            <button onClick={() => { resetBranchForm(); setShowBranchForm(true); }}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
+              + {t("add_branch")}
+            </button>
+          </div>
+
+          {brMsg && (
+            <div className={`p-3 rounded mb-4 text-sm ${
+              brMsgType === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+            }`}>{brMsg}</div>
+          )}
+
+          {showBranchForm && (
+            <form onSubmit={handleSaveBranch} className="bg-gray-50 p-4 rounded-lg mb-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("branch_name_en")}</label>
+                  <input value={brName} onChange={e => setBrName(e.target.value)} required
+                    className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Branch Name" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("branch_name_ar")}</label>
+                  <input value={brNameAr} onChange={e => setBrNameAr(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" dir="rtl" placeholder="اسم الفرع" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("brand")}</label>
+                  <select value={brBrandId} onChange={e => setBrBrandId(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">-- {t("select_brand")} --</option>
+                    {brandsList.map(b => (
+                      <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name_en) : b.name_en}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center pt-6">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={brIsCK} onChange={e => setBrIsCK(e.target.checked)} />
+                    {t("central_kitchen")}
+                  </label>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button type="submit"
+                  className="px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
+                  {editingBranch ? t("save") : t("add_branch")}
+                </button>
+                <button type="button" onClick={resetBranchForm}
+                  className="px-5 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm">
+                  {t("cancel")}
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left">{t("branch_name_en")}</th>
+                  <th className="px-3 py-2 text-left">{t("branch_name_ar")}</th>
+                  <th className="px-3 py-2 text-left">{t("brand")}</th>
+                  <th className="px-3 py-2 text-left">{t("central_kitchen")}</th>
+                  <th className="px-3 py-2 text-left">{t("actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {branchesList.map(b => (
+                  <tr key={b.id} className="border-t">
+                    <td className="px-3 py-2 font-medium">{b.name}</td>
+                    <td className="px-3 py-2" dir="rtl">{b.name_ar || "—"}</td>
+                    <td className="px-3 py-2">{getBrandName(b.brand_id)}</td>
+                    <td className="px-3 py-2">
+                      {b.is_central_kitchen ? <span className="text-green-600 text-xs font-medium">✓</span> : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <button onClick={() => handleEditBranch(b)}
+                        className="text-blue-600 hover:underline text-xs mr-3">{t("edit")}</button>
+                      <button onClick={() => handleDeleteBranch(b.id)}
+                        className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

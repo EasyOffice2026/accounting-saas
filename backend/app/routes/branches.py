@@ -24,7 +24,9 @@ def list_branches(brand_id: Optional[int] = None, db: Session = Depends(get_db))
 def create_branch(name: str = Form(...), name_ar: str = Form(""),
                   is_central_kitchen: bool = Form(False),
                   brand_id: Optional[int] = Form(None),
-                  db: Session = Depends(get_db), _=Depends(get_current_user)):
+                  db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager", "accountant"):
+        raise HTTPException(403, "Not authorized")
     branch = Branch(name=name, name_ar=name_ar, is_central_kitchen=is_central_kitchen,
                     brand_id=brand_id)
     db.add(branch)
@@ -40,7 +42,7 @@ def update_branch(branch_id: int, name: str = Form(...), name_ar: str = Form("")
                   is_central_kitchen: bool = Form(False),
                   brand_id: Optional[int] = Form(None),
                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     b = db.query(Branch).filter(Branch.id == branch_id).first()
     if not b:
@@ -53,3 +55,15 @@ def update_branch(branch_id: int, name: str = Form(...), name_ar: str = Form("")
     return {"id": b.id, "name": b.name, "name_ar": b.name_ar or "",
             "brand_id": b.brand_id, "is_central_kitchen": b.is_central_kitchen,
             "is_active": b.is_active}
+
+
+@router.delete("/{branch_id}")
+def delete_branch(branch_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager", "accountant"):
+        raise HTTPException(403, "Not authorized")
+    b = db.query(Branch).filter(Branch.id == branch_id).first()
+    if not b:
+        raise HTTPException(404, "Branch not found")
+    db.delete(b)
+    db.commit()
+    return {"message": "Branch deleted"}

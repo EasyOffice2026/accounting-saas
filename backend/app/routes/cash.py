@@ -125,37 +125,53 @@ def cash_summary(
         CashTransaction.category == "deposit",
     ).scalar()
 
-    # Get opening balance: use the most recent opening_balance transaction up to target_date
+    # Opening balance = previous day's closing balance (continuous chain)
+    # Find the most recent opening_balance transaction before or on target_date
     ob_txn = db.query(CashTransaction).filter(
         CashTransaction.branch_id == branch_id,
         CashTransaction.date <= target_date,
         CashTransaction.txn_type == "opening_balance",
     ).order_by(CashTransaction.date.desc(), CashTransaction.id.desc()).first()
 
-    if ob_txn:
-        # Start from the opening balance, add all cash_in and subtract cash_out between ob date and target
-        opening_balance = ob_txn.amount
-        # Add transactions between opening balance date and target date (exclusive of target date itself)
-        prior_in = db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
+    ob_start = ob_txn.amount if ob_txn else 0
+    ob_date = ob_txn.date if ob_txn else None
+
+    # Sum ALL prior-day cash flows from ob_date to target_date (exclusive)
+    # This includes: sales, purchases, expenses, and manual cash transactions
+    if ob_date and ob_date < target_date:
+        # Prior days' cash sales
+        prior_sales = float(db.query(func.coalesce(func.sum(Sale.physical_cash), 0)).filter(
+            Sale.branch_id == branch_id,
+            Sale.date >= ob_date, Sale.date < target_date,
+        ).scalar())
+        # Prior days' cash purchases
+        prior_purchases = float(db.query(func.coalesce(func.sum(PurchaseOrder.total_amount), 0)).filter(
+            PurchaseOrder.branch_id == branch_id,
+            PurchaseOrder.date >= ob_date, PurchaseOrder.date < target_date,
+            PurchaseOrder.payment_type == "cash",
+        ).scalar())
+        # Prior days' cash expenses
+        prior_expenses = float(db.query(func.coalesce(func.sum(Expense.amount), 0)).filter(
+            Expense.branch_id == branch_id,
+            Expense.date >= ob_date, Expense.date < target_date,
+            Expense.payment_method == "cash",
+        ).scalar())
+        # Prior days' manual cash_in
+        prior_cash_in = float(db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
             CashTransaction.branch_id == branch_id,
-            CashTransaction.date >= ob_txn.date,
-            CashTransaction.date < target_date,
+            CashTransaction.date >= ob_date, CashTransaction.date < target_date,
             CashTransaction.txn_type == "cash_in",
-        ).scalar()
-        prior_out = db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
+        ).scalar())
+        # Prior days' manual cash_out
+        prior_cash_out = float(db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
             CashTransaction.branch_id == branch_id,
-            CashTransaction.date >= ob_txn.date,
-            CashTransaction.date < target_date,
+            CashTransaction.date >= ob_date, CashTransaction.date < target_date,
             CashTransaction.txn_type == "cash_out",
-        ).scalar()
-        opening_balance = opening_balance + float(prior_in) - float(prior_out)
+        ).scalar())
+
+        opening_balance = ob_start + (prior_sales + prior_cash_in) - (prior_purchases + prior_expenses + prior_cash_out)
     else:
-        # Fallback to CashBalance table
-        bal = db.query(CashBalance).filter(
-            CashBalance.branch_id == branch_id,
-            CashBalance.date < target_date,
-        ).order_by(CashBalance.date.desc()).first()
-        opening_balance = bal.closing_balance if bal else 0
+        opening_balance = ob_start
 
     total_in = float(cash_sales) + float(cash_in_manual)
     total_out = float(cash_purchases) + float(cash_expenses) + float(cash_out_manual) + float(deposits)

@@ -188,9 +188,13 @@ export default function CashPage() {
                   <span>{t("cash_withdrawn")}</span>
                   <span className="font-medium text-red-600">KD {summary.cash_withdrawn.toFixed(3)}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span>{t("deposited")}</span>
+                  <span className="font-medium text-red-600">KD {summary.deposited.toFixed(3)}</span>
+                </div>
                 <div className="flex justify-between border-t pt-2 font-bold">
                   <span>{t("total_out")}</span>
-                  <span className="text-red-700">KD {summary.total_out.toFixed(3)}</span>
+                  <span className="text-red-700">KD {(summary.total_out).toFixed(3)}</span>
                 </div>
               </div>
             </div>
@@ -206,27 +210,18 @@ export default function CashPage() {
             </div>
           </div>
 
-          {/* Deposit Section */}
-          <div className="mt-4 p-4 bg-yellow-50 border rounded-lg">
-            <h4 className="font-semibold mb-2">{t("deposited")}</h4>
-            <div className="flex gap-3 items-end">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">{t("amount")}</label>
-                <input type="number" step="0.001" value={depositAmount}
-                  onChange={e => setDepositAmount(e.target.value)}
-                  className="px-3 py-2 border rounded-lg text-sm w-40" />
-              </div>
-              <button onClick={handleSaveBalance}
-                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
-                {t("save_balance")}
-              </button>
+          {/* Deposit Entry */}
+          <div className="mt-4 flex gap-3 items-end">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">{t("deposited")}</label>
+              <input type="number" step="0.001" value={depositAmount}
+                onChange={e => setDepositAmount(e.target.value)}
+                className="px-3 py-2 border rounded-lg text-sm w-40" />
             </div>
-            {summary.deposited > 0 && (
-              <p className="text-sm mt-2 text-yellow-700">
-                {t("deposited")}: KD {summary.deposited.toFixed(3)} |{" "}
-                {t("available_balance")}: KD {(summary.closing_balance - summary.deposited).toFixed(3)}
-              </p>
-            )}
+            <button onClick={handleSaveBalance}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
+              {t("save_balance")}
+            </button>
           </div>
         </div>
       )}

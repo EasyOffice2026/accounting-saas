@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import date
+from datetime import date as date_cls
 from app.database import get_db
 from app.models.cash import CashTransaction, CashBalance
 from app.models.sale import Sale
@@ -59,7 +59,7 @@ def create_transaction(
     user: User = Depends(get_current_user),
 ):
     t = CashTransaction(
-        branch_id=branch_id, date=txn_date, txn_type=txn_type,
+        branch_id=branch_id, date=date_cls.fromisoformat(txn_date), txn_type=txn_type,
         category=category, amount=amount, reference=reference,
         notes=notes, created_by=user.id,
     )
@@ -76,7 +76,7 @@ def cash_summary(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    target_date = date.fromisoformat(summary_date) if summary_date else date.today()
+    target_date = date_cls.fromisoformat(summary_date) if summary_date else date_cls.today()
 
     # Cash sales for this branch on this date
     cash_sales = db.query(func.coalesce(func.sum(Sale.physical_cash), 0)).filter(

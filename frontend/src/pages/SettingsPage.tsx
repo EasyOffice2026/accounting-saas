@@ -167,7 +167,7 @@ export default function SettingsPage() {
   const [brMsgType, setBrMsgType] = useState<"success" | "error">("success");
 
   const loadBranches = () => {
-    apiGet("/api/branches/").then((data) => {
+    apiGet("/api/branches/?brand_id=0").then((data) => {
       if (Array.isArray(data)) setBranchesList(data);
     });
   };

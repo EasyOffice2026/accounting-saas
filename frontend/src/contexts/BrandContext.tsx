@@ -68,6 +68,10 @@ export function BrandProvider({ children }: { children: ReactNode }) {
         setSelectedBrand(found);
         setGroupView(false);
       }
+    } else if (brands.length === 1) {
+      // Auto-select the only brand
+      setSelectedBrand(brands[0]);
+      localStorage.setItem("selectedBrandId", String(brands[0].id));
     }
   }, [brands]);
 

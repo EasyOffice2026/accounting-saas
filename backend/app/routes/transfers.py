@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Form
+from fastapi import APIRouter, Depends, HTTPException, Form, Query
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone
 from typing import Optional
@@ -9,6 +9,7 @@ from app.models.transfer import TransferItem, TransferOrder, TransferOrderLine
 from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
+from app.routes.hr import _brand_branch_ids
 
 router = APIRouter(prefix="/api/transfers", tags=["transfers"])
 
@@ -67,13 +68,16 @@ def delete_transfer_item(item_id: int, db: Session = Depends(get_db),
 
 # --- Transfer Orders ---
 @router.get("/orders")
-def list_transfer_orders(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def list_transfer_orders(brand_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(TransferOrder)
+    bb_ids = _brand_branch_ids(db, brand_id)
     # Staff sees only their branch requests; Central Kitchen staff sees all
     if user.role == "staff" and user.branch_id:
         branch = db.query(Branch).filter(Branch.id == user.branch_id).first()
         if branch and not branch.is_central_kitchen:
             q = q.filter(TransferOrder.requesting_branch_id == user.branch_id)
+    elif bb_ids is not None:
+        q = q.filter(TransferOrder.requesting_branch_id.in_(bb_ids))
     orders = q.order_by(TransferOrder.date.desc()).all()
     branches = {b.id: b.name for b in db.query(Branch).all()}
     result = []

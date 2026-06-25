@@ -35,6 +35,7 @@ export default function PurchasesPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [showOrderForm, setShowOrderForm] = useState(false);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [items, setItems] = useState([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
   const [orderSupplierId, setOrderSupplierId] = useState<number | null>(null);
   const [orderCatalogItems, setOrderCatalogItems] = useState<SupplierItemI[]>([]);
@@ -201,9 +202,28 @@ export default function PurchasesPage() {
 
   const handleSupplierSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    await apiPost("/api/purchases/suppliers", new FormData(e.currentTarget));
+    const fd = new FormData(e.currentTarget);
+    if (editingSupplier) {
+      await fetch(`/api/purchases/suppliers/${editingSupplier.id}`, {
+        method: "PUT", body: fd,
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+    } else {
+      await apiPost("/api/purchases/suppliers", fd);
+    }
     setShowSupplierForm(false);
+    setEditingSupplier(null);
     apiGet("/api/purchases/suppliers").then(setSuppliers);
+  };
+
+  const deleteSupplier = async (suppId: number) => {
+    if (!confirm(t("confirm_delete"))) return;
+    await fetch(`/api/purchases/suppliers/${suppId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    });
+    apiGet("/api/purchases/suppliers").then(setSuppliers);
+    if (catalogSupplierId === suppId) { setCatalogSupplierId(null); setCatalogItems([]); }
   };
 
   const handleCatalogItemSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -316,21 +336,7 @@ export default function PurchasesPage() {
     window.open(`https://wa.me/${supplier.whatsapp.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
-  const [sendingEmail, setSendingEmail] = useState<number | null>(null);
-  const sendEmail = async (order: PurchaseOrder) => {
-    const supplier = getSupplier(order.supplier_id);
-    if (!supplier?.email) { alert(t("no_email")); return; }
-    setSendingEmail(order.id);
-    try {
-      const res = await fetch(`/api/email/send-po/${order.id}`, {
-        method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed");
-      alert(data.message);
-    } catch (e: unknown) { alert((e as Error).message || t("email_send_error")); }
-    setSendingEmail(null);
-  };
+
 
   const statusColor = (s: string) => {
     if (s === "paid") return "bg-green-100 text-green-700";
@@ -356,7 +362,7 @@ export default function PurchasesPage() {
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
             {t("export_pdf")}
           </button>
-          <button onClick={() => setShowSupplierForm(!showSupplierForm)}
+          <button onClick={() => { setEditingSupplier(null); setShowSupplierForm(!showSupplierForm); }}
             className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm">
             + {t("supplier")}
           </button>
@@ -382,17 +388,20 @@ export default function PurchasesPage() {
 
       {showSupplierForm && (
         <form onSubmit={handleSupplierSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-3">
-          <h3 className="font-semibold">{t("add_new")} {t("supplier")}</h3>
+          <h3 className="font-semibold">{editingSupplier ? t("edit") : t("add_new")} {t("supplier")}</h3>
           <div className="grid grid-cols-2 gap-3">
-            <input name="name" placeholder={t("name")} required className="px-3 py-2 border rounded-lg text-sm" />
-            <input name="email" placeholder={t("email")} className="px-3 py-2 border rounded-lg text-sm" />
-            <input name="whatsapp" placeholder={t("whatsapp")} className="px-3 py-2 border rounded-lg text-sm" />
-            <select name="payment_type" className="px-3 py-2 border rounded-lg text-sm">
+            <input name="name" defaultValue={editingSupplier?.name || ""} placeholder={t("name")} required className="px-3 py-2 border rounded-lg text-sm" />
+            <input name="whatsapp" defaultValue={editingSupplier?.whatsapp || ""} placeholder={t("whatsapp")} className="px-3 py-2 border rounded-lg text-sm" />
+            <select name="payment_type" defaultValue={editingSupplier?.payment_type || "cash"} className="px-3 py-2 border rounded-lg text-sm">
               <option value="cash">{t("cash")}</option>
               <option value="credit">{t("credit")}</option>
             </select>
           </div>
-          <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">{t("save")}</button>
+          <div className="flex gap-2">
+            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">{t("save")}</button>
+            <button type="button" onClick={() => { setShowSupplierForm(false); setEditingSupplier(null); }}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm">{t("cancel")}</button>
+          </div>
         </form>
       )}
 
@@ -681,11 +690,7 @@ export default function PurchasesPage() {
                           className="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">
                           {t("whatsapp")}
                         </button>
-                        <button onClick={() => sendEmail(o)} title={t("send_email")}
-                          disabled={sendingEmail === o.id}
-                          className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 disabled:opacity-50">
-                          {sendingEmail === o.id ? "..." : t("email")}
-                        </button>
+
                       </div>
                     </td>
                   </tr>
@@ -699,13 +704,51 @@ export default function PurchasesPage() {
       {/* ========== SUPPLIER CATALOG TAB ========== */}
       {tab === "catalog" && (
         <div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border mb-4">
-            <label className="block text-sm font-medium mb-2">{t("select_supplier")}</label>
-            <select value={catalogSupplierId || ""} onChange={e => loadCatalog(Number(e.target.value))}
-              className="w-full max-w-sm px-3 py-2 border rounded-lg text-sm">
-              <option value="">{t("select_supplier")}</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+          {/* Suppliers List with Edit/Delete */}
+          <div className="bg-white rounded-xl shadow-sm border mb-4 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-4 py-3 text-left">#</th>
+                  <th className="px-4 py-3 text-left">{t("supplier")}</th>
+                  <th className="px-4 py-3 text-left">{t("whatsapp")}</th>
+                  <th className="px-4 py-3 text-left">{t("payment_type")}</th>
+                  <th className="px-4 py-3 text-center">{t("actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {suppliers.map((s, idx) => (
+                  <tr key={s.id} className={`border-b hover:bg-gray-50 cursor-pointer ${catalogSupplierId === s.id ? "bg-emerald-50" : ""}`}>
+                    <td className="px-4 py-3" onClick={() => loadCatalog(s.id)}>{idx + 1}</td>
+                    <td className="px-4 py-3 font-medium" onClick={() => loadCatalog(s.id)}>{s.name}</td>
+                    <td className="px-4 py-3 text-gray-500" onClick={() => loadCatalog(s.id)}>{s.whatsapp || "—"}</td>
+                    <td className="px-4 py-3" onClick={() => loadCatalog(s.id)}>
+                      <span className={`px-2 py-1 rounded-full text-xs ${s.payment_type === "cash" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
+                        {t(s.payment_type)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex gap-1 justify-center">
+                        <button onClick={() => loadCatalog(s.id)}
+                          className="px-2 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
+                          {t("items")}
+                        </button>
+                        <button onClick={() => { setEditingSupplier(s); setShowSupplierForm(true); }}
+                          className="px-2 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600">
+                          {t("edit")}
+                        </button>
+                        {isManager && (
+                          <button onClick={() => deleteSupplier(s.id)}
+                            className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">
+                            {t("delete")}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
           {catalogSupplierId && (
             <>

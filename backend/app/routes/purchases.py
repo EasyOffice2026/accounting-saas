@@ -91,6 +91,22 @@ def create_supplier(name: str = Form(...), email: str = Form(""),
     return s
 
 
+@router.put("/suppliers/{supplier_id}")
+def update_supplier(supplier_id: int, name: str = Form(...), email: str = Form(""),
+                    whatsapp: str = Form(""), payment_type: str = Form("cash"),
+                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s:
+        raise HTTPException(404, "Supplier not found")
+    s.name = name
+    s.email = email
+    s.whatsapp = whatsapp
+    s.payment_type = payment_type
+    db.commit()
+    db.refresh(s)
+    return s
+
+
 @router.delete("/suppliers/{supplier_id}")
 def delete_supplier(supplier_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if user.role not in ("owner", "manager"):

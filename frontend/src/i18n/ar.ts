@@ -344,6 +344,7 @@ export default {
   date_range: "نطاق التاريخ",
   start_date: "تاريخ البداية",
   end_date: "تاريخ النهاية",
+  clear: "مسح",
   sync_now: "مزامنة الآن",
   syncing: "جاري المزامنة...",
   sync_complete: "تمت المزامنة",

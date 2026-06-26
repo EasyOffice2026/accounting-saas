@@ -690,6 +690,10 @@ export default function PurchasesPage() {
                           className="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">
                           {t("whatsapp")}
                         </button>
+                        <button onClick={() => apiDownload(`/api/export/purchase-order/${o.id}/pdf`, `PO-${String(o.id).padStart(4,"0")}.pdf`)}
+                          className="px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700">
+                          PDF
+                        </button>
 
                       </div>
                     </td>

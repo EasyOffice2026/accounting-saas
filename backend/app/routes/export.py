@@ -6,9 +6,9 @@ import io, csv
 
 from app.database import get_db
 from app.models.sale import Sale
-from app.models.purchase import PurchaseOrder
+from app.models.purchase import PurchaseOrder, PurchaseItem, Supplier
 from app.models.expense import Expense
-from app.models.hr import Employee, SalaryPayment
+from app.models.hr import Employee, SalaryPayment, Brand
 from app.models.cash import CashBalance
 from app.models.branch import Branch
 from app.utils.auth import get_current_user
@@ -779,3 +779,177 @@ def export_salary(fmt: str, month: Optional[str] = None, lang: Optional[str] = N
     header, data = _salary_data(db, user, month, lang=language, brand_id=brand_id)
     title = f"كشف الرواتب - {month or 'الكل'}" if language == "ar" else f"Salary Sheet - {month or 'All'}"
     return _respond(fmt, header, data, f"salary_{month or 'all'}", title, summary_rows=3)
+
+
+# ── Purchase Order PDF ───────────────────────────────────────────────
+
+
+@router.get("/purchase-order/{order_id}/pdf")
+def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
+                              _=Depends(get_current_user)):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
+                                    Paragraph, Spacer, HRFlowable)
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    import os
+
+    po = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
+    if not po:
+        raise HTTPException(404, "Order not found")
+
+    supplier = db.query(Supplier).filter(Supplier.id == po.supplier_id).first()
+    branch = db.query(Branch).filter(Branch.id == po.branch_id).first()
+    items = db.query(PurchaseItem).filter(PurchaseItem.purchase_order_id == order_id).all()
+
+    # Get brand from branch
+    brand = None
+    if branch and branch.brand_id:
+        brand = db.query(Brand).filter(Brand.id == branch.brand_id).first()
+
+    # Register font for Arabic support
+    _dvs = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    _dvsb = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    if os.path.isfile(_dvs) and "DejaVuSans" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("DejaVuSans", _dvs))
+    if os.path.isfile(_dvsb) and "DejaVuSans-Bold" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", _dvsb))
+
+    font_name = "DejaVuSans" if "DejaVuSans" in pdfmetrics.getRegisteredFontNames() else "Helvetica"
+    font_bold = "DejaVuSans-Bold" if "DejaVuSans-Bold" in pdfmetrics.getRegisteredFontNames() else "Helvetica-Bold"
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=15 * mm, rightMargin=15 * mm,
+                            topMargin=15 * mm, bottomMargin=15 * mm)
+
+    elements = []
+
+    # Styles
+    title_style = ParagraphStyle("po_title", fontName=font_bold, fontSize=18,
+                                  alignment=1, spaceAfter=2 * mm)
+    subtitle_style = ParagraphStyle("po_subtitle", fontName=font_name, fontSize=10,
+                                     alignment=1, textColor=colors.grey, spaceAfter=5 * mm)
+    heading_style = ParagraphStyle("po_heading", fontName=font_bold, fontSize=11,
+                                    spaceAfter=2 * mm)
+    normal_style = ParagraphStyle("po_normal", fontName=font_name, fontSize=9,
+                                   spaceAfter=1 * mm)
+
+    # Header
+    company_name = brand.name_en if brand else "Mudawwarah"
+    elements.append(Paragraph(company_name, title_style))
+    elements.append(Paragraph("PURCHASE ORDER", subtitle_style))
+    elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#2E7D32")))
+    elements.append(Spacer(1, 5 * mm))
+
+    # PO Info and Supplier Info side by side
+    po_info = [
+        [Paragraph(f"<b>PO Number:</b> PO-{po.id:04d}", normal_style),
+         Paragraph(f"<b>Date:</b> {po.date}", normal_style)],
+        [Paragraph(f"<b>Branch:</b> {branch.name if branch else 'N/A'}", normal_style),
+         Paragraph(f"<b>Payment:</b> {po.payment_type.title()}", normal_style)],
+        [Paragraph(f"<b>Status:</b> {po.status.title()}", normal_style),
+         Paragraph(f"<b>Delivery:</b> {po.delivery_location or 'N/A'}", normal_style)],
+    ]
+    info_table = Table(po_info, colWidths=[90 * mm, 90 * mm])
+    info_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+    ]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 4 * mm))
+
+    # Supplier box
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
+    elements.append(Spacer(1, 3 * mm))
+    elements.append(Paragraph("<b>Supplier:</b>", heading_style))
+    supp_name = supplier.name if supplier else "N/A"
+    supp_whatsapp = supplier.whatsapp if supplier and supplier.whatsapp else "N/A"
+    elements.append(Paragraph(f"Name: {supp_name}", normal_style))
+    elements.append(Paragraph(f"WhatsApp: {supp_whatsapp}", normal_style))
+    elements.append(Spacer(1, 5 * mm))
+
+    # Items table
+    elements.append(Paragraph("<b>Order Items:</b>", heading_style))
+    elements.append(Spacer(1, 2 * mm))
+
+    table_header = ["#", "Item Name", "Quantity", "Unit", "Unit Price (KD)", "Total (KD)"]
+    table_data = [table_header]
+    grand_total = 0.0
+    for idx, item in enumerate(items, 1):
+        row_total = item.total or (item.quantity * item.unit_price)
+        grand_total += row_total
+        table_data.append([
+            str(idx),
+            item.item_name,
+            f"{item.quantity:.2f}",
+            item.unit,
+            f"{item.unit_price:.3f}",
+            f"{row_total:.3f}",
+        ])
+
+    # Grand total row
+    table_data.append(["", "", "", "", "TOTAL:", f"KD {grand_total:.3f}"])
+
+    col_widths = [12 * mm, 60 * mm, 25 * mm, 20 * mm, 30 * mm, 30 * mm]
+    items_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+    items_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2E7D32")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), font_bold),
+        ("FONTNAME", (0, 1), (-1, -1), font_name),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("FONTSIZE", (0, 1), (-1, -1), 8),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"),
+        ("ALIGN", (2, 0), (-1, -1), "CENTER"),
+        ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
+        ("ALIGN", (-2, 0), (-2, -1), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -2), 0.5, colors.grey),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#F5F5F5")]),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        # Total row
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E8F5E9")),
+        ("FONTNAME", (0, -1), (-1, -1), font_bold),
+        ("FONTSIZE", (0, -1), (-1, -1), 10),
+        ("LINEABOVE", (0, -1), (-1, -1), 1, colors.HexColor("#2E7D32")),
+    ]))
+    elements.append(items_table)
+    elements.append(Spacer(1, 8 * mm))
+
+    # Notes
+    if po.notes:
+        elements.append(Paragraph(f"<b>Notes:</b> {po.notes}", normal_style))
+        elements.append(Spacer(1, 5 * mm))
+
+    # Signature lines
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
+    elements.append(Spacer(1, 10 * mm))
+    sig_data = [
+        [Paragraph("<b>Prepared By:</b>", normal_style),
+         Paragraph("<b>Approved By:</b>", normal_style),
+         Paragraph("<b>Received By:</b>", normal_style)],
+        ["_________________", "_________________", "_________________"],
+    ]
+    sig_table = Table(sig_data, colWidths=[60 * mm, 60 * mm, 60 * mm])
+    sig_table.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    elements.append(sig_table)
+
+    doc.build(elements)
+    buf.seek(0)
+    fname = f"PO-{po.id:04d}_{supplier.name if supplier else 'order'}"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={fname}.pdf"},
+    )

@@ -34,6 +34,7 @@ export default function PurchasesPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [showOrderForm, setShowOrderForm] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [items, setItems] = useState([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
@@ -194,9 +195,59 @@ export default function PurchasesPage() {
     const fd = new FormData(e.currentTarget);
     fd.set("items", JSON.stringify(items));
     if (user?.branch_id) fd.set("branch_id", String(user.branch_id));
-    await apiPost("/api/purchases/orders", fd);
+    if (editingOrder) {
+      await fetch(`/api/purchases/orders/${editingOrder.id}`, {
+        method: "PUT", body: fd,
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+    } else {
+      await apiPost("/api/purchases/orders", fd);
+    }
     setShowOrderForm(false);
+    setEditingOrder(null);
     setItems([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
+    setOrderSupplierId(null);
+    setOrderCatalogItems([]);
+    setSelectedCatalogIds(new Set());
+    setCatalogQuantities({});
+    apiGet("/api/purchases/orders").then(setOrders);
+  };
+
+  const startEditOrder = async (order: PurchaseOrder) => {
+    setEditingOrder(order);
+    setShowOrderForm(true);
+    // Load order items
+    const orderItems: OrderItem[] = await apiGet(`/api/purchases/orders/${order.id}/items`);
+    setItems(orderItems.map(i => ({
+      item_name: i.item_name,
+      quantity: String(i.quantity),
+      unit: i.unit,
+      unit_price: String(i.unit_price),
+      total: String(i.total),
+    })));
+    // Load supplier catalog
+    await loadSupplierItemsForOrder(order.supplier_id);
+    // Pre-select items that match
+    const catItems: SupplierItemI[] = await apiGet(`/api/purchases/suppliers/${order.supplier_id}/items`);
+    const matchedIds = new Set<number>();
+    const quantities: Record<number, string> = {};
+    orderItems.forEach(oi => {
+      const match = catItems.find(c => c.item_name === oi.item_name);
+      if (match) {
+        matchedIds.add(match.id);
+        quantities[match.id] = String(oi.quantity);
+      }
+    });
+    setSelectedCatalogIds(matchedIds);
+    setCatalogQuantities(quantities);
+  };
+
+  const deleteOrder = async (orderId: number) => {
+    if (!confirm(t("confirm_delete"))) return;
+    await fetch(`/api/purchases/orders/${orderId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    });
     apiGet("/api/purchases/orders").then(setOrders);
   };
 
@@ -367,7 +418,7 @@ export default function PurchasesPage() {
             + {t("supplier")}
           </button>
           {tab === "orders" && (
-            <button onClick={() => setShowOrderForm(!showOrderForm)}
+            <button onClick={() => { setShowOrderForm(!showOrderForm); if (showOrderForm) { setEditingOrder(null); setOrderSupplierId(null); setOrderCatalogItems([]); setSelectedCatalogIds(new Set()); setCatalogQuantities({}); setItems([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]); } }}
               className="px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
               {showOrderForm ? t("cancel") : t("add_new")}
             </button>
@@ -488,14 +539,15 @@ export default function PurchasesPage() {
       {tab === "orders" && (
         <>
           {showOrderForm && (
-            <form onSubmit={handleOrderSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
+            <form onSubmit={handleOrderSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4" key={editingOrder?.id || "new"}>
+              <h3 className="font-semibold text-lg">{editingOrder ? `${t("edit")} PO-${String(editingOrder.id).padStart(4,"0")}` : t("add_new")}</h3>
               <div className="grid grid-cols-2 gap-4">
                 {user?.branch_id ? (
                   <input type="hidden" name="branch_id" value={user.branch_id} />
                 ) : (
                   <div>
                     <label className="block text-sm font-medium mb-1">{t("branch")}</label>
-                    <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.branch_id || ""}>
                       {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
                     </select>
                   </div>
@@ -503,6 +555,7 @@ export default function PurchasesPage() {
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("supplier")}</label>
                   <select name="supplier_id" required className="w-full px-3 py-2 border rounded-lg text-sm"
+                    defaultValue={editingOrder?.supplier_id || ""}
                     onChange={e => loadSupplierItemsForOrder(Number(e.target.value))}>
                     <option value="">{t("select_supplier")}</option>
                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -511,25 +564,25 @@ export default function PurchasesPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
-                  <input type="date" name="order_date" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="date" name="order_date" required className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.date || ""} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("payment_type")}</label>
-                  <select name="payment_type" className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="payment_type" className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.payment_type || "cash"}>
                     <option value="cash">{t("cash")}</option>
                     <option value="credit">{t("credit")}</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("category")}</label>
-                  <select name="category_id" className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="category_id" className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.category_id || ""}>
                     <option value="">{t("select_category")}</option>
                     {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("delivery_location")}</label>
-                  <input name="delivery_location" placeholder={t("delivery_location")} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input name="delivery_location" placeholder={t("delivery_location")} className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.delivery_location || ""} />
                 </div>
               </div>
 
@@ -680,6 +733,18 @@ export default function PurchasesPage() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex gap-1 justify-center flex-wrap">
+                        <button onClick={() => startEditOrder(o)}
+                          className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
+                          {t("edit")}
+                        </button>
+                        <button onClick={() => apiDownload(`/api/export/purchase-order/${o.id}/pdf`, `PO-${String(o.id).padStart(4,"0")}.pdf`)}
+                          className="px-2 py-1 bg-orange-500 text-white rounded text-xs hover:bg-orange-600">
+                          {t("print")}
+                        </button>
+                        <button onClick={() => deleteOrder(o.id)}
+                          className="px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700">
+                          {t("delete")}
+                        </button>
                         {o.status === "pending" && (
                           <button onClick={() => startReceiving(o)}
                             className="px-2 py-1 bg-indigo-500 text-white rounded text-xs hover:bg-indigo-600">
@@ -690,11 +755,6 @@ export default function PurchasesPage() {
                           className="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">
                           {t("whatsapp")}
                         </button>
-                        <button onClick={() => apiDownload(`/api/export/purchase-order/${o.id}/pdf`, `PO-${String(o.id).padStart(4,"0")}.pdf`)}
-                          className="px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700">
-                          PDF
-                        </button>
-
                       </div>
                     </td>
                   </tr>

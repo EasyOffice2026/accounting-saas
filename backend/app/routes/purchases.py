@@ -143,6 +143,60 @@ def delete_order(order_id: int, db: Session = Depends(get_db), user: User = Depe
     return {"status": "deleted"}
 
 
+@router.put("/orders/{order_id}")
+def update_order(
+    order_id: int,
+    branch_id: int = Form(...), supplier_id: int = Form(...),
+    category_id: Optional[int] = Form(None),
+    order_date: str = Form(...), payment_type: str = Form("cash"),
+    delivery_location: str = Form(""),
+    items: str = Form("[]"), notes: str = Form(""),
+    attachment: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    order = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(404, "Order not found")
+
+    attachment_path = order.attachment_path
+    if attachment and attachment.filename:
+        ext = os.path.splitext(attachment.filename)[1]
+        fname = f"{uuid.uuid4().hex}{ext}"
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        with open(os.path.join(UPLOAD_DIR, fname), "wb") as f:
+            f.write(attachment.file.read())
+        attachment_path = fname
+
+    items_list = json.loads(items)
+    total = sum(float(i.get("total", 0)) for i in items_list)
+
+    order.branch_id = branch_id
+    order.supplier_id = supplier_id
+    order.category_id = category_id if category_id else None
+    order.date = date.fromisoformat(order_date)
+    order.payment_type = payment_type
+    order.delivery_location = delivery_location or None
+    order.total_amount = total
+    order.attachment_path = attachment_path
+    order.notes = notes
+
+    # Replace items
+    db.query(PurchaseItem).filter(PurchaseItem.purchase_order_id == order_id).delete()
+    for item in items_list:
+        pi = PurchaseItem(
+            purchase_order_id=order_id,
+            item_name=item["item_name"],
+            quantity=float(item["quantity"]),
+            unit=item.get("unit", "pcs"),
+            unit_price=float(item["unit_price"]),
+            total=float(item["total"]),
+        )
+        db.add(pi)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
 @router.delete("/invoices/{invoice_id}")
 def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if user.role not in ("owner", "manager"):

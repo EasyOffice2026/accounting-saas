@@ -947,7 +947,7 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
 
     doc.build(elements)
     buf.seek(0)
-    fname = f"PO-{po.id:04d}_{supplier.name if supplier else 'order'}"
+    fname = f"PO-{po.id:04d}"
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="application/pdf",

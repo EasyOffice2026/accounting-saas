@@ -796,6 +796,15 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     import os
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+
+    def _ar(text: str) -> str:
+        """Reshape and reorder Arabic text for PDF rendering."""
+        if not text:
+            return text
+        reshaped = arabic_reshaper.reshape(text)
+        return get_display(reshaped)
 
     po = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
     if not po:
@@ -840,7 +849,10 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
 
     # Header
     company_name = brand.name_en if brand else "Mudawwarah"
+    company_name_ar = _ar(brand.name_ar) if brand and brand.name_ar else ""
     elements.append(Paragraph(company_name, title_style))
+    if company_name_ar:
+        elements.append(Paragraph(company_name_ar, ParagraphStyle("po_title_ar", fontName=font_bold, fontSize=14, alignment=1, spaceAfter=2 * mm)))
     elements.append(Paragraph("PURCHASE ORDER", subtitle_style))
     elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#2E7D32")))
     elements.append(Spacer(1, 5 * mm))
@@ -868,8 +880,9 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
     elements.append(Spacer(1, 3 * mm))
     elements.append(Paragraph("<b>Supplier:</b>", heading_style))
     supp_name = supplier.name if supplier else "N/A"
+    supp_name_display = _ar(supp_name) if supplier else supp_name
     supp_whatsapp = supplier.whatsapp if supplier and supplier.whatsapp else "N/A"
-    elements.append(Paragraph(f"Name: {supp_name}", normal_style))
+    elements.append(Paragraph(f"Name: {supp_name_display}", normal_style))
     elements.append(Paragraph(f"WhatsApp: {supp_whatsapp}", normal_style))
     elements.append(Spacer(1, 5 * mm))
 
@@ -883,11 +896,14 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
     for idx, item in enumerate(items, 1):
         row_total = item.total or (item.quantity * item.unit_price)
         grand_total += row_total
+        name_en = item.item_name or ""
+        name_ar = _ar(item.item_name_ar) if getattr(item, "item_name_ar", None) else ""
+        item_display = f"{name_en}<br/>{name_ar}" if name_ar else name_en
         table_data.append([
             str(idx),
-            item.item_name,
+            Paragraph(item_display, ParagraphStyle("item_cell", fontName=font_name, fontSize=8, leading=10)),
             f"{item.quantity:.2f}",
-            item.unit,
+            item.unit or "",
             f"{item.unit_price:.3f}",
             f"{row_total:.3f}",
         ])
@@ -924,7 +940,7 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
 
     # Notes
     if po.notes:
-        elements.append(Paragraph(f"<b>Notes:</b> {po.notes}", normal_style))
+        elements.append(Paragraph(f"<b>Notes:</b> {_ar(po.notes)}", normal_style))
         elements.append(Spacer(1, 5 * mm))
 
     # Signature lines

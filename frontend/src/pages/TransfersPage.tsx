@@ -52,6 +52,8 @@ export default function TransfersPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [branchSummary, setBranchSummary] = useState<BranchSummary[]>([]);
   const [invCategory, setInvCategory] = useState<"food" | "packaging">("food");
+  const [invStartDate, setInvStartDate] = useState("");
+  const [invEndDate, setInvEndDate] = useState("");
 
   const isOwnerManager = user?.role === "owner" || user?.role === "manager";
   const isCentralKitchen = branches.find(b => b.id === user?.branch_id)?.is_central_kitchen || false;
@@ -498,7 +500,7 @@ export default function TransfersPage() {
       {/* ========== INVENTORY TAB ========== */}
       {tab === "inventory" && (
         <>
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-2 mb-4 flex-wrap items-end">
             <button onClick={() => setInvCategory("food")}
               className={`px-4 py-2 rounded-lg text-sm font-medium ${invCategory === "food" ? "bg-emerald-600 text-white" : "bg-gray-200 text-gray-700"}`}>
               {t("food_items")}
@@ -507,6 +509,37 @@ export default function TransfersPage() {
               className={`px-4 py-2 rounded-lg text-sm font-medium ${invCategory === "packaging" ? "bg-orange-500 text-white" : "bg-gray-200 text-gray-700"}`}>
               {t("packaging_items")}
             </button>
+            <div className="flex gap-2 items-center ml-auto">
+              <div className="flex flex-col">
+                <label className="text-[10px] text-gray-500 mb-0.5">{t("start_date")}</label>
+                <input type="date" value={invStartDate} onChange={e => setInvStartDate(e.target.value)}
+                  className="px-2 py-1.5 border rounded text-sm" />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-[10px] text-gray-500 mb-0.5">{t("end_date")}</label>
+                <input type="date" value={invEndDate} onChange={e => setInvEndDate(e.target.value)}
+                  className="px-2 py-1.5 border rounded text-sm" />
+              </div>
+              <button onClick={() => {
+                const params = new URLSearchParams();
+                if (invStartDate) params.set("start_date", invStartDate);
+                if (invEndDate) params.set("end_date", invEndDate);
+                const qs = params.toString();
+                apiGet(`/api/transfers/inventory${qs ? `?${qs}` : ""}`).then(setInventory);
+                apiGet(`/api/transfers/branch-summary${qs ? `?${qs}` : ""}`).then(setBranchSummary);
+              }} className="px-3 py-1.5 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700 mt-3">
+                {t("filter")}
+              </button>
+              {(invStartDate || invEndDate) && (
+                <button onClick={() => {
+                  setInvStartDate(""); setInvEndDate("");
+                  apiGet("/api/transfers/inventory").then(setInventory);
+                  apiGet("/api/transfers/branch-summary").then(setBranchSummary);
+                }} className="px-3 py-1.5 bg-gray-300 text-gray-700 rounded text-sm hover:bg-gray-400 mt-3">
+                  {t("clear")}
+                </button>
+              )}
+            </div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
             <table className="w-full text-sm">

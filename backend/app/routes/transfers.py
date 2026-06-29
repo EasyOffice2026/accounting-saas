@@ -204,7 +204,9 @@ def receive_order(
 
 # --- Branch Summary (quantity & amount given to each branch) ---
 @router.get("/branch-summary")
-def branch_transfer_summary(brand_id: Optional[int] = None, db: Session = Depends(get_db),
+def branch_transfer_summary(brand_id: Optional[int] = None,
+                            start_date: Optional[str] = None, end_date: Optional[str] = None,
+                            db: Session = Depends(get_db),
                             user: User = Depends(get_current_user)):
     """Get total quantity and amount of items dispatched to each branch."""
     from sqlalchemy import func
@@ -222,6 +224,10 @@ def branch_transfer_summary(brand_id: Optional[int] = None, db: Session = Depend
         TransferOrder.status.in_(["dispatched", "received"]),
         TransferOrderLine.dispatched_qty != None,
     )
+    if start_date:
+        q = q.filter(TransferOrder.date >= date.fromisoformat(start_date))
+    if end_date:
+        q = q.filter(TransferOrder.date <= date.fromisoformat(end_date))
     if bb_ids is not None:
         q = q.filter(TransferOrder.requesting_branch_id.in_(bb_ids))
     q = q.group_by(
@@ -249,19 +255,22 @@ def branch_transfer_summary(brand_id: Optional[int] = None, db: Session = Depend
 
 # --- Inventory Stock (opening balance, transferred, remaining) ---
 @router.get("/inventory")
-def inventory_stock(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def inventory_stock(start_date: Optional[str] = None, end_date: Optional[str] = None,
+                    db: Session = Depends(get_db), _=Depends(get_current_user)):
     """Get stock status for all active items: opening_stock, total_dispatched, remaining."""
     from sqlalchemy import func
     all_items = db.query(TransferItem).filter(TransferItem.is_active == True).order_by(TransferItem.name).all()
     # Sum dispatched qty per item_id across all orders
-    dispatched = dict(
-        db.query(
-            TransferOrderLine.item_id,
-            func.coalesce(func.sum(TransferOrderLine.dispatched_qty), 0).label("total"),
-        ).join(TransferOrder, TransferOrder.id == TransferOrderLine.transfer_order_id)
-        .filter(TransferOrder.status.in_(["dispatched", "received"]))
-        .group_by(TransferOrderLine.item_id).all()
-    )
+    dq = db.query(
+        TransferOrderLine.item_id,
+        func.coalesce(func.sum(TransferOrderLine.dispatched_qty), 0).label("total"),
+    ).join(TransferOrder, TransferOrder.id == TransferOrderLine.transfer_order_id)\
+     .filter(TransferOrder.status.in_(["dispatched", "received"]))
+    if start_date:
+        dq = dq.filter(TransferOrder.date >= date.fromisoformat(start_date))
+    if end_date:
+        dq = dq.filter(TransferOrder.date <= date.fromisoformat(end_date))
+    dispatched = dict(dq.group_by(TransferOrderLine.item_id).all())
     result = []
     for item in all_items:
         total_out = dispatched.get(item.id, 0)

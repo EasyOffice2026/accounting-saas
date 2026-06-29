@@ -171,7 +171,10 @@ export default function HRPage() {
   const canViewSalary = ["owner", "manager", "accountant"].includes(currentUser.role);
 
   useEffect(() => {
-    apiGet("/api/branches/").then((b: any[]) => { setBranches(b); setAllBranches(b); });
+    apiGet("/api/branches/").then((b: any[]) => setBranches(b));
+    // Fetch ALL branches (no brand filter) for cross-brand transfers
+    fetch("/api/branches/", { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } })
+      .then(r => r.json()).then((b: any[]) => setAllBranches(b));
     apiGet("/api/hr/employees").then(setEmployees);
     apiGet("/api/hr/employers").then(setEmployers);
     apiGet("/api/hr/brands").then(setBrands);

@@ -354,6 +354,7 @@ export default {
   date_range: "Date Range",
   start_date: "Start Date",
   end_date: "End Date",
+  filter: "Filter",
   clear: "Clear",
   sync_now: "Sync Now",
   syncing: "Syncing...",

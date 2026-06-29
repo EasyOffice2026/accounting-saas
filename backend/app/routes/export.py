@@ -806,6 +806,11 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
         reshaped = arabic_reshaper.reshape(text)
         return get_display(reshaped)
 
+    def _has_arabic(text: str) -> bool:
+        if not text:
+            return False
+        return any('\u0600' <= c <= '\u06FF' or '\u0750' <= c <= '\u077F' or '\uFB50' <= c <= '\uFDFF' or '\uFE70' <= c <= '\uFEFF' for c in text)
+
     po = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
     if not po:
         raise HTTPException(404, "Order not found")
@@ -899,9 +904,15 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
     elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
     elements.append(Spacer(1, 3 * mm))
     elements.append(Paragraph(f"<b>Supplier / {_ar('المورد')}:</b>", heading_style))
-    supp_name = supplier.name if supplier else "N/A"
+    supp_name_raw = supplier.name if supplier else "N/A"
     supp_whatsapp = supplier.whatsapp if supplier and supplier.whatsapp else "N/A"
-    elements.append(Paragraph(f"Name / {_ar('الاسم')}: {supp_name}", normal_style))
+    if _has_arabic(supp_name_raw):
+        supp_name_disp = _ar(supp_name_raw)
+        supp_name_para = Paragraph(f"<font name='{font_en}' size='9'>Name / {_ar('الاسم')}: </font><font name='{font_ar}' size='10'>{supp_name_disp}</font>",
+                                    ParagraphStyle("supp_name", fontName=font_ar, fontSize=10, leading=14))
+    else:
+        supp_name_para = Paragraph(f"Name / {_ar('الاسم')}: {supp_name_raw}", normal_style)
+    elements.append(supp_name_para)
     elements.append(Paragraph(f"WhatsApp / {_ar('واتساب')}: {supp_whatsapp}", normal_style))
     elements.append(Spacer(1, 5 * mm))
 
@@ -912,11 +923,11 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
     # Bilingual header
     table_header = [
         "#",
-        Paragraph(f"Item Name<br/>{_ar('اسم الصنف')}", ParagraphStyle("hdr_item", fontName=font_en_bold, fontSize=8, leading=11)),
-        Paragraph(f"Qty<br/>{_ar('الكمية')}", ParagraphStyle("hdr_qty", fontName=font_en_bold, fontSize=8, leading=11, alignment=1)),
-        Paragraph(f"Unit<br/>{_ar('الوحدة')}", ParagraphStyle("hdr_unit", fontName=font_en_bold, fontSize=8, leading=11, alignment=1)),
-        Paragraph(f"Price<br/>{_ar('السعر')}", ParagraphStyle("hdr_price", fontName=font_en_bold, fontSize=8, leading=11, alignment=1)),
-        Paragraph(f"Total<br/>{_ar('المجموع')}", ParagraphStyle("hdr_total", fontName=font_en_bold, fontSize=8, leading=11, alignment=1)),
+        Paragraph(f"<font name='{font_en_bold}'>Item Name</font><br/><font name='{font_ar}' size='9'>{_ar('اسم الصنف')}</font>", ParagraphStyle("hdr_item", fontName=font_ar, fontSize=8, leading=12)),
+        Paragraph(f"<font name='{font_en_bold}'>Qty</font><br/><font name='{font_ar}' size='9'>{_ar('الكمية')}</font>", ParagraphStyle("hdr_qty", fontName=font_ar, fontSize=8, leading=12, alignment=1)),
+        Paragraph(f"<font name='{font_en_bold}'>Unit</font><br/><font name='{font_ar}' size='9'>{_ar('الوحدة')}</font>", ParagraphStyle("hdr_unit", fontName=font_ar, fontSize=8, leading=12, alignment=1)),
+        Paragraph(f"<font name='{font_en_bold}'>Price</font><br/><font name='{font_ar}' size='9'>{_ar('السعر')}</font>", ParagraphStyle("hdr_price", fontName=font_ar, fontSize=8, leading=12, alignment=1)),
+        Paragraph(f"<font name='{font_en_bold}'>Total</font><br/><font name='{font_ar}' size='9'>{_ar('المجموع')}</font>", ParagraphStyle("hdr_total", fontName=font_ar, fontSize=8, leading=12, alignment=1)),
     ]
     table_data = [table_header]
     grand_total = 0.0
@@ -924,10 +935,14 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
         row_total = item.total or (item.quantity * item.unit_price)
         grand_total += row_total
         name_en = item.item_name or ""
-        name_ar = _ar(getattr(item, "item_name_ar", None) or "")
+        name_ar_raw = getattr(item, "item_name_ar", None) or ""
+        name_ar = _ar(name_ar_raw) if name_ar_raw else ""
         if name_ar:
             item_cell = Paragraph(f"<font name='{font_en}' size='8'>{name_en}</font><br/><font name='{font_ar}' size='9'>{name_ar}</font>",
-                                   ParagraphStyle("item_bi", fontName=font_en, fontSize=8, leading=12))
+                                   ParagraphStyle("item_bi", fontName=font_ar, fontSize=9, leading=13))
+        elif _has_arabic(name_en):
+            item_cell = Paragraph(f"<font name='{font_ar}' size='9'>{_ar(name_en)}</font>",
+                                   ParagraphStyle("item_ar", fontName=font_ar, fontSize=9, leading=12))
         else:
             item_cell = Paragraph(f"<font name='{font_en}' size='8'>{name_en}</font>",
                                    ParagraphStyle("item_en", fontName=font_en, fontSize=8, leading=10))

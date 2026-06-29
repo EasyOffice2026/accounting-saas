@@ -7,6 +7,7 @@ import os, uuid
 
 from app.database import get_db
 from app.models.sale import Sale, SaleReturn
+from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
 from app.routes.hr import _brand_branch_ids
@@ -85,6 +86,26 @@ def create_sale(
     db.add(sale)
     db.commit()
     db.refresh(sale)
+
+    # Auto-send to WhatsApp group
+    try:
+        from app.routes.whatsapp import _send_to_group_if_configured
+        branch = db.query(Branch).filter(Branch.id == branch_id).first()
+        br_name = branch.name if branch else ""
+        f_total = foodics_cash + foodics_knet + foodics_link + foodics_wamd + foodics_talabat + foodics_keeta + foodics_jahez + foodics_other + foodics_snoonu
+        p_total = physical_cash + physical_knet + physical_link + physical_wamd + physical_talabat + physical_keeta + physical_jahez + physical_other + physical_snoonu
+        diff = p_total - f_total
+        diff_sign = "+" if diff >= 0 else ""
+        msg = (f"\U0001f4ca *Sales Entry*\n"
+               f"\U0001f4c5 Date: {sale_date}\n"
+               f"\U0001f3ea Branch: {br_name}\n\n"
+               f"*POS Data:* KD {f_total:,.3f}\n"
+               f"*Physical:* KD {p_total:,.3f}\n"
+               f"Difference: {diff_sign}{diff:,.3f}")
+        _send_to_group_if_configured(db, "sales_group", msg)
+    except Exception:
+        pass
+
     return sale
 
 

@@ -333,6 +333,26 @@ def create_order(
         )
         db.add(pi)
     db.commit()
+
+    # Auto-send to WhatsApp group
+    try:
+        from app.routes.whatsapp import _send_to_group_if_configured
+        supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+        branch = db.query(Branch).filter(Branch.id == branch_id).first()
+        sup_name = supplier.name if supplier else ""
+        br_name = branch.name if branch else ""
+        item_lines = "\n".join([f"  \u2022 {i['item_name']} \u2014 {i['quantity']} {i.get('unit', 'pcs')} \u00d7 {float(i['unit_price']):.3f} = KD {float(i['total']):.3f}" for i in items_list])
+        msg = (f"\U0001f4cb *Purchase Order #{po.id}*\n"
+               f"\U0001f4c5 Date: {order_date}\n"
+               f"\U0001f3ea Branch: {br_name}\n"
+               f"\U0001f3e2 Supplier: {sup_name}\n"
+               f"\U0001f4b3 Payment: {payment_type}\n\n"
+               f"*Items:*\n{item_lines}\n\n"
+               f"*Total: KD {total:.3f}*")
+        _send_to_group_if_configured(db, "purchases_group", msg)
+    except Exception:
+        pass
+
     return po
 
 

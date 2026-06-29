@@ -85,6 +85,10 @@ def _migrate_columns():
             if "api_url" not in cols:
                 conn.execute(text("ALTER TABLE whatsapp_settings ADD COLUMN api_url TEXT"))
                 conn.commit()
+            for gcol in ["sales_group", "purchases_group", "expenses_group", "hr_group", "transfers_group"]:
+                if gcol not in cols:
+                    conn.execute(text(f"ALTER TABLE whatsapp_settings ADD COLUMN {gcol} TEXT"))
+                    conn.commit()
 
         # Purchase orders: add missing columns
         if "purchase_orders" in insp.get_table_names():

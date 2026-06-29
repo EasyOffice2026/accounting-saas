@@ -28,6 +28,11 @@ interface WhatsAppConfig {
   api_url: string;
   default_phone: string;
   has_token: boolean;
+  sales_group: string;
+  purchases_group: string;
+  expenses_group: string;
+  hr_group: string;
+  transfers_group: string;
 }
 
 interface FoodicsConfig {
@@ -120,6 +125,13 @@ export default function SettingsPage() {
   const [waApiUrl, setWaApiUrl] = useState("");
   const [waPhone, setWaPhone] = useState("");
   const [waHasToken, setWaHasToken] = useState(false);
+  const [waSalesGroup, setWaSalesGroup] = useState("");
+  const [waPurchasesGroup, setWaPurchasesGroup] = useState("");
+  const [waExpensesGroup, setWaExpensesGroup] = useState("");
+  const [waHrGroup, setWaHrGroup] = useState("");
+  const [waTransfersGroup, setWaTransfersGroup] = useState("");
+  const [waGroupsList, setWaGroupsList] = useState<{id: string; name: string}[]>([]);
+  const [waLoadingGroups, setWaLoadingGroups] = useState(false);
   const [waSaving, setWaSaving] = useState(false);
   const [waMsg, setWaMsg] = useState("");
   const [waMsgType, setWaMsgType] = useState<"success" | "error">("success");
@@ -205,6 +217,11 @@ export default function SettingsPage() {
         setWaApiUrl(data.api_url);
         setWaPhone(data.default_phone);
         setWaHasToken(data.has_token);
+        setWaSalesGroup(data.sales_group || "");
+        setWaPurchasesGroup(data.purchases_group || "");
+        setWaExpensesGroup(data.expenses_group || "");
+        setWaHrGroup(data.hr_group || "");
+        setWaTransfersGroup(data.transfers_group || "");
       }
     });
     apiGet("/api/foodics/settings").then((data: FoodicsConfig | null) => {
@@ -1018,6 +1035,11 @@ export default function SettingsPage() {
             if (waApiToken) fd.append("api_token", waApiToken);
             if (waApiUrl) fd.append("api_url", waApiUrl);
             if (waPhone) fd.append("default_phone", waPhone);
+            fd.append("sales_group", waSalesGroup);
+            fd.append("purchases_group", waPurchasesGroup);
+            fd.append("expenses_group", waExpensesGroup);
+            fd.append("hr_group", waHrGroup);
+            fd.append("transfers_group", waTransfersGroup);
             const res = await fetch("/api/whatsapp/settings", {
               method: "POST", body: fd,
               headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -1065,6 +1087,70 @@ export default function SettingsPage() {
               <p className="text-xs text-gray-400 mt-1">Include country code (e.g. 965 for Kuwait)</p>
             </div>
           </div>
+
+          <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h4 className="font-medium text-blue-800 text-sm">{t("whatsapp_groups")}</h4>
+                <p className="text-xs text-blue-600">{t("whatsapp_groups_desc")}</p>
+              </div>
+              <button type="button" onClick={async () => {
+                setWaLoadingGroups(true);
+                try {
+                  const data = await apiGet("/api/whatsapp/groups");
+                  setWaGroupsList(data);
+                } catch { setWaGroupsList([]); }
+                setWaLoadingGroups(false);
+              }}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 whitespace-nowrap">
+                {waLoadingGroups ? "..." : t("fetch_groups")}
+              </button>
+            </div>
+            {waGroupsList.length > 0 && (
+              <div className="mb-3 max-h-32 overflow-y-auto bg-white rounded border p-2">
+                <p className="text-xs font-medium text-gray-600 mb-1">{t("available_groups")}:</p>
+                {waGroupsList.map(g => (
+                  <div key={g.id} className="text-xs text-gray-700 py-0.5 flex justify-between items-center">
+                    <span className="font-medium">{g.name}</span>
+                    <code className="text-[10px] bg-gray-100 px-1 rounded select-all">{g.id}</code>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium mb-1">{t("sales_group")}</label>
+                <input value={waSalesGroup} onChange={e => setWaSalesGroup(e.target.value)}
+                  placeholder="120363XXXXXXXXX@g.us"
+                  className="w-full px-3 py-1.5 border rounded text-xs" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1">{t("purchases_group")}</label>
+                <input value={waPurchasesGroup} onChange={e => setWaPurchasesGroup(e.target.value)}
+                  placeholder="120363XXXXXXXXX@g.us"
+                  className="w-full px-3 py-1.5 border rounded text-xs" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1">{t("expenses_group")}</label>
+                <input value={waExpensesGroup} onChange={e => setWaExpensesGroup(e.target.value)}
+                  placeholder="120363XXXXXXXXX@g.us"
+                  className="w-full px-3 py-1.5 border rounded text-xs" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1">{t("hr_group")}</label>
+                <input value={waHrGroup} onChange={e => setWaHrGroup(e.target.value)}
+                  placeholder="120363XXXXXXXXX@g.us"
+                  className="w-full px-3 py-1.5 border rounded text-xs" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1">{t("transfers_group")}</label>
+                <input value={waTransfersGroup} onChange={e => setWaTransfersGroup(e.target.value)}
+                  placeholder="120363XXXXXXXXX@g.us"
+                  className="w-full px-3 py-1.5 border rounded text-xs" />
+              </div>
+            </div>
+          </div>
+
           <button type="submit" disabled={waSaving}
             className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm">
             {waSaving ? "..." : t("save")}

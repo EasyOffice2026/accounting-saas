@@ -22,13 +22,19 @@ def get_settings(db: Session = Depends(get_db), user: User = Depends(get_current
         raise HTTPException(403, "Not authorized")
     s = db.query(WhatsAppSettings).first()
     if not s:
-        return {"provider": "greenapi", "instance_id": "", "default_phone": "", "has_token": False}
+        return {"provider": "greenapi", "instance_id": "", "default_phone": "", "has_token": False,
+                "sales_group": "", "purchases_group": "", "expenses_group": "", "hr_group": "", "transfers_group": ""}
     return {
         "provider": s.provider or "greenapi",
         "instance_id": s.instance_id or "",
         "api_url": s.api_url or "",
         "default_phone": s.default_phone or "",
         "has_token": bool(s.api_token),
+        "sales_group": s.sales_group or "",
+        "purchases_group": s.purchases_group or "",
+        "expenses_group": s.expenses_group or "",
+        "hr_group": s.hr_group or "",
+        "transfers_group": s.transfers_group or "",
     }
 
 
@@ -38,6 +44,11 @@ def save_settings(
     api_token: str = Form(""),
     api_url: str = Form(""),
     default_phone: str = Form(""),
+    sales_group: str = Form(""),
+    purchases_group: str = Form(""),
+    expenses_group: str = Form(""),
+    hr_group: str = Form(""),
+    transfers_group: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -55,6 +66,11 @@ def save_settings(
         s.api_url = api_url
     if default_phone:
         s.default_phone = default_phone
+    s.sales_group = sales_group or None
+    s.purchases_group = purchases_group or None
+    s.expenses_group = expenses_group or None
+    s.hr_group = hr_group or None
+    s.transfers_group = transfers_group or None
     db.commit()
     return {"message": "WhatsApp settings saved"}
 
@@ -118,19 +134,60 @@ def _build_daily_sales_report(db: Session, report_date: date) -> str:
 
 
 def _send_whatsapp_message(instance_id: str, api_token: str, phone: str, message: str, api_url: str = "") -> dict:
-    """Send a WhatsApp message via Green API."""
+    """Send a WhatsApp message via Green API. Supports both phone numbers and group IDs."""
     base = api_url.rstrip("/") if api_url else "https://api.green-api.com"
     url = f"{base}/waInstance{instance_id}/sendMessage/{api_token}"
-    # Ensure phone has country code, default to Kuwait (+965)
-    phone = phone.strip().replace("+", "").replace(" ", "").replace("-", "")
-    if len(phone) == 8:
-        phone = "965" + phone
+    phone = phone.strip()
+    # If it's a group ID (contains @g.us), use as-is
+    if "@g.us" in phone:
+        chat_id = phone
+    else:
+        # Ensure phone has country code, default to Kuwait (+965)
+        phone = phone.replace("+", "").replace(" ", "").replace("-", "")
+        if len(phone) == 8:
+            phone = "965" + phone
+        chat_id = f"{phone}@c.us"
     payload = {
-        "chatId": f"{phone}@c.us",
+        "chatId": chat_id,
         "message": message,
     }
     resp = httpx.post(url, json=payload, timeout=30)
     return resp.json()
+
+
+def _send_to_group_if_configured(db: Session, group_field: str, message: str):
+    """Send a message to a configured WhatsApp group. Returns True if sent."""
+    settings = db.query(WhatsAppSettings).first()
+    if not settings or not settings.instance_id or not settings.api_token:
+        return False
+    group_id = getattr(settings, group_field, None)
+    if not group_id:
+        return False
+    try:
+        _send_whatsapp_message(settings.instance_id, settings.api_token, group_id, message, settings.api_url or "")
+        return True
+    except Exception:
+        return False
+
+
+@router.get("/groups")
+def list_whatsapp_groups(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Fetch list of WhatsApp groups from Green API instance."""
+    if user.role not in ("owner", "manager"):
+        raise HTTPException(403, "Not authorized")
+    settings = db.query(WhatsAppSettings).first()
+    if not settings or not settings.instance_id or not settings.api_token:
+        raise HTTPException(400, "WhatsApp not configured")
+    base = (settings.api_url or "https://api.green-api.com").rstrip("/")
+    url = f"{base}/waInstance{settings.instance_id}/getContacts/{settings.api_token}"
+    try:
+        resp = httpx.get(url, timeout=30)
+        contacts = resp.json()
+        groups = [{"id": c.get("id", ""), "name": c.get("name", "")}
+                  for c in contacts if isinstance(c, dict) and str(c.get("id", "")).endswith("@g.us")]
+        return groups
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch groups: {str(e)}")
 
 
 @router.post("/send-daily-report")

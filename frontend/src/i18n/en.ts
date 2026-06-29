@@ -252,6 +252,8 @@ export default {
   expenses_group: "Expenses Group",
   hr_group: "HR Group",
   transfers_group: "Transfers Group",
+  whatsapp_group_id: "WhatsApp Group ID",
+  whatsapp_group_hint: "Get from Settings → WhatsApp → Fetch Groups",
   fetch_groups: "Fetch Groups",
   available_groups: "Available Groups",
   whatsapp_saved: "WhatsApp settings saved",

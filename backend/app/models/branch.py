@@ -12,5 +12,6 @@ class Branch(Base):
     name_ar = Column(String, nullable=True)
     is_central_kitchen = Column(Boolean, default=False)
     whatsapp_number = Column(String, nullable=True)
+    whatsapp_group = Column(String, nullable=True)  # Group ID e.g. 120363XXX@g.us
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

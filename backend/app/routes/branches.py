@@ -18,6 +18,7 @@ def list_branches(brand_id: Optional[int] = None, db: Session = Depends(get_db))
     return [{"id": b.id, "name": b.name, "name_ar": b.name_ar or "",
              "brand_id": b.brand_id, "is_central_kitchen": b.is_central_kitchen,
              "whatsapp_number": b.whatsapp_number or "",
+             "whatsapp_group": b.whatsapp_group or "",
              "is_active": b.is_active} for b in rows]
 
 
@@ -26,17 +27,20 @@ def create_branch(name: str = Form(...), name_ar: str = Form(""),
                   is_central_kitchen: bool = Form(False),
                   brand_id: Optional[int] = Form(None),
                   whatsapp_number: str = Form(""),
+                  whatsapp_group: str = Form(""),
                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     branch = Branch(name=name, name_ar=name_ar, is_central_kitchen=is_central_kitchen,
-                    brand_id=brand_id, whatsapp_number=whatsapp_number or None)
+                    brand_id=brand_id, whatsapp_number=whatsapp_number or None,
+                    whatsapp_group=whatsapp_group or None)
     db.add(branch)
     db.commit()
     db.refresh(branch)
     return {"id": branch.id, "name": branch.name, "name_ar": branch.name_ar or "",
             "brand_id": branch.brand_id, "is_central_kitchen": branch.is_central_kitchen,
             "whatsapp_number": branch.whatsapp_number or "",
+            "whatsapp_group": branch.whatsapp_group or "",
             "is_active": branch.is_active}
 
 
@@ -45,6 +49,7 @@ def update_branch(branch_id: int, name: str = Form(...), name_ar: str = Form("")
                   is_central_kitchen: bool = Form(False),
                   brand_id: Optional[int] = Form(None),
                   whatsapp_number: str = Form(""),
+                  whatsapp_group: str = Form(""),
                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
@@ -56,10 +61,12 @@ def update_branch(branch_id: int, name: str = Form(...), name_ar: str = Form("")
     b.is_central_kitchen = is_central_kitchen
     b.brand_id = brand_id
     b.whatsapp_number = whatsapp_number or None
+    b.whatsapp_group = whatsapp_group or None
     db.commit()
     return {"id": b.id, "name": b.name, "name_ar": b.name_ar or "",
             "brand_id": b.brand_id, "is_central_kitchen": b.is_central_kitchen,
             "whatsapp_number": b.whatsapp_number or "",
+            "whatsapp_group": b.whatsapp_group or "",
             "is_active": b.is_active}
 
 

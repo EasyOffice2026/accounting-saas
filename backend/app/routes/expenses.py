@@ -76,26 +76,25 @@ def create_expense(
     db.commit()
     db.refresh(exp)
 
-    # Auto-send to WhatsApp group
+    # Auto-send to supplier's WhatsApp group
     try:
-        from app.routes.whatsapp import _send_to_group_if_configured
-        branch = db.query(Branch).filter(Branch.id == branch_id).first()
+        from app.routes.whatsapp import _send_to_entity_group
         supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first() if supplier_id else None
-        category = db.query(ExpenseCategory).filter(ExpenseCategory.id == category_id).first() if category_id else None
-        br_name = branch.name if branch else ""
-        sup_name = supplier.name if supplier else ""
-        cat_name = category.name if category else ""
-        msg = (f"\U0001f4b0 *Expense*\n"
-               f"\U0001f4c5 Date: {expense_date}\n"
-               f"\U0001f3ea Branch: {br_name}\n")
-        if sup_name:
-            msg += f"\U0001f3e2 Supplier: {sup_name}\n"
-        if cat_name:
-            msg += f"\U0001f4c1 Category: {cat_name}\n"
-        msg += (f"\U0001f4dd Description: {description}\n"
-                f"\U0001f4b3 Payment: {payment_method}\n"
-                f"*Amount: KD {amount:.3f}*")
-        _send_to_group_if_configured(db, "expenses_group", msg)
+        if supplier and supplier.whatsapp_group:
+            branch = db.query(Branch).filter(Branch.id == branch_id).first()
+            category = db.query(ExpenseCategory).filter(ExpenseCategory.id == category_id).first() if category_id else None
+            br_name = branch.name if branch else ""
+            cat_name = category.name if category else ""
+            msg = (f"\U0001f4b0 *Expense*\n"
+                   f"\U0001f4c5 Date: {expense_date}\n"
+                   f"\U0001f3ea Branch: {br_name}\n"
+                   f"\U0001f3e2 Supplier: {supplier.name}\n")
+            if cat_name:
+                msg += f"\U0001f4c1 Category: {cat_name}\n"
+            msg += (f"\U0001f4dd Description: {description}\n"
+                    f"\U0001f4b3 Payment: {payment_method}\n"
+                    f"*Amount: KD {amount:.3f}*")
+            _send_to_entity_group(db, supplier.whatsapp_group, msg)
     except Exception:
         pass
 

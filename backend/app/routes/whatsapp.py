@@ -156,11 +156,25 @@ def _send_whatsapp_message(instance_id: str, api_token: str, phone: str, message
 
 
 def _send_to_group_if_configured(db: Session, group_field: str, message: str):
-    """Send a message to a configured WhatsApp group. Returns True if sent."""
+    """Send a message to a configured WhatsApp group (global setting). Returns True if sent."""
     settings = db.query(WhatsAppSettings).first()
     if not settings or not settings.instance_id or not settings.api_token:
         return False
     group_id = getattr(settings, group_field, None)
+    if not group_id:
+        return False
+    try:
+        _send_whatsapp_message(settings.instance_id, settings.api_token, group_id, message, settings.api_url or "")
+        return True
+    except Exception:
+        return False
+
+
+def _send_to_entity_group(db: Session, group_id: str, message: str):
+    """Send a message to a specific entity's WhatsApp group (branch or supplier). Returns True if sent."""
+    settings = db.query(WhatsAppSettings).first()
+    if not settings or not settings.instance_id or not settings.api_token:
+        return False
     if not group_id:
         return False
     try:

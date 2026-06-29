@@ -82,10 +82,12 @@ def list_suppliers(db: Session = Depends(get_db), _=Depends(get_current_user)):
 
 @router.post("/suppliers")
 def create_supplier(name: str = Form(...), email: str = Form(""),
-                    whatsapp: str = Form(""), payment_type: str = Form("cash"),
+                    whatsapp: str = Form(""), whatsapp_group: str = Form(""),
+                    payment_type: str = Form("cash"),
                     category_id: Optional[int] = Form(None),
                     db: Session = Depends(get_db), _=Depends(get_current_user)):
-    s = Supplier(name=name, email=email, whatsapp=whatsapp, payment_type=payment_type,
+    s = Supplier(name=name, email=email, whatsapp=whatsapp,
+                 whatsapp_group=whatsapp_group or None, payment_type=payment_type,
                  category_id=category_id if category_id else None)
     db.add(s)
     db.commit()
@@ -95,7 +97,8 @@ def create_supplier(name: str = Form(...), email: str = Form(""),
 
 @router.put("/suppliers/{supplier_id}")
 def update_supplier(supplier_id: int, name: str = Form(...), email: str = Form(""),
-                    whatsapp: str = Form(""), payment_type: str = Form("cash"),
+                    whatsapp: str = Form(""), whatsapp_group: str = Form(""),
+                    payment_type: str = Form("cash"),
                     category_id: Optional[int] = Form(None),
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
@@ -104,6 +107,7 @@ def update_supplier(supplier_id: int, name: str = Form(...), email: str = Form("
     s.name = name
     s.email = email
     s.whatsapp = whatsapp
+    s.whatsapp_group = whatsapp_group or None
     s.payment_type = payment_type
     s.category_id = category_id if category_id else None
     db.commit()
@@ -334,22 +338,23 @@ def create_order(
         db.add(pi)
     db.commit()
 
-    # Auto-send to WhatsApp group
+    # Auto-send to supplier's WhatsApp group
     try:
-        from app.routes.whatsapp import _send_to_group_if_configured
+        from app.routes.whatsapp import _send_to_entity_group
         supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
-        branch = db.query(Branch).filter(Branch.id == branch_id).first()
-        sup_name = supplier.name if supplier else ""
-        br_name = branch.name if branch else ""
-        item_lines = "\n".join([f"  \u2022 {i['item_name']} \u2014 {i['quantity']} {i.get('unit', 'pcs')} \u00d7 {float(i['unit_price']):.3f} = KD {float(i['total']):.3f}" for i in items_list])
-        msg = (f"\U0001f4cb *Purchase Order #{po.id}*\n"
-               f"\U0001f4c5 Date: {order_date}\n"
-               f"\U0001f3ea Branch: {br_name}\n"
-               f"\U0001f3e2 Supplier: {sup_name}\n"
-               f"\U0001f4b3 Payment: {payment_type}\n\n"
-               f"*Items:*\n{item_lines}\n\n"
-               f"*Total: KD {total:.3f}*")
-        _send_to_group_if_configured(db, "purchases_group", msg)
+        if supplier and supplier.whatsapp_group:
+            branch = db.query(Branch).filter(Branch.id == branch_id).first()
+            sup_name = supplier.name
+            br_name = branch.name if branch else ""
+            item_lines = "\n".join([f"  \u2022 {i['item_name']} \u2014 {i['quantity']} {i.get('unit', 'pcs')} \u00d7 {float(i['unit_price']):.3f} = KD {float(i['total']):.3f}" for i in items_list])
+            msg = (f"\U0001f4cb *Purchase Order #{po.id}*\n"
+                   f"\U0001f4c5 Date: {order_date}\n"
+                   f"\U0001f3ea Branch: {br_name}\n"
+                   f"\U0001f3e2 Supplier: {sup_name}\n"
+                   f"\U0001f4b3 Payment: {payment_type}\n\n"
+                   f"*Items:*\n{item_lines}\n\n"
+                   f"*Total: KD {total:.3f}*")
+            _send_to_entity_group(db, supplier.whatsapp_group, msg)
     except Exception:
         pass
 

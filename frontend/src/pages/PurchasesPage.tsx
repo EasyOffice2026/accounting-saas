@@ -4,7 +4,7 @@ import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
 interface PurchaseCategoryI { id: number; name: string; name_ar: string | null; is_active: boolean; }
-interface Supplier { id: number; name: string; email: string; whatsapp: string; payment_type: string; category_id?: number | null; }
+interface Supplier { id: number; name: string; email: string; whatsapp: string; whatsapp_group?: string; payment_type: string; category_id?: number | null; }
 interface SupplierItemI { id: number; supplier_id: number; category_id: number | null; item_name: string; item_name_ar: string; packaging: string; unit: string; unit_price: number; }
 interface OrderItem { item_name: string; quantity: number; unit: string; unit_price: number; total: number; }
 interface PurchaseOrder {
@@ -463,6 +463,7 @@ export default function PurchasesPage() {
           <div className="grid grid-cols-2 gap-3">
             <input name="name" defaultValue={editingSupplier?.name || ""} placeholder={t("name")} required className="px-3 py-2 border rounded-lg text-sm" />
             <input name="whatsapp" defaultValue={editingSupplier?.whatsapp || ""} placeholder={t("whatsapp")} className="px-3 py-2 border rounded-lg text-sm" />
+            <input name="whatsapp_group" defaultValue={editingSupplier?.whatsapp_group || ""} placeholder={t("whatsapp_group_id") + " (120363XXX@g.us)"} className="px-3 py-2 border rounded-lg text-sm" />
             <select name="payment_type" defaultValue={editingSupplier?.payment_type || "cash"} className="px-3 py-2 border rounded-lg text-sm">
               <option value="cash">{t("cash")}</option>
               <option value="credit">{t("credit")}</option>

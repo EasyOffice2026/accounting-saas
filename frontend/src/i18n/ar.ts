@@ -252,6 +252,8 @@ export default {
   expenses_group: "مجموعة المصروفات",
   hr_group: "مجموعة الموارد البشرية",
   transfers_group: "مجموعة التحويلات",
+  whatsapp_group_id: "معرف مجموعة واتساب",
+  whatsapp_group_hint: "احصل عليه من الإعدادات → واتساب → جلب المجموعات",
   fetch_groups: "جلب المجموعات",
   available_groups: "المجموعات المتاحة",
   whatsapp_saved: "تم حفظ إعدادات واتساب",

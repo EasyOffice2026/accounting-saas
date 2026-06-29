@@ -210,6 +210,9 @@ def _migrate_columns():
             if "whatsapp_number" not in cols:
                 conn.execute(text("ALTER TABLE branches ADD COLUMN whatsapp_number TEXT"))
                 conn.commit()
+            if "whatsapp_group" not in cols:
+                conn.execute(text("ALTER TABLE branches ADD COLUMN whatsapp_group TEXT"))
+                conn.commit()
 
         # Contracts table
         if "contracts" not in insp.get_table_names():
@@ -277,6 +280,9 @@ def _migrate_columns():
             cols = [c["name"] for c in insp.get_columns("suppliers")]
             if "category_id" not in cols:
                 conn.execute(text("ALTER TABLE suppliers ADD COLUMN category_id INTEGER REFERENCES purchase_categories(id)"))
+                conn.commit()
+            if "whatsapp_group" not in cols:
+                conn.execute(text("ALTER TABLE suppliers ADD COLUMN whatsapp_group TEXT"))
                 conn.commit()
 
         # Sales: add snoonu columns

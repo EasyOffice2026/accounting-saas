@@ -220,6 +220,8 @@ export default {
   history: "السجل",
   inventory: "المخزون",
   branch_summary: "ملخص الفروع",
+  branch_consumption: "استهلاك الفروع",
+  grand_total: "المجموع الكلي",
   opening_stock: "الرصيد الافتتاحي",
   total_dispatched: "إجمالي المرسل",
   remaining: "المتبقي",

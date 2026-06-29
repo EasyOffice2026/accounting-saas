@@ -15,7 +15,13 @@ interface TOrder {
   date: string; status: string; notes: string; lines: OrderLine[];
 }
 
-type Tab = "items" | "requests" | "history";
+interface BranchConsumption {
+  branch_id: number; branch_name: string; branch_name_ar: string;
+  items: { item_name: string; item_name_ar: string | null; unit: string; total_qty: number; total_amount: number }[];
+  total_amount: number;
+}
+
+type Tab = "items" | "requests" | "history" | "consumption";
 
 export default function TransfersPage() {
   const { t, i18n } = useTranslation();
@@ -39,6 +45,11 @@ export default function TransfersPage() {
   const [actionOrder, setActionOrder] = useState<TOrder | null>(null);
   const [actionType, setActionType] = useState<"dispatch" | "receive">("dispatch");
   const [actionQtys, setActionQtys] = useState<{ line_id: number; qty: string }[]>([]);
+
+  // Branch consumption
+  const [consumption, setConsumption] = useState<BranchConsumption[]>([]);
+  const [conStartDate, setConStartDate] = useState("");
+  const [conEndDate, setConEndDate] = useState("");
 
 
 
@@ -172,12 +183,20 @@ export default function TransfersPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">
-        {(["requests", "items", "history"] as Tab[]).map(tb => (
-          <button key={tb} onClick={() => setTab(tb)}
+        {(["requests", "items", "history", "consumption"] as Tab[]).map(tb => (
+          <button key={tb} onClick={() => {
+            setTab(tb);
+            if (tb === "consumption") {
+              const params = new URLSearchParams();
+              if (conStartDate) params.set("start_date", conStartDate);
+              if (conEndDate) params.set("end_date", conEndDate);
+              apiGet(`/api/transfers/branch-summary?${params}`).then(setConsumption);
+            }
+          }}
             className={`px-4 py-2 rounded-md text-sm font-medium transition ${
               tab === tb ? "bg-white shadow text-emerald-700" : "text-gray-500 hover:text-gray-700"
             }`}>
-            {tb === "requests" ? t("requests") : tb === "items" ? t("item_list") : t("history")}
+            {tb === "requests" ? t("requests") : tb === "items" ? t("item_list") : tb === "history" ? t("history") : t("branch_consumption")}
           </button>
         ))}
       </div>
@@ -332,12 +351,18 @@ export default function TransfersPage() {
                           )}
                         </span>
                         <span className="text-xs text-gray-400 w-12">{item.unit}</span>
+                        <span className="text-xs text-gray-500 w-16 text-right">{(item.unit_price || 0).toFixed(3)}</span>
                         {isChecked && (
-                          <input type="number" step="0.01" min="0.01"
-                            value={checkedItems[item.id]}
-                            onClick={e => e.stopPropagation()}
-                            onChange={e => updateItemQty(item.id, e.target.value)}
-                            className="w-20 px-2 py-1 border rounded text-sm text-center" />
+                          <>
+                            <input type="number" step="0.01" min="0.01"
+                              value={checkedItems[item.id]}
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => updateItemQty(item.id, e.target.value)}
+                              className="w-20 px-2 py-1 border rounded text-sm text-center" />
+                            <span className="text-xs font-semibold text-emerald-700 w-20 text-right">
+                              {((item.unit_price || 0) * Number(checkedItems[item.id] || 0)).toFixed(3)}
+                            </span>
+                          </>
                         )}
                       </div>
                     );
@@ -397,10 +422,12 @@ export default function TransfersPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-2 text-left">{t("item_name")}</th>
+                      <th className="px-4 py-2 text-left">{t("unit")}</th>
+                      <th className="px-4 py-2 text-right">{t("unit_price")}</th>
                       <th className="px-4 py-2 text-right">{t("requested")}</th>
+                      <th className="px-4 py-2 text-right">{t("total_amount")}</th>
                       <th className="px-4 py-2 text-right">{t("dispatched")}</th>
                       <th className="px-4 py-2 text-right">{t("received")}</th>
-                      <th className="px-4 py-2 text-left">{t("unit")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -411,12 +438,21 @@ export default function TransfersPage() {
                           {i18n.language === "ar" && line.item_name && <span className="text-xs text-gray-400 ml-1">({line.item_name})</span>}
                           {i18n.language !== "ar" && line.item_name_ar && <span className="text-xs text-gray-400 ml-1" dir="rtl">({line.item_name_ar})</span>}
                         </td>
+                        <td className="px-4 py-2">{line.unit}</td>
+                        <td className="px-4 py-2 text-right font-mono">{(line.unit_price || 0).toFixed(3)}</td>
                         <td className="px-4 py-2 text-right font-mono">{line.requested_qty}</td>
+                        <td className="px-4 py-2 text-right font-mono font-semibold">{((line.unit_price || 0) * line.requested_qty).toFixed(3)}</td>
                         <td className="px-4 py-2 text-right font-mono">{line.dispatched_qty ?? "-"}</td>
                         <td className="px-4 py-2 text-right font-mono">{line.received_qty ?? "-"}</td>
-                        <td className="px-4 py-2">{line.unit}</td>
                       </tr>
                     ))}
+                    <tr className="border-t bg-gray-50 font-bold">
+                      <td colSpan={4} className="px-4 py-2 text-right">{t("total")}</td>
+                      <td className="px-4 py-2 text-right font-mono text-emerald-700">
+                        {order.lines.reduce((sum, l) => sum + (l.unit_price || 0) * l.requested_qty, 0).toFixed(3)}
+                      </td>
+                      <td colSpan={2}></td>
+                    </tr>
                   </tbody>
                 </table>
                 {order.notes && <div className="px-5 py-2 text-xs text-gray-500 border-t">{order.notes}</div>}
@@ -447,10 +483,12 @@ export default function TransfersPage() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-2 text-left">{t("item_name")}</th>
+                    <th className="px-4 py-2 text-left">{t("unit")}</th>
+                    <th className="px-4 py-2 text-right">{t("unit_price")}</th>
                     <th className="px-4 py-2 text-right">{t("requested")}</th>
+                    <th className="px-4 py-2 text-right">{t("total_amount")}</th>
                     <th className="px-4 py-2 text-right">{t("dispatched")}</th>
                     <th className="px-4 py-2 text-right">{t("received")}</th>
-                    <th className="px-4 py-2 text-left">{t("unit")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -461,12 +499,100 @@ export default function TransfersPage() {
                         {i18n.language === "ar" && line.item_name && <span className="text-xs text-gray-400 ml-1">({line.item_name})</span>}
                         {i18n.language !== "ar" && line.item_name_ar && <span className="text-xs text-gray-400 ml-1" dir="rtl">({line.item_name_ar})</span>}
                       </td>
+                      <td className="px-4 py-2">{line.unit}</td>
+                      <td className="px-4 py-2 text-right font-mono">{(line.unit_price || 0).toFixed(3)}</td>
                       <td className="px-4 py-2 text-right font-mono">{line.requested_qty}</td>
+                      <td className="px-4 py-2 text-right font-mono font-semibold">{((line.unit_price || 0) * line.requested_qty).toFixed(3)}</td>
                       <td className="px-4 py-2 text-right font-mono">{line.dispatched_qty ?? "-"}</td>
                       <td className="px-4 py-2 text-right font-mono">{line.received_qty ?? "-"}</td>
-                      <td className="px-4 py-2">{line.unit}</td>
                     </tr>
                   ))}
+                  <tr className="border-t bg-gray-50 font-bold">
+                    <td colSpan={4} className="px-4 py-2 text-right">{t("total")}</td>
+                    <td className="px-4 py-2 text-right font-mono text-emerald-700">
+                      {order.lines.reduce((sum, l) => sum + (l.unit_price || 0) * l.requested_qty, 0).toFixed(3)}
+                    </td>
+                    <td colSpan={2}></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ========== BRANCH CONSUMPTION TAB ========== */}
+      {tab === "consumption" && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl shadow-sm border p-4">
+            <div className="flex items-end gap-3 flex-wrap">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t("start_date")}</label>
+                <input type="date" value={conStartDate} onChange={e => setConStartDate(e.target.value)}
+                  className="px-3 py-2 border rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t("end_date")}</label>
+                <input type="date" value={conEndDate} onChange={e => setConEndDate(e.target.value)}
+                  className="px-3 py-2 border rounded-lg text-sm" />
+              </div>
+              <button onClick={() => {
+                const params = new URLSearchParams();
+                if (conStartDate) params.set("start_date", conStartDate);
+                if (conEndDate) params.set("end_date", conEndDate);
+                apiGet(`/api/transfers/branch-summary?${params}`).then(setConsumption);
+              }} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
+                {t("filter")}
+              </button>
+              <button onClick={() => {
+                setConStartDate(""); setConEndDate("");
+                apiGet("/api/transfers/branch-summary").then(setConsumption);
+              }} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300">
+                {t("clear")}
+              </button>
+            </div>
+          </div>
+
+          {consumption.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-sm border p-8 text-center text-gray-400">{t("no_data")}</div>
+          ) : consumption.map(bc => (
+            <div key={bc.branch_id} className="bg-white rounded-xl shadow-sm border overflow-hidden">
+              <div className="px-5 py-3 bg-gray-50 border-b flex items-center justify-between">
+                <span className="font-semibold text-gray-800">
+                  {i18n.language === "ar" ? (bc.branch_name_ar || bc.branch_name) : bc.branch_name}
+                  {i18n.language === "ar" && bc.branch_name && <span className="text-xs text-gray-400 ml-2">({bc.branch_name})</span>}
+                  {i18n.language !== "ar" && bc.branch_name_ar && <span className="text-xs text-gray-400 ml-2" dir="rtl">({bc.branch_name_ar})</span>}
+                </span>
+                <span className="text-sm font-bold text-emerald-700">{t("grand_total")}: {bc.total_amount.toFixed(3)}</span>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left">{t("item_name")}</th>
+                    <th className="px-4 py-2 text-left">{t("unit")}</th>
+                    <th className="px-4 py-2 text-right">{t("total_qty")}</th>
+                    <th className="px-4 py-2 text-right">{t("unit_price")}</th>
+                    <th className="px-4 py-2 text-right">{t("total_amount")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bc.items.map((item, idx) => (
+                    <tr key={idx} className="border-t">
+                      <td className="px-4 py-2">
+                        {i18n.language === "ar" ? (item.item_name_ar || item.item_name) : item.item_name}
+                        {i18n.language === "ar" && item.item_name && <span className="text-xs text-gray-400 ml-1">({item.item_name})</span>}
+                        {i18n.language !== "ar" && item.item_name_ar && <span className="text-xs text-gray-400 ml-1" dir="rtl">({item.item_name_ar})</span>}
+                      </td>
+                      <td className="px-4 py-2">{item.unit}</td>
+                      <td className="px-4 py-2 text-right font-mono">{item.total_qty}</td>
+                      <td className="px-4 py-2 text-right font-mono">{item.total_qty > 0 ? (item.total_amount / item.total_qty).toFixed(3) : "0.000"}</td>
+                      <td className="px-4 py-2 text-right font-mono font-semibold">{item.total_amount.toFixed(3)}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t bg-emerald-50 font-bold">
+                    <td colSpan={4} className="px-4 py-2 text-right">{t("grand_total")}</td>
+                    <td className="px-4 py-2 text-right font-mono text-emerald-700">{bc.total_amount.toFixed(3)}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>

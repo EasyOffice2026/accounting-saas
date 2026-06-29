@@ -220,6 +220,8 @@ export default {
   history: "History",
   inventory: "Inventory",
   branch_summary: "Branch Summary",
+  branch_consumption: "Branch Consumption",
+  grand_total: "Grand Total",
   opening_stock: "Opening Stock",
   total_dispatched: "Total Dispatched",
   remaining: "Remaining",

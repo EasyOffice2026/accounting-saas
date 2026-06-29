@@ -303,24 +303,24 @@ export default function SalesPage() {
             </div>
           </div>
 
-          <h3 className="font-semibold text-emerald-700">{t("pos_data")}</h3>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+          <h3 className="font-semibold text-emerald-700 text-sm">{t("pos_data")}</h3>
+          <div className="flex gap-1.5 flex-wrap">
             {allChannels.map(ch => (
-              <div key={`f_${ch}`}>
-                <label className="block text-xs text-gray-500 mb-1">{t(ch)}</label>
+              <div key={`f_${ch}`} className="flex flex-col items-center" style={{ minWidth: 0, flex: "1 1 0" }}>
+                <label className="text-[10px] text-gray-500 mb-0.5 truncate w-full text-center">{t(ch)}</label>
                 <input type="number" step="0.001" name={`foodics_${ch}`} defaultValue="0"
-                  className="w-full px-2 py-1.5 border rounded text-sm" />
+                  className="w-full px-1 py-1 border rounded text-xs text-center" style={{ minWidth: "60px" }} />
               </div>
             ))}
           </div>
 
-          <h3 className="font-semibold text-blue-700">{t("physical_data")}</h3>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+          <h3 className="font-semibold text-blue-700 text-sm">{t("physical_data")}</h3>
+          <div className="flex gap-1.5 flex-wrap">
             {allChannels.map(ch => (
-              <div key={`p_${ch}`}>
-                <label className="block text-xs text-gray-500 mb-1">{t(ch)}</label>
+              <div key={`p_${ch}`} className="flex flex-col items-center" style={{ minWidth: 0, flex: "1 1 0" }}>
+                <label className="text-[10px] text-gray-500 mb-0.5 truncate w-full text-center">{t(ch)}</label>
                 <input type="number" step="0.001" name={`physical_${ch}`} defaultValue="0"
-                  className="w-full px-2 py-1.5 border rounded text-sm" />
+                  className="w-full px-1 py-1 border rounded text-xs text-center" style={{ minWidth: "60px" }} />
               </div>
             ))}
           </div>

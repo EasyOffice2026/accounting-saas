@@ -408,12 +408,21 @@ def generate_monthly_payroll(
         if existing and existing.status in ("paid", "on_hold"):
             continue
 
-        # If employee has a last_working_date in this month, cap the period
+        # Determine effective period for this employee
+        emp_period_start = p_start
         emp_period_end = p_end
         emp_period_days = period_working_days
-        if emp.last_working_date and p_start <= emp.last_working_date <= p_end:
+
+        # If employee joined mid-month, start from join_date
+        if emp.join_date and emp.join_date > p_start and emp.join_date <= p_end:
+            emp_period_start = emp.join_date
+            emp_period_days = (p_end - emp.join_date).days + 1
+            emp_period_days = min(max(emp_period_days, 0), 30)
+
+        # If employee has a last_working_date in this month, cap the period
+        if emp.last_working_date and emp_period_start <= emp.last_working_date <= p_end:
             emp_period_end = emp.last_working_date
-            emp_period_days = (emp.last_working_date - p_start).days + 1
+            emp_period_days = (emp.last_working_date - emp_period_start).days + 1
             emp_period_days = min(max(emp_period_days, 0), 30)
 
         # Auto-calculate leave/absence days for this month
@@ -470,7 +479,7 @@ def generate_monthly_payroll(
             sp.basic_salary = emp.actual_salary
             sp.total_days = total_days
             # Preserve custom period dates if already set by user edit
-            if sp.period_start and sp.period_end and (sp.period_start != p_start or sp.period_end != emp_period_end):
+            if sp.period_start and sp.period_end and (sp.period_start != emp_period_start or sp.period_end != emp_period_end):
                 custom_days = (sp.period_end - sp.period_start).days + 1
                 custom_working_days = min(max(custom_days, 0), 30)
                 sp.days_worked = max(0, custom_working_days - total_leave_days)
@@ -478,7 +487,7 @@ def generate_monthly_payroll(
                 net = prorated_salary + fixed_allowances + total_additions - fixed_deductions - loan_ded - penalty_total
             else:
                 sp.days_worked = actual_days_worked
-                sp.period_start = p_start
+                sp.period_start = emp_period_start
                 sp.period_end = emp_period_end
             sp.other_allowance = other_benefit_total
             sp.allowances = fixed_allowances
@@ -503,7 +512,7 @@ def generate_monthly_payroll(
                 basic_salary=emp.actual_salary,
                 total_days=total_days,
                 days_worked=actual_days_worked,
-                period_start=p_start,
+                period_start=emp_period_start,
                 period_end=emp_period_end,
                 last_workplace="",
                 housing_allowance=0, transport_allowance=0,

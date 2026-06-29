@@ -34,6 +34,7 @@ export default function ExpensesPage() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [expandedSupplier, setExpandedSupplier] = useState<number | null>(null);
+  const [ledgerSearch, setLedgerSearch] = useState("");
 
   const isManager = user?.role === "owner" || user?.role === "manager";
 
@@ -265,11 +266,16 @@ export default function ExpensesPage() {
 
       {tab === "ledger" && (
         <div className="space-y-4">
+          <div className="mb-2">
+            <input type="text" value={ledgerSearch} onChange={e => setLedgerSearch(e.target.value)}
+              placeholder={`🔍 ${t("search")} ${t("supplier")}...`}
+              className="px-4 py-2 border rounded-lg text-sm w-full max-w-md" />
+          </div>
           {ledger.length === 0 ? (
             <div className="bg-white rounded-xl shadow-sm border p-8 text-center text-gray-400">
               {t("no_expense_ledger")}
             </div>
-          ) : ledger.map(entry => (
+          ) : ledger.filter(e => !ledgerSearch || e.supplier_name.toLowerCase().includes(ledgerSearch.toLowerCase())).map(entry => (
             <div key={entry.supplier_id} className="bg-white rounded-xl shadow-sm border overflow-hidden">
               <button onClick={() => setExpandedSupplier(expandedSupplier === entry.supplier_id ? null : entry.supplier_id)}
                 className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 transition">

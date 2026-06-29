@@ -802,7 +802,7 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
     def _ar(text: str) -> str:
         """Reshape and reorder Arabic text for PDF rendering."""
         if not text:
-            return text
+            return ""
         reshaped = arabic_reshaper.reshape(text)
         return get_display(reshaped)
 
@@ -819,7 +819,16 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
     if branch and branch.brand_id:
         brand = db.query(Brand).filter(Brand.id == branch.brand_id).first()
 
-    # Register font for Arabic support
+    # Register Amiri font for proper Arabic rendering
+    _fonts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "fonts")
+    _amiri = os.path.join(_fonts_dir, "Amiri-Regular.ttf")
+    _amiri_bold = os.path.join(_fonts_dir, "Amiri-Bold.ttf")
+    if os.path.isfile(_amiri) and "Amiri" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("Amiri", _amiri))
+    if os.path.isfile(_amiri_bold) and "Amiri-Bold" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("Amiri-Bold", _amiri_bold))
+
+    # DejaVuSans for English text
     _dvs = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
     _dvsb = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
     if os.path.isfile(_dvs) and "DejaVuSans" not in pdfmetrics.getRegisteredFontNames():
@@ -827,8 +836,11 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
     if os.path.isfile(_dvsb) and "DejaVuSans-Bold" not in pdfmetrics.getRegisteredFontNames():
         pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", _dvsb))
 
-    font_name = "DejaVuSans" if "DejaVuSans" in pdfmetrics.getRegisteredFontNames() else "Helvetica"
-    font_bold = "DejaVuSans-Bold" if "DejaVuSans-Bold" in pdfmetrics.getRegisteredFontNames() else "Helvetica-Bold"
+    # Font assignments
+    font_en = "DejaVuSans" if "DejaVuSans" in pdfmetrics.getRegisteredFontNames() else "Helvetica"
+    font_en_bold = "DejaVuSans-Bold" if "DejaVuSans-Bold" in pdfmetrics.getRegisteredFontNames() else "Helvetica-Bold"
+    font_ar = "Amiri" if "Amiri" in pdfmetrics.getRegisteredFontNames() else font_en
+    font_ar_bold = "Amiri-Bold" if "Amiri-Bold" in pdfmetrics.getRegisteredFontNames() else font_en_bold
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
@@ -838,87 +850,107 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
     elements = []
 
     # Styles
-    title_style = ParagraphStyle("po_title", fontName=font_bold, fontSize=18,
-                                  alignment=1, spaceAfter=2 * mm)
-    subtitle_style = ParagraphStyle("po_subtitle", fontName=font_name, fontSize=10,
-                                     alignment=1, textColor=colors.grey, spaceAfter=5 * mm)
-    heading_style = ParagraphStyle("po_heading", fontName=font_bold, fontSize=11,
+    title_en_style = ParagraphStyle("po_title_en", fontName=font_en_bold, fontSize=16,
+                                     alignment=1, spaceAfter=1 * mm)
+    title_ar_style = ParagraphStyle("po_title_ar", fontName=font_ar_bold, fontSize=16,
+                                     alignment=1, spaceAfter=2 * mm)
+    subtitle_style = ParagraphStyle("po_subtitle", fontName=font_en_bold, fontSize=11,
+                                     alignment=1, textColor=colors.HexColor("#2E7D32"), spaceAfter=1 * mm)
+    subtitle_ar_style = ParagraphStyle("po_subtitle_ar", fontName=font_ar_bold, fontSize=12,
+                                        alignment=1, textColor=colors.HexColor("#2E7D32"), spaceAfter=4 * mm)
+    heading_style = ParagraphStyle("po_heading", fontName=font_en_bold, fontSize=10,
                                     spaceAfter=2 * mm)
-    normal_style = ParagraphStyle("po_normal", fontName=font_name, fontSize=9,
+    normal_style = ParagraphStyle("po_normal", fontName=font_en, fontSize=9,
                                    spaceAfter=1 * mm)
+    ar_style = ParagraphStyle("po_ar", fontName=font_ar, fontSize=10,
+                               spaceAfter=1 * mm, alignment=2)
+    ar_cell_style = ParagraphStyle("po_ar_cell", fontName=font_ar, fontSize=9,
+                                    leading=12)
 
-    # Header
+    # ===== HEADER =====
     company_name = brand.name_en if brand else "Mudawwarah"
-    company_name_ar = _ar(brand.name_ar) if brand and brand.name_ar else ""
-    elements.append(Paragraph(company_name, title_style))
-    if company_name_ar:
-        elements.append(Paragraph(company_name_ar, ParagraphStyle("po_title_ar", fontName=font_bold, fontSize=14, alignment=1, spaceAfter=2 * mm)))
+    company_name_ar = _ar(brand.name_ar) if brand and brand.name_ar else _ar("مدورة")
+    elements.append(Paragraph(company_name, title_en_style))
+    elements.append(Paragraph(company_name_ar, title_ar_style))
     elements.append(Paragraph("PURCHASE ORDER", subtitle_style))
-    elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#2E7D32")))
+    elements.append(Paragraph(_ar("أمر شراء"), subtitle_ar_style))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#2E7D32")))
     elements.append(Spacer(1, 5 * mm))
 
-    # PO Info and Supplier Info side by side
+    # ===== PO INFO (bilingual) =====
     po_info = [
-        [Paragraph(f"<b>PO Number:</b> PO-{po.id:04d}", normal_style),
-         Paragraph(f"<b>Date:</b> {po.date}", normal_style)],
-        [Paragraph(f"<b>Branch:</b> {branch.name if branch else 'N/A'}", normal_style),
-         Paragraph(f"<b>Payment:</b> {po.payment_type.title()}", normal_style)],
-        [Paragraph(f"<b>Status:</b> {po.status.title()}", normal_style),
-         Paragraph(f"<b>Delivery:</b> {po.delivery_location or 'N/A'}", normal_style)],
+        [Paragraph(f"<b>PO Number / {_ar('رقم الطلب')}:</b> PO-{po.id:04d}", normal_style),
+         Paragraph(f"<b>Date / {_ar('التاريخ')}:</b> {po.date}", normal_style)],
+        [Paragraph(f"<b>Branch / {_ar('الفرع')}:</b> {branch.name if branch else 'N/A'}", normal_style),
+         Paragraph(f"<b>Payment / {_ar('الدفع')}:</b> {po.payment_type.title()}", normal_style)],
+        [Paragraph(f"<b>Status / {_ar('الحالة')}:</b> {po.status.title()}", normal_style),
+         Paragraph(f"<b>Delivery / {_ar('التسليم')}:</b> {po.delivery_location or 'N/A'}", normal_style)],
     ]
     info_table = Table(po_info, colWidths=[90 * mm, 90 * mm])
     info_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 1),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]))
     elements.append(info_table)
     elements.append(Spacer(1, 4 * mm))
 
-    # Supplier box
+    # ===== SUPPLIER (bilingual) =====
     elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
     elements.append(Spacer(1, 3 * mm))
-    elements.append(Paragraph("<b>Supplier:</b>", heading_style))
+    elements.append(Paragraph(f"<b>Supplier / {_ar('المورد')}:</b>", heading_style))
     supp_name = supplier.name if supplier else "N/A"
-    supp_name_display = _ar(supp_name) if supplier else supp_name
     supp_whatsapp = supplier.whatsapp if supplier and supplier.whatsapp else "N/A"
-    elements.append(Paragraph(f"Name: {supp_name_display}", normal_style))
-    elements.append(Paragraph(f"WhatsApp: {supp_whatsapp}", normal_style))
+    elements.append(Paragraph(f"Name / {_ar('الاسم')}: {supp_name}", normal_style))
+    elements.append(Paragraph(f"WhatsApp / {_ar('واتساب')}: {supp_whatsapp}", normal_style))
     elements.append(Spacer(1, 5 * mm))
 
-    # Items table
-    elements.append(Paragraph("<b>Order Items:</b>", heading_style))
+    # ===== ITEMS TABLE (bilingual headers) =====
+    elements.append(Paragraph(f"<b>Order Items / {_ar('بنود الطلب')}:</b>", heading_style))
     elements.append(Spacer(1, 2 * mm))
 
-    table_header = ["#", "Item Name", "Quantity", "Unit", "Unit Price (KD)", "Total (KD)"]
+    # Bilingual header
+    table_header = [
+        "#",
+        Paragraph(f"Item Name<br/>{_ar('اسم الصنف')}", ParagraphStyle("hdr_item", fontName=font_en_bold, fontSize=8, leading=11)),
+        Paragraph(f"Qty<br/>{_ar('الكمية')}", ParagraphStyle("hdr_qty", fontName=font_en_bold, fontSize=8, leading=11, alignment=1)),
+        Paragraph(f"Unit<br/>{_ar('الوحدة')}", ParagraphStyle("hdr_unit", fontName=font_en_bold, fontSize=8, leading=11, alignment=1)),
+        Paragraph(f"Price<br/>{_ar('السعر')}", ParagraphStyle("hdr_price", fontName=font_en_bold, fontSize=8, leading=11, alignment=1)),
+        Paragraph(f"Total<br/>{_ar('المجموع')}", ParagraphStyle("hdr_total", fontName=font_en_bold, fontSize=8, leading=11, alignment=1)),
+    ]
     table_data = [table_header]
     grand_total = 0.0
     for idx, item in enumerate(items, 1):
         row_total = item.total or (item.quantity * item.unit_price)
         grand_total += row_total
         name_en = item.item_name or ""
-        name_ar = _ar(item.item_name_ar) if getattr(item, "item_name_ar", None) else ""
-        item_display = f"{name_en}<br/>{name_ar}" if name_ar else name_en
+        name_ar = _ar(getattr(item, "item_name_ar", None) or "")
+        if name_ar:
+            item_cell = Paragraph(f"<font name='{font_en}' size='8'>{name_en}</font><br/><font name='{font_ar}' size='9'>{name_ar}</font>",
+                                   ParagraphStyle("item_bi", fontName=font_en, fontSize=8, leading=12))
+        else:
+            item_cell = Paragraph(f"<font name='{font_en}' size='8'>{name_en}</font>",
+                                   ParagraphStyle("item_en", fontName=font_en, fontSize=8, leading=10))
         table_data.append([
             str(idx),
-            Paragraph(item_display, ParagraphStyle("item_cell", fontName=font_name, fontSize=8, leading=10)),
+            item_cell,
             f"{item.quantity:.2f}",
             item.unit or "",
             f"{item.unit_price:.3f}",
             f"{row_total:.3f}",
         ])
 
-    # Grand total row
-    table_data.append(["", "", "", "", "TOTAL:", f"KD {grand_total:.3f}"])
+    # Grand total row (bilingual)
+    table_data.append(["", "", "", "", f"TOTAL / {_ar('الإجمالي')}:", f"KD {grand_total:.3f}"])
 
-    col_widths = [12 * mm, 60 * mm, 25 * mm, 20 * mm, 30 * mm, 30 * mm]
+    col_widths = [10 * mm, 62 * mm, 22 * mm, 20 * mm, 28 * mm, 30 * mm]
     items_table = Table(table_data, colWidths=col_widths, repeatRows=1)
     items_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2E7D32")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), font_bold),
-        ("FONTNAME", (0, 1), (-1, -1), font_name),
-        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("FONTNAME", (0, 0), (0, 0), font_en_bold),
+        ("FONTNAME", (0, 1), (-1, -1), font_en),
+        ("FONTSIZE", (0, 0), (-1, 0), 8),
         ("FONTSIZE", (0, 1), (-1, -1), 8),
         ("ALIGN", (0, 0), (0, -1), "CENTER"),
         ("ALIGN", (2, 0), (-1, -1), "CENTER"),
@@ -931,25 +963,27 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         # Total row
         ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E8F5E9")),
-        ("FONTNAME", (0, -1), (-1, -1), font_bold),
+        ("FONTNAME", (0, -1), (-1, -1), font_en_bold),
         ("FONTSIZE", (0, -1), (-1, -1), 10),
         ("LINEABOVE", (0, -1), (-1, -1), 1, colors.HexColor("#2E7D32")),
     ]))
     elements.append(items_table)
     elements.append(Spacer(1, 8 * mm))
 
-    # Notes
+    # Notes (bilingual)
     if po.notes:
-        elements.append(Paragraph(f"<b>Notes:</b> {_ar(po.notes)}", normal_style))
+        notes_text = _ar(po.notes) if po.notes else ""
+        elements.append(Paragraph(f"<b>Notes / {_ar('ملاحظات')}:</b>", heading_style))
+        elements.append(Paragraph(f"<font name='{font_ar}' size='10'>{notes_text}</font>", normal_style))
         elements.append(Spacer(1, 5 * mm))
 
-    # Signature lines
+    # Signature lines (bilingual)
     elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
     elements.append(Spacer(1, 10 * mm))
     sig_data = [
-        [Paragraph("<b>Prepared By:</b>", normal_style),
-         Paragraph("<b>Approved By:</b>", normal_style),
-         Paragraph("<b>Received By:</b>", normal_style)],
+        [Paragraph(f"<b>Prepared By</b><br/>{_ar('إعداد')}", ParagraphStyle("sig", fontName=font_en, fontSize=8, alignment=1, leading=12)),
+         Paragraph(f"<b>Approved By</b><br/>{_ar('اعتماد')}", ParagraphStyle("sig2", fontName=font_en, fontSize=8, alignment=1, leading=12)),
+         Paragraph(f"<b>Received By</b><br/>{_ar('استلام')}", ParagraphStyle("sig3", fontName=font_en, fontSize=8, alignment=1, leading=12))],
         ["_________________", "_________________", "_________________"],
     ]
     sig_table = Table(sig_data, colWidths=[60 * mm, 60 * mm, 60 * mm])

@@ -4,7 +4,7 @@ import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
 interface PurchaseCategoryI { id: number; name: string; name_ar: string | null; is_active: boolean; }
-interface Supplier { id: number; name: string; email: string; whatsapp: string; payment_type: string; }
+interface Supplier { id: number; name: string; email: string; whatsapp: string; payment_type: string; category_id?: number | null; }
 interface SupplierItemI { id: number; supplier_id: number; category_id: number | null; item_name: string; item_name_ar: string; packaging: string; unit: string; unit_price: number; }
 interface OrderItem { item_name: string; quantity: number; unit: string; unit_price: number; total: number; }
 interface PurchaseOrder {
@@ -195,6 +195,11 @@ export default function PurchasesPage() {
     const fd = new FormData(e.currentTarget);
     fd.set("items", JSON.stringify(items));
     if (user?.branch_id) fd.set("branch_id", String(user.branch_id));
+    // Auto-set category from supplier
+    if (orderSupplierId) {
+      const sup = suppliers.find(s => s.id === orderSupplierId);
+      if (sup?.category_id) fd.set("category_id", String(sup.category_id));
+    }
     if (editingOrder) {
       await fetch(`/api/purchases/orders/${editingOrder.id}`, {
         method: "PUT", body: fd,
@@ -447,6 +452,10 @@ export default function PurchasesPage() {
               <option value="cash">{t("cash")}</option>
               <option value="credit">{t("credit")}</option>
             </select>
+            <select name="category_id" defaultValue={editingSupplier?.category_id || ""} className="px-3 py-2 border rounded-lg text-sm">
+              <option value="">{t("select_category")}</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
           </div>
           <div className="flex gap-2">
             <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">{t("save")}</button>
@@ -571,13 +580,6 @@ export default function PurchasesPage() {
                   <select name="payment_type" className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.payment_type || "cash"}>
                     <option value="cash">{t("cash")}</option>
                     <option value="credit">{t("credit")}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">{t("category")}</label>
-                  <select name="category_id" className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.category_id || ""}>
-                    <option value="">{t("select_category")}</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -775,6 +777,7 @@ export default function PurchasesPage() {
                 <tr>
                   <th className="px-4 py-3 text-left">#</th>
                   <th className="px-4 py-3 text-left">{t("supplier")}</th>
+                  <th className="px-4 py-3 text-left">{t("category")}</th>
                   <th className="px-4 py-3 text-left">{t("whatsapp")}</th>
                   <th className="px-4 py-3 text-left">{t("payment_type")}</th>
                   <th className="px-4 py-3 text-center">{t("actions")}</th>
@@ -785,6 +788,7 @@ export default function PurchasesPage() {
                   <tr key={s.id} className={`border-b hover:bg-gray-50 cursor-pointer ${catalogSupplierId === s.id ? "bg-emerald-50" : ""}`}>
                     <td className="px-4 py-3" onClick={() => loadCatalog(s.id)}>{idx + 1}</td>
                     <td className="px-4 py-3 font-medium" onClick={() => loadCatalog(s.id)}>{s.name}</td>
+                    <td className="px-4 py-3" onClick={() => loadCatalog(s.id)}>{categoryName(s.category_id ?? null)}</td>
                     <td className="px-4 py-3 text-gray-500" onClick={() => loadCatalog(s.id)}>{s.whatsapp || "—"}</td>
                     <td className="px-4 py-3" onClick={() => loadCatalog(s.id)}>
                       <span className={`px-2 py-1 rounded-full text-xs ${s.payment_type === "cash" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>

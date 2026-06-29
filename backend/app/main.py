@@ -265,6 +265,13 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE users ADD COLUMN allowed_tabs TEXT"))
                 conn.commit()
 
+        # Suppliers: add category_id
+        if "suppliers" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("suppliers")]
+            if "category_id" not in cols:
+                conn.execute(text("ALTER TABLE suppliers ADD COLUMN category_id INTEGER REFERENCES purchase_categories(id)"))
+                conn.commit()
+
         # Sales: add snoonu columns
         if "sales" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("sales")]

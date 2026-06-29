@@ -21,6 +21,7 @@ class Supplier(Base):
     email = Column(String, nullable=True)
     whatsapp = Column(String, nullable=True)
     payment_type = Column(String, default="cash")  # cash, credit
+    category_id = Column(Integer, ForeignKey("purchase_categories.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

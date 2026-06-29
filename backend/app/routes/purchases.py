@@ -83,8 +83,10 @@ def list_suppliers(db: Session = Depends(get_db), _=Depends(get_current_user)):
 @router.post("/suppliers")
 def create_supplier(name: str = Form(...), email: str = Form(""),
                     whatsapp: str = Form(""), payment_type: str = Form("cash"),
+                    category_id: Optional[int] = Form(None),
                     db: Session = Depends(get_db), _=Depends(get_current_user)):
-    s = Supplier(name=name, email=email, whatsapp=whatsapp, payment_type=payment_type)
+    s = Supplier(name=name, email=email, whatsapp=whatsapp, payment_type=payment_type,
+                 category_id=category_id if category_id else None)
     db.add(s)
     db.commit()
     db.refresh(s)
@@ -94,6 +96,7 @@ def create_supplier(name: str = Form(...), email: str = Form(""),
 @router.put("/suppliers/{supplier_id}")
 def update_supplier(supplier_id: int, name: str = Form(...), email: str = Form(""),
                     whatsapp: str = Form(""), payment_type: str = Form("cash"),
+                    category_id: Optional[int] = Form(None),
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s:
@@ -102,6 +105,7 @@ def update_supplier(supplier_id: int, name: str = Form(...), email: str = Form("
     s.email = email
     s.whatsapp = whatsapp
     s.payment_type = payment_type
+    s.category_id = category_id if category_id else None
     db.commit()
     db.refresh(s)
     return s

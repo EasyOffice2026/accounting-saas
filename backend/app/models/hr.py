@@ -88,6 +88,9 @@ class SalaryPayment(Base):
     net_salary = Column(Float, default=0)
     payment_method = Column(String, default="cash")  # cash, bank_transfer
     status = Column(String, default="pending")  # pending, paid
+    approval_status = Column(String, default="pending_approval")  # pending_approval, approved, rejected
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approval_date = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
     paid_date = Column(Date, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -121,6 +124,9 @@ class AdvanceLoan(Base):
     date = Column(Date, nullable=False)
     notes = Column(Text, nullable=True)
     status = Column(String, default="active")  # active, paid_off
+    approval_status = Column(String, default="pending_approval")  # pending_approval, approved, rejected
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approval_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -134,6 +140,9 @@ class StaffBenefitDeduction(Base):
     date = Column(Date, nullable=False)
     month = Column(String, nullable=True)  # YYYY-MM to link to salary period
     notes = Column(Text, nullable=True)
+    approval_status = Column(String, default="pending_approval")  # pending_approval, approved, rejected
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approval_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -149,6 +158,9 @@ class LeaveRecord(Base):
     is_paid = Column(Boolean, default=False)  # paid leave = no deduction
     month = Column(String, nullable=True)  # YYYY-MM to link to salary period
     notes = Column(Text, nullable=True)
+    approval_status = Column(String, default="pending_approval")  # pending_approval, approved, rejected
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approval_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -219,4 +231,19 @@ class Contract(Base):
     payment_day = Column(Integer, default=1)  # day of month for reminder
     notes = Column(Text, nullable=True)
     status = Column(String, default="active")  # active, expired, cancelled
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ContractPayment(Base):
+    __tablename__ = "contract_payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False)
+    due_date = Column(Date, nullable=False)
+    amount = Column(Float, nullable=False)
+    status = Column(String, default="pending")  # pending, paid, overdue
+    paid_date = Column(Date, nullable=True)
+    payment_method = Column(String, nullable=True)  # cash, bank_transfer, cheque
+    reference = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

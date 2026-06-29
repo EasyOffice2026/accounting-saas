@@ -25,6 +25,7 @@ interface SalaryRecord {
   other_deduction: number; loan_deduction: number; penalty: number;
   deductions: number; advance: number; net_salary: number;
   payment_method: string; status: string; notes: string | null; paid_date: string | null;
+  approval_status?: string;
 }
 interface Transfer {
   id: number; employee_id: number; from_branch_id: number; to_branch_id: number;
@@ -36,10 +37,12 @@ interface Loan {
   amount: number; balance: number; monthly_deduction: number;
   deduction_month: string | null;
   date: string; notes: string | null; status: string;
+  approval_status?: string;
 }
 interface BenefitDeduction {
   id: number; employee_id: number; category: string;
   amount: number; date: string; month: string | null; notes: string | null;
+  approval_status?: string;
 }
 interface ResignationRecord {
   id: number; ref_no: string; employee_id: number;
@@ -67,7 +70,9 @@ interface LeaveRec {
   id: number; employee_id: number; leave_type: string;
   start_date: string; end_date: string; days: number;
   is_paid: boolean; month: string; notes: string;
+  approval_status?: string;
 }
+interface BrandItem { id: number; name_en: string; name_ar: string; }
 
 type Tab = "employees" | "salary" | "transfers" | "loans" | "benefits" | "deductions" | "leaves" | "resignation";
 
@@ -156,14 +161,20 @@ export default function HRPage() {
   // Employer list (unique, no duplicates)
   const [employers, setEmployers] = useState<string[]>([]);
 
+  // Brands for cross-brand transfers
+  const [brands, setBrands] = useState<BrandItem[]>([]);
+  const [transferToBrandId, setTransferToBrandId] = useState<number | null>(null);
+  const [allBranches, setAllBranches] = useState<(Branch & { brand_id?: number })[]>([]);
+
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager = currentUser.role === "owner" || currentUser.role === "manager";
   const canViewSalary = ["owner", "manager", "accountant"].includes(currentUser.role);
 
   useEffect(() => {
-    apiGet("/api/branches/").then(setBranches);
+    apiGet("/api/branches/").then((b: any[]) => { setBranches(b); setAllBranches(b); });
     apiGet("/api/hr/employees").then(setEmployees);
     apiGet("/api/hr/employers").then(setEmployers);
+    apiGet("/api/hr/brands").then(setBrands);
   }, []);
 
   useEffect(() => {
@@ -185,6 +196,55 @@ export default function HRPage() {
       if (Array.isArray(data)) setSalaryRecords(data);
     });
   };
+
+  // Approval workflow helper
+  const handleApproval = async (txnType: string, txnId: number, action: "approve" | "reject") => {
+    if (action === "reject" && !confirm(t("confirm_reject"))) return;
+    const res = await apiFetch(`/api/hr/${action}/${txnType}/${txnId}`, { method: "POST" });
+    if (res.ok) {
+      // Reload the relevant tab data
+      if (tab === "salary") loadSalary();
+      if (tab === "loans") apiGet("/api/hr/loans").then(setLoans);
+      if (tab === "benefits") apiGet("/api/hr/benefits-deductions").then((data: BenefitDeduction[]) => {
+        setBenefits(data.filter(d => ["incentive", "bonus", "leave_salary", "ticket", "other_benefit"].includes(d.category)));
+      });
+      if (tab === "deductions") apiGet("/api/hr/benefits-deductions").then((data: BenefitDeduction[]) => {
+        setDeductionItems(data.filter(d => ["fine", "penalty", "other_deduction"].includes(d.category)));
+      });
+      if (tab === "leaves") apiGet("/api/hr/leaves").then(setLeaveRecords);
+    } else {
+      const d = await res.json();
+      alert(d.detail || "Error");
+    }
+  };
+
+  // Approval badge component
+  const ApprovalBadge = ({ status, type, id }: { status?: string; type: string; id: number }) => {
+    const s = status || "approved";
+    const badge = s === "approved" ? "bg-green-100 text-green-700"
+      : s === "rejected" ? "bg-red-100 text-red-700"
+      : "bg-amber-100 text-amber-700";
+    return (
+      <div className="flex items-center gap-2">
+        <span className={`px-2 py-0.5 rounded text-xs font-medium ${badge}`}>
+          {s === "pending_approval" ? t("pending_approval") : t(s)}
+        </span>
+        {isManager && s === "pending_approval" && (
+          <div className="flex gap-1">
+            <button onClick={() => handleApproval(type, id, "approve")}
+              className="px-2 py-0.5 bg-green-500 text-white rounded text-xs hover:bg-green-600">{t("approve")}</button>
+            <button onClick={() => handleApproval(type, id, "reject")}
+              className="px-2 py-0.5 bg-red-500 text-white rounded text-xs hover:bg-red-600">{t("reject")}</button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Filter branches by brand for transfer form
+  const toBranches = transferToBrandId
+    ? allBranches.filter((b: any) => b.brand_id === transferToBrandId)
+    : allBranches;
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1253,13 +1313,14 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-3 py-3 text-right text-green-600">{t("total_allowances")}</th>
                   <th className="px-3 py-3 text-right text-red-600">{t("total_deductions")}</th>
                   <th className="px-3 py-3 text-right font-bold">{t("net_salary")}</th>
+                  <th className="px-3 py-3 text-left">{t("approval")}</th>
                   <th className="px-3 py-3 text-left">{t("status")}</th>
                   {isManager && <th className="px-3 py-3 text-left">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {salaryRecords.length === 0 ? (
-                  <tr><td colSpan={isManager ? 10 : 9} className="px-4 py-8 text-center text-gray-400">
+                  <tr><td colSpan={isManager ? 11 : 10} className="px-4 py-8 text-center text-gray-400">
                     {t("no_data")} — {t("generate_payroll")}
                   </td></tr>
                 ) : salaryRecords.filter(r => {
@@ -1288,6 +1349,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                         {totalDeductions > 0 ? `-${totalDeductions.toFixed(3)}` : "—"}
                       </td>
                       <td className="px-3 py-3 text-right font-mono font-bold">{r.net_salary.toFixed(3)}</td>
+                      <td className="px-3 py-3">
+                        <ApprovalBadge status={r.approval_status} type="salary" id={r.id} />
+                      </td>
                       <td className="px-3 py-3">
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                           r.status === "paid" ? "bg-green-100 text-green-700"
@@ -1417,7 +1481,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
 
           {showTransferForm && (
             <form onSubmit={handleTransferSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("employee")}</label>
                   <select name="employee_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
@@ -1432,14 +1496,26 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t("to_branch")}</label>
-                  <select name="to_branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
-                    {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
+                  <label className="block text-sm font-medium mb-1">{t("transfer_date")}</label>
+                  <input type="date" name="transfer_date" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("to_brand")}</label>
+                  <select className="w-full px-3 py-2 border rounded-lg text-sm"
+                    value={transferToBrandId || ""}
+                    onChange={e => setTransferToBrandId(e.target.value ? parseInt(e.target.value) : null)}>
+                    <option value="">{t("all_brands")}</option>
+                    {brands.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name_en) : b.name_en}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t("transfer_date")}</label>
-                  <input type="date" name="transfer_date" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <label className="block text-sm font-medium mb-1">{t("to_branch")}</label>
+                  <select name="to_branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">{t("select_branch")}</option>
+                    {toBranches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
+                  </select>
                 </div>
               </div>
               <div>
@@ -1587,12 +1663,13 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("date")}</th>
                   <th className="px-4 py-3 text-left">{t("status")}</th>
+                  <th className="px-4 py-3 text-left">{t("approval")}</th>
                   {isManager && <th className="px-4 py-3">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {loans.length === 0 ? (
-                  <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : loans.map(l => (
                   <tr key={l.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(l.employee_id) || "—"}</td>
@@ -1607,6 +1684,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                         l.status === "paid_off" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
                       }`}>{l.status === "paid_off" ? t("paid") : t("active")}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <ApprovalBadge status={l.approval_status} type="advance_loan" id={l.id} />
                     </td>
                     {isManager && (
                       <td className="px-4 py-3 space-x-2">
@@ -1689,12 +1769,13 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-4 py-3 text-left">{t("date")}</th>
                   <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("notes")}</th>
+                  <th className="px-4 py-3 text-left">{t("approval")}</th>
                   {isManager && <th className="px-4 py-3">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {benefits.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : benefits.map(b => (
                   <tr key={b.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(b.employee_id) || "—"}</td>
@@ -1708,6 +1789,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <td className="px-4 py-3">{b.date}</td>
                     <td className="px-4 py-3">{b.month || "—"}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{b.notes || "—"}</td>
+                    <td className="px-4 py-3">
+                      <ApprovalBadge status={b.approval_status} type="benefit_deduction" id={b.id} />
+                    </td>
                     {isManager && (
                       <td className="px-4 py-3 space-x-2">
                         <button onClick={() => { setEditingBenefit(b); setShowBenefitForm(true); }}
@@ -1787,12 +1871,13 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-4 py-3 text-left">{t("date")}</th>
                   <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("notes")}</th>
+                  <th className="px-4 py-3 text-left">{t("approval")}</th>
                   {isManager && <th className="px-4 py-3">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {deductionItems.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : deductionItems.map(d => (
                   <tr key={d.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(d.employee_id) || "—"}</td>
@@ -1806,6 +1891,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <td className="px-4 py-3">{d.date}</td>
                     <td className="px-4 py-3">{d.month || "—"}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{d.notes || "—"}</td>
+                    <td className="px-4 py-3">
+                      <ApprovalBadge status={d.approval_status} type="benefit_deduction" id={d.id} />
+                    </td>
                     {isManager && (
                       <td className="px-4 py-3 space-x-2">
                         <button onClick={() => { setEditingDeduction(d); setShowDeductionForm(true); }}
@@ -1904,6 +1992,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-4 py-3 text-left">{t("paid_unpaid")}</th>
                   <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("notes")}</th>
+                  <th className="px-4 py-3 text-left">{t("approval")}</th>
                   {isManager && <th className="px-4 py-3">{t("actions")}</th>}
                 </tr>
               </thead>
@@ -1932,6 +2021,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       </td>
                       <td className="px-4 py-3">{lr.month || "—"}</td>
                       <td className="px-4 py-3 text-xs text-gray-500">{lr.notes || "—"}</td>
+                      <td className="px-4 py-3">
+                        <ApprovalBadge status={lr.approval_status} type="leave" id={lr.id} />
+                      </td>
                       {isManager && (
                         <td className="px-4 py-3 space-x-2">
                           <button onClick={() => { setEditingLeave(lr); setShowLeaveForm(true); }}

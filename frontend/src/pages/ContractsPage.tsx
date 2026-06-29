@@ -1,12 +1,18 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet, apiFetch } from "../contexts/api";
+import { apiGet, apiFetch, apiPost } from "../contexts/api";
 
 interface ContractRecord {
   id: number; name: string; kind: string; place: string;
   value: number; start_date: string; end_date: string;
   monthly_payment: number; payment_day: number;
   notes: string; status: string; created_at: string;
+}
+
+interface ContractPaymentRecord {
+  id: number; contract_id: number; due_date: string;
+  amount: number; status: string; paid_date: string | null;
+  payment_method: string | null; reference: string | null; notes: string | null;
 }
 
 const DEFAULT_CONTRACT_TYPES = ["Rent Contract", "Legal Contract", "Internet Contract"];
@@ -18,6 +24,9 @@ export default function ContractsPage() {
   const [editing, setEditing] = useState<ContractRecord | null>(null);
   const [customType, setCustomType] = useState("");
   const [selectedKind, setSelectedKind] = useState("");
+  const [expandedContract, setExpandedContract] = useState<number | null>(null);
+  const [payments, setPayments] = useState<ContractPaymentRecord[]>([]);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager = currentUser.role === "owner" || currentUser.role === "manager";
@@ -171,7 +180,8 @@ export default function ContractsPage() {
             {contracts.length === 0 ? (
               <tr><td colSpan={isManager ? 10 : 9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
             ) : contracts.map(c => (
-              <tr key={c.id} className="border-b hover:bg-gray-50">
+              <React.Fragment key={c.id}>
+              <tr className="border-b hover:bg-gray-50">
                 <td className="px-3 py-3 font-medium">{c.name}</td>
                 <td className="px-3 py-3">{c.kind || "—"}</td>
                 <td className="px-3 py-3">{c.place || "—"}</td>
@@ -189,6 +199,10 @@ export default function ContractsPage() {
                 </td>
                 {isManager && (
                   <td className="px-3 py-3 text-center">
+                    <button onClick={() => {
+                      if (expandedContract === c.id) { setExpandedContract(null); }
+                      else { setExpandedContract(c.id); apiGet(`/api/hr/contracts/${c.id}/payments`).then(setPayments); }
+                    }} className="text-purple-600 hover:underline text-xs mr-2">{t("payments")}</button>
                     <button onClick={() => { setEditing(c); setShowForm(false); }}
                       className="text-blue-600 hover:underline text-xs mr-2">{t("edit")}</button>
                     <button onClick={async () => {
@@ -199,6 +213,133 @@ export default function ContractsPage() {
                   </td>
                 )}
               </tr>
+              {/* Payment tracking expanded row */}
+              {expandedContract === c.id && (
+                <tr>
+                  <td colSpan={isManager ? 10 : 9} className="px-4 py-4 bg-gray-50">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold text-sm">{t("payment_schedule")} — {c.name}</h4>
+                        <div className="flex gap-2">
+                          {payments.length === 0 && c.monthly_payment > 0 && (
+                            <button onClick={async () => {
+                              await apiPost(`/api/hr/contracts/${c.id}/generate-payments`, new FormData());
+                              apiGet(`/api/hr/contracts/${c.id}/payments`).then(setPayments);
+                            }} className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
+                              {t("generate_schedule")}
+                            </button>
+                          )}
+                          <button onClick={() => setShowPaymentForm(!showPaymentForm)}
+                            className="px-3 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
+                            {showPaymentForm ? t("cancel") : t("add_payment")}
+                          </button>
+                        </div>
+                      </div>
+
+                      {showPaymentForm && (
+                        <form onSubmit={async (e) => {
+                          e.preventDefault();
+                          const fd = new FormData(e.currentTarget);
+                          await apiFetch(`/api/hr/contracts/${c.id}/payments`, { method: "POST", body: fd });
+                          setShowPaymentForm(false);
+                          apiGet(`/api/hr/contracts/${c.id}/payments`).then(setPayments);
+                        }} className="bg-white p-4 rounded border grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div>
+                            <label className="block text-xs mb-1">{t("due_date")}</label>
+                            <input type="date" name="due_date" required className="w-full border rounded px-2 py-1.5 text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs mb-1">{t("amount")}</label>
+                            <input type="number" step="0.001" name="amount" required defaultValue={c.monthly_payment}
+                              className="w-full border rounded px-2 py-1.5 text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs mb-1">{t("status")}</label>
+                            <select name="status" className="w-full border rounded px-2 py-1.5 text-sm">
+                              <option value="pending">{t("pending")}</option>
+                              <option value="paid">{t("paid")}</option>
+                            </select>
+                          </div>
+                          <div className="flex items-end">
+                            <button type="submit" className="px-4 py-1.5 bg-emerald-600 text-white rounded text-sm">{t("save")}</button>
+                          </div>
+                        </form>
+                      )}
+
+                      {/* Payment summary */}
+                      {payments.length > 0 && (
+                        <div className="flex gap-4 text-sm">
+                          <span className="text-green-700 font-medium">
+                            {t("paid")}: KD {payments.filter(p => p.status === "paid").reduce((s, p) => s + p.amount, 0).toFixed(3)}
+                          </span>
+                          <span className="text-amber-700 font-medium">
+                            {t("pending")}: KD {payments.filter(p => p.status === "pending").reduce((s, p) => s + p.amount, 0).toFixed(3)}
+                          </span>
+                          <span className="text-red-700 font-medium">
+                            {t("overdue")}: KD {payments.filter(p => p.status === "overdue").reduce((s, p) => s + p.amount, 0).toFixed(3)}
+                          </span>
+                          <span className="text-gray-700 font-bold">
+                            {t("total")}: KD {payments.reduce((s, p) => s + p.amount, 0).toFixed(3)}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Payments table */}
+                      <table className="w-full text-xs bg-white rounded border">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="px-3 py-2 text-left">{t("due_date")}</th>
+                            <th className="px-3 py-2 text-right">{t("amount")}</th>
+                            <th className="px-3 py-2 text-center">{t("status")}</th>
+                            <th className="px-3 py-2 text-left">{t("paid_date")}</th>
+                            <th className="px-3 py-2 text-left">{t("payment_method")}</th>
+                            <th className="px-3 py-2 text-left">{t("reference")}</th>
+                            <th className="px-3 py-2 text-center">{t("actions")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {payments.length === 0 ? (
+                            <tr><td colSpan={7} className="px-3 py-4 text-center text-gray-400">{t("no_payments")}</td></tr>
+                          ) : payments.map(p => (
+                            <tr key={p.id} className={`border-t ${p.status === "paid" ? "bg-green-50" : p.status === "overdue" ? "bg-red-50" : ""}`}>
+                              <td className="px-3 py-2">{p.due_date}</td>
+                              <td className="px-3 py-2 text-right font-mono">KD {p.amount.toFixed(3)}</td>
+                              <td className="px-3 py-2 text-center">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  p.status === "paid" ? "bg-green-100 text-green-700" :
+                                  p.status === "overdue" ? "bg-red-100 text-red-700" :
+                                  "bg-amber-100 text-amber-700"
+                                }`}>{t(p.status)}</span>
+                              </td>
+                              <td className="px-3 py-2">{p.paid_date || "—"}</td>
+                              <td className="px-3 py-2">{p.payment_method || "—"}</td>
+                              <td className="px-3 py-2">{p.reference || "—"}</td>
+                              <td className="px-3 py-2 text-center space-x-1">
+                                {p.status !== "paid" && (
+                                  <button onClick={async () => {
+                                    const fd = new FormData();
+                                    fd.append("status", "paid");
+                                    fd.append("paid_date", new Date().toISOString().slice(0, 10));
+                                    fd.append("amount", String(p.amount));
+                                    await apiFetch(`/api/hr/contract-payments/${p.id}`, { method: "PUT", body: fd });
+                                    apiGet(`/api/hr/contracts/${c.id}/payments`).then(setPayments);
+                                  }} className="text-green-600 hover:underline">{t("mark_paid")}</button>
+                                )}
+                                <button onClick={async () => {
+                                  if (!confirm(t("confirm_delete"))) return;
+                                  await apiFetch(`/api/hr/contract-payments/${p.id}`, { method: "DELETE" });
+                                  apiGet(`/api/hr/contracts/${c.id}/payments`).then(setPayments);
+                                }} className="text-red-600 hover:underline">{t("delete")}</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>

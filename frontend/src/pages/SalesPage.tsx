@@ -7,14 +7,14 @@ interface Branch { id: number; name: string; name_ar: string; }
 interface Sale {
   id: number; branch_id: number; date: string;
   foodics_cash: number; foodics_knet: number; foodics_link: number; foodics_wamd: number;
-  foodics_talabat: number; foodics_keeta: number; foodics_jahez: number; foodics_other: number;
+  foodics_talabat: number; foodics_keeta: number; foodics_jahez: number; foodics_other: number; foodics_snoonu: number;
   physical_cash: number; physical_knet: number; physical_link: number; physical_wamd: number;
-  physical_talabat: number; physical_keeta: number; physical_jahez: number; physical_other: number;
+  physical_talabat: number; physical_keeta: number; physical_jahez: number; physical_other: number; physical_snoonu: number;
   attachment_path: string | null;
 }
 
 const displayChannels = ["cash", "knet", "link"] as const;
-const allChannels = ["cash", "knet", "link", "talabat", "jahez", "keeta"] as const;
+const allChannels = ["cash", "knet", "link", "talabat", "jahez", "keeta", "snoonu"] as const;
 
 function sumRow(s: Sale, prefix: "foodics" | "physical") {
   return allChannels.reduce((acc, ch) => acc + ((s as unknown as Record<string, number>)[`${prefix}_${ch}`] || 0), 0);
@@ -303,7 +303,7 @@ export default function SalesPage() {
             </div>
           </div>
 
-          <h3 className="font-semibold text-emerald-700">{t("foodics_data")}</h3>
+          <h3 className="font-semibold text-emerald-700">{t("pos_data")}</h3>
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
             {allChannels.map(ch => (
               <div key={`f_${ch}`}>
@@ -362,7 +362,7 @@ export default function SalesPage() {
               <th rowSpan={2} className="px-2 py-2 text-left border-r sticky left-0 bg-gray-50 z-10">{t("date")}</th>
               <th rowSpan={2} className="px-2 py-2 text-left border-r">{t("branch")}</th>
               <th colSpan={displayChannels.length + 1} className="px-2 py-1 text-center border-r bg-emerald-50 text-emerald-700">
-                {t("foodics_data")}
+                {t("pos_data")}
               </th>
               <th colSpan={displayChannels.length + 1} className="px-2 py-1 text-center border-r bg-blue-50 text-blue-700">
                 {t("physical_data")}

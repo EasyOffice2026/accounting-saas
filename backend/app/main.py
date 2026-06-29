@@ -238,11 +238,24 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE transfer_order_lines ADD COLUMN item_name_ar TEXT"))
                 conn.commit()
 
-        # Transfer items: add category
+        # Transfer items: add category and unit_price
         if "transfer_items" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("transfer_items")]
             if "category" not in cols:
                 conn.execute(text("ALTER TABLE transfer_items ADD COLUMN category TEXT DEFAULT 'food'"))
+                conn.commit()
+            if "unit_price" not in cols:
+                conn.execute(text("ALTER TABLE transfer_items ADD COLUMN unit_price FLOAT DEFAULT 0"))
+                conn.commit()
+            if "opening_stock" not in cols:
+                conn.execute(text("ALTER TABLE transfer_items ADD COLUMN opening_stock FLOAT DEFAULT 0"))
+                conn.commit()
+
+        # Transfer order lines: add unit_price
+        if "transfer_order_lines" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("transfer_order_lines")]
+            if "unit_price" not in cols:
+                conn.execute(text("ALTER TABLE transfer_order_lines ADD COLUMN unit_price FLOAT DEFAULT 0"))
                 conn.commit()
 
         # Users: add allowed_tabs
@@ -251,6 +264,43 @@ def _migrate_columns():
             if "allowed_tabs" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN allowed_tabs TEXT"))
                 conn.commit()
+
+        # Sales: add snoonu columns
+        if "sales" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("sales")]
+            if "foodics_snoonu" not in cols:
+                conn.execute(text("ALTER TABLE sales ADD COLUMN foodics_snoonu FLOAT DEFAULT 0"))
+                conn.commit()
+            if "physical_snoonu" not in cols:
+                conn.execute(text("ALTER TABLE sales ADD COLUMN physical_snoonu FLOAT DEFAULT 0"))
+                conn.commit()
+
+        # Contract payments table
+        if "contract_payments" not in insp.get_table_names():
+            conn.execute(text("""CREATE TABLE IF NOT EXISTS contract_payments (
+                id SERIAL PRIMARY KEY,
+                contract_id INTEGER NOT NULL REFERENCES contracts(id),
+                due_date DATE NOT NULL,
+                amount FLOAT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                paid_date DATE,
+                payment_method TEXT,
+                reference TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            )"""))
+            conn.commit()
+
+        # HR Approval workflow columns
+        _approval_tables = ["salary_payments", "advance_loans", "staff_benefits_deductions", "leave_records"]
+        for tbl in _approval_tables:
+            if tbl in insp.get_table_names():
+                cols = [c["name"] for c in insp.get_columns(tbl)]
+                if "approval_status" not in cols:
+                    conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN approval_status TEXT DEFAULT 'approved'"))
+                    conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN approved_by INTEGER"))
+                    conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN approval_date TIMESTAMP"))
+                    conn.commit()
 
 
 def _seed_data():

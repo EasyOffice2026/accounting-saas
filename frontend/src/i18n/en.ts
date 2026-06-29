@@ -33,6 +33,8 @@ export default {
   update: "Update",
   all_branches: "All Branches",
   foodics_data: "Foodics Data",
+  pos_data: "POS Data",
+  snoonu: "Snoonu",
   physical_data: "Physical Data",
   difference: "Difference",
   cash: "Cash",
@@ -216,6 +218,13 @@ export default {
   requests: "Requests",
   item_list: "Item List",
   history: "History",
+  inventory: "Inventory",
+  branch_summary: "Branch Summary",
+  opening_stock: "Opening Stock",
+  total_dispatched: "Total Dispatched",
+  remaining: "Remaining",
+  total_qty: "Total Qty",
+  total_amount: "Total Amount",
   new_request: "New Request",
   requesting_branch: "Requesting Branch",
   submit_request: "Submit Request",
@@ -375,6 +384,9 @@ export default {
   reject: "Reject",
   approved: "Approved",
   rejected: "Rejected",
+  approval: "Approval",
+  pending_approval: "Pending",
+  confirm_reject: "Are you sure you want to reject this transaction?",
   select_employee: "Select Employee",
   // HR - Advance/Loan
   advance_loan: "Advance / Loan",
@@ -536,4 +548,5 @@ export default {
   tab_hr_deductions: "HR - Deductions",
   tab_hr_leaves: "HR - Leaves",
   tab_hr_resignation: "HR - Resignation",
+
 };

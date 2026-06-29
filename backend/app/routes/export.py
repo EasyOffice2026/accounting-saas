@@ -1003,3 +1003,120 @@ def export_purchase_order_pdf(order_id: int, db: Session = Depends(get_db),
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={fname}.pdf"},
     )
+
+
+# ── Expense Receipt PDF ──────────────────────────────────────────────
+@router.get("/expense/{expense_id}/pdf")
+def export_expense_pdf(expense_id: int, db: Session = Depends(get_db),
+                       _=Depends(get_current_user)):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
+                                    Paragraph, Spacer, HRFlowable)
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    import os
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+    from app.models.expense import ExpenseCategory
+
+    def _ar(text: str) -> str:
+        if not text:
+            return ""
+        return get_display(arabic_reshaper.reshape(text))
+
+    exp = db.query(Expense).filter(Expense.id == expense_id).first()
+    if not exp:
+        raise HTTPException(404, "Expense not found")
+
+    branch = db.query(Branch).filter(Branch.id == exp.branch_id).first()
+    category = db.query(ExpenseCategory).filter(ExpenseCategory.id == exp.category_id).first() if exp.category_id else None
+    supplier = db.query(Supplier).filter(Supplier.id == exp.supplier_id).first() if exp.supplier_id else None
+
+    brand = None
+    if branch and branch.brand_id:
+        brand = db.query(Brand).filter(Brand.id == branch.brand_id).first()
+
+    # Register fonts
+    _fonts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "fonts")
+    _amiri = os.path.join(_fonts_dir, "Amiri-Regular.ttf")
+    _amiri_bold = os.path.join(_fonts_dir, "Amiri-Bold.ttf")
+    if os.path.isfile(_amiri) and "Amiri" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("Amiri", _amiri))
+    if os.path.isfile(_amiri_bold) and "Amiri-Bold" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("Amiri-Bold", _amiri_bold))
+    _dvs = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    _dvsb = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    if os.path.isfile(_dvs) and "DejaVuSans" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("DejaVuSans", _dvs))
+    if os.path.isfile(_dvsb) and "DejaVuSans-Bold" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", _dvsb))
+
+    font_en = "DejaVuSans" if "DejaVuSans" in pdfmetrics.getRegisteredFontNames() else "Helvetica"
+    font_en_bold = "DejaVuSans-Bold" if "DejaVuSans-Bold" in pdfmetrics.getRegisteredFontNames() else "Helvetica-Bold"
+    font_ar = "Amiri" if "Amiri" in pdfmetrics.getRegisteredFontNames() else font_en
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=20 * mm, rightMargin=20 * mm,
+                            topMargin=20 * mm, bottomMargin=20 * mm)
+    elements = []
+
+    title_style = ParagraphStyle("ex_title", fontName=font_en_bold, fontSize=16, alignment=1, spaceAfter=2 * mm)
+    title_ar_style = ParagraphStyle("ex_title_ar", fontName=font_ar, fontSize=16, alignment=1, spaceAfter=4 * mm)
+    normal = ParagraphStyle("ex_normal", fontName=font_en, fontSize=10, spaceAfter=2 * mm)
+
+    company_name = brand.name_en if brand else "Mudawwarah"
+    company_ar = _ar(brand.name_ar) if brand and brand.name_ar else _ar("مدورة")
+    elements.append(Paragraph(company_name, title_style))
+    elements.append(Paragraph(company_ar, title_ar_style))
+    elements.append(Paragraph(f"EXPENSE RECEIPT / {_ar('إيصال مصروف')}", ParagraphStyle("sub", fontName=font_en_bold, fontSize=12, alignment=1, textColor=colors.HexColor("#2E7D32"), spaceAfter=4 * mm)))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#2E7D32")))
+    elements.append(Spacer(1, 5 * mm))
+
+    info_data = [
+        [f"Expense # / {_ar('رقم المصروف')}", f"EXP-{exp.id:04d}"],
+        [f"Date / {_ar('التاريخ')}", str(exp.date)],
+        [f"Branch / {_ar('الفرع')}", branch.name if branch else "N/A"],
+        [f"Category / {_ar('الفئة')}", category.name if category else "N/A"],
+        [f"Supplier / {_ar('المورد')}", supplier.name if supplier else "N/A"],
+        [f"Description / {_ar('الوصف')}", exp.description],
+        [f"Amount / {_ar('المبلغ')}", f"KD {exp.amount:.3f}"],
+        [f"Payment / {_ar('الدفع')}", exp.payment_method.title()],
+    ]
+    if exp.notes:
+        info_data.append([f"Notes / {_ar('ملاحظات')}", exp.notes])
+
+    info_table = Table(info_data, colWidths=[75 * mm, 95 * mm])
+    info_table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), font_en_bold),
+        ("FONTNAME", (1, 0), (1, -1), font_en),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("LINEBELOW", (0, 0), (-1, -2), 0.5, colors.HexColor("#E0E0E0")),
+        ("LINEBELOW", (0, -1), (-1, -1), 1, colors.HexColor("#2E7D32")),
+    ]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 15 * mm))
+
+    sig_data = [[f"Prepared By / {_ar('إعداد')}", f"Approved By / {_ar('اعتماد')}"]]
+    sig_table = Table(sig_data, colWidths=[85 * mm, 85 * mm])
+    sig_table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), font_en),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("TOPPADDING", (0, 0), (-1, -1), 30),
+        ("LINEABOVE", (0, 0), (-1, -1), 0.5, colors.black),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+    ]))
+    elements.append(sig_table)
+
+    doc.build(elements)
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=EXP-{exp.id:04d}.pdf"},
+    )

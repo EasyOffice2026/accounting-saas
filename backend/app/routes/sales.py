@@ -38,10 +38,12 @@ def create_sale(
     foodics_link: float = Form(0), foodics_wamd: float = Form(0),
     foodics_talabat: float = Form(0), foodics_keeta: float = Form(0),
     foodics_jahez: float = Form(0), foodics_other: float = Form(0),
+    foodics_snoonu: float = Form(0),
     physical_cash: float = Form(0), physical_knet: float = Form(0),
     physical_link: float = Form(0), physical_wamd: float = Form(0),
     physical_talabat: float = Form(0), physical_keeta: float = Form(0),
     physical_jahez: float = Form(0), physical_other: float = Form(0),
+    physical_snoonu: float = Form(0),
     notes: str = Form(""),
     attachment: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
@@ -71,10 +73,12 @@ def create_sale(
         foodics_link=foodics_link, foodics_wamd=foodics_wamd,
         foodics_talabat=foodics_talabat, foodics_keeta=foodics_keeta,
         foodics_jahez=foodics_jahez, foodics_other=foodics_other,
+        foodics_snoonu=foodics_snoonu,
         physical_cash=physical_cash, physical_knet=physical_knet,
         physical_link=physical_link, physical_wamd=physical_wamd,
         physical_talabat=physical_talabat, physical_keeta=physical_keeta,
         physical_jahez=physical_jahez, physical_other=physical_other,
+        physical_snoonu=physical_snoonu,
         notes=notes, attachment_path=attachment_path,
         created_by=user.id,
     )
@@ -94,12 +98,12 @@ def sales_summary(branch_id: Optional[int] = None, db: Session = Depends(get_db)
     total_foodics = sum(
         (r.foodics_cash or 0) + (r.foodics_knet or 0) + (r.foodics_link or 0) +
         (r.foodics_wamd or 0) + (r.foodics_talabat or 0) + (r.foodics_keeta or 0) +
-        (r.foodics_jahez or 0) + (r.foodics_other or 0) for r in rows
+        (r.foodics_jahez or 0) + (r.foodics_other or 0) + (r.foodics_snoonu or 0) for r in rows
     )
     total_physical = sum(
         (r.physical_cash or 0) + (r.physical_knet or 0) + (r.physical_link or 0) +
         (r.physical_wamd or 0) + (r.physical_talabat or 0) + (r.physical_keeta or 0) +
-        (r.physical_jahez or 0) + (r.physical_other or 0) for r in rows
+        (r.physical_jahez or 0) + (r.physical_other or 0) + (r.physical_snoonu or 0) for r in rows
     )
     return {
         "total_foodics": total_foodics,

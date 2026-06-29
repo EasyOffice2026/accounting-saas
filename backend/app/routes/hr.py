@@ -5,7 +5,7 @@ from typing import Optional
 import calendar
 
 from app.database import get_db
-from app.models.hr import Brand, Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, LeaveRecord, Resignation, Contract
+from app.models.hr import Brand, Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, LeaveRecord, Resignation, Contract, ContractPayment
 from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
@@ -1395,3 +1395,214 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db),
     db.delete(c)
     db.commit()
     return {"ok": True}
+
+
+# --- Contract Payments ---
+@router.get("/contracts/{contract_id}/payments")
+def list_contract_payments(contract_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    rows = db.query(ContractPayment).filter(ContractPayment.contract_id == contract_id)\
+        .order_by(ContractPayment.due_date).all()
+    return [{
+        "id": p.id, "contract_id": p.contract_id,
+        "due_date": str(p.due_date), "amount": p.amount,
+        "status": p.status, "paid_date": str(p.paid_date) if p.paid_date else None,
+        "payment_method": p.payment_method, "reference": p.reference,
+        "notes": p.notes,
+    } for p in rows]
+
+
+@router.post("/contracts/{contract_id}/payments")
+def create_contract_payment(
+    contract_id: int,
+    due_date: str = Form(...), amount: float = Form(...),
+    status: str = Form("pending"), paid_date: str = Form(""),
+    payment_method: str = Form(""), reference: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    c = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not c:
+        raise HTTPException(404, "Contract not found")
+    p = ContractPayment(
+        contract_id=contract_id,
+        due_date=date.fromisoformat(due_date),
+        amount=amount, status=status,
+        paid_date=date.fromisoformat(paid_date) if paid_date else None,
+        payment_method=payment_method or None,
+        reference=reference or None,
+        notes=notes or None,
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return {"ok": True, "id": p.id}
+
+
+@router.post("/contracts/{contract_id}/generate-payments")
+def generate_contract_payments(
+    contract_id: int,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """Auto-generate monthly payment schedule from contract start to end date."""
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    c = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not c:
+        raise HTTPException(404, "Contract not found")
+    if not c.start_date or not c.end_date or not c.monthly_payment:
+        raise HTTPException(400, "Contract must have start_date, end_date, and monthly_payment")
+    # Delete existing auto-generated payments
+    existing = db.query(ContractPayment).filter(ContractPayment.contract_id == contract_id).count()
+    if existing > 0:
+        raise HTTPException(400, "Payments already exist. Delete them first to regenerate.")
+    from dateutil.relativedelta import relativedelta
+    current = c.start_date
+    day = c.payment_day or 1
+    count = 0
+    while current <= c.end_date:
+        try:
+            due = current.replace(day=min(day, calendar.monthrange(current.year, current.month)[1]))
+        except Exception:
+            due = current
+        p = ContractPayment(contract_id=contract_id, due_date=due, amount=c.monthly_payment, status="pending")
+        db.add(p)
+        count += 1
+        current = current + relativedelta(months=1)
+    db.commit()
+    return {"ok": True, "generated": count}
+
+
+@router.put("/contract-payments/{payment_id}")
+def update_contract_payment(
+    payment_id: int,
+    status: str = Form("pending"), paid_date: str = Form(""),
+    payment_method: str = Form(""), reference: str = Form(""),
+    notes: str = Form(""), amount: float = Form(0),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    p = db.query(ContractPayment).filter(ContractPayment.id == payment_id).first()
+    if not p:
+        raise HTTPException(404, "Payment not found")
+    p.status = status
+    if amount > 0:
+        p.amount = amount
+    p.paid_date = date.fromisoformat(paid_date) if paid_date else None
+    p.payment_method = payment_method or None
+    p.reference = reference or None
+    p.notes = notes or None
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/contract-payments/{payment_id}")
+def delete_contract_payment(payment_id: int, db: Session = Depends(get_db),
+                            user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    p = db.query(ContractPayment).filter(ContractPayment.id == payment_id).first()
+    if not p:
+        raise HTTPException(404, "Payment not found")
+    db.delete(p)
+    db.commit()
+    return {"ok": True}
+
+
+# ── HR Approval Workflow ──────────────────────────────────────────────
+
+APPROVAL_MODELS = {
+    "salary": SalaryPayment,
+    "advance_loan": AdvanceLoan,
+    "benefit_deduction": StaffBenefitDeduction,
+    "leave": LeaveRecord,
+}
+
+MANAGER_ROLES = ("owner", "manager")
+
+
+@router.post("/approve/{txn_type}/{txn_id}")
+def approve_hr_transaction(txn_type: str, txn_id: int,
+                           db: Session = Depends(get_db),
+                           user: User = Depends(get_current_user)):
+    """Approve an HR transaction. Only owner/manager can approve."""
+    if user.role not in MANAGER_ROLES:
+        raise HTTPException(403, "Only owner/manager can approve transactions")
+    model = APPROVAL_MODELS.get(txn_type)
+    if not model:
+        raise HTTPException(400, f"Invalid transaction type: {txn_type}")
+    record = db.query(model).filter(model.id == txn_id).first()
+    if not record:
+        raise HTTPException(404, "Record not found")
+    from datetime import datetime, timezone
+    record.approval_status = "approved"
+    record.approved_by = user.id
+    record.approval_date = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True, "approval_status": "approved"}
+
+
+@router.post("/reject/{txn_type}/{txn_id}")
+def reject_hr_transaction(txn_type: str, txn_id: int,
+                          db: Session = Depends(get_db),
+                          user: User = Depends(get_current_user)):
+    """Reject an HR transaction. Only owner/manager can reject."""
+    if user.role not in MANAGER_ROLES:
+        raise HTTPException(403, "Only owner/manager can reject transactions")
+    model = APPROVAL_MODELS.get(txn_type)
+    if not model:
+        raise HTTPException(400, f"Invalid transaction type: {txn_type}")
+    record = db.query(model).filter(model.id == txn_id).first()
+    if not record:
+        raise HTTPException(404, "Record not found")
+    from datetime import datetime, timezone
+    record.approval_status = "rejected"
+    record.approved_by = user.id
+    record.approval_date = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True, "approval_status": "rejected"}
+
+
+@router.get("/pending-approvals")
+def list_pending_approvals(brand_id: Optional[int] = None,
+                           db: Session = Depends(get_db),
+                           user: User = Depends(get_current_user)):
+    """List all pending HR transactions for manager approval."""
+    if user.role not in MANAGER_ROLES:
+        raise HTTPException(403, "Only owner/manager can view pending approvals")
+    bb_ids = _brand_branch_ids(db, brand_id)
+    results = []
+
+    # Pending salary payments
+    q = db.query(SalaryPayment).filter(SalaryPayment.approval_status == "pending_approval")
+    if bb_ids is not None:
+        q = q.filter(SalaryPayment.branch_id.in_(bb_ids))
+    for s in q.all():
+        emp = db.query(Employee).filter(Employee.id == s.employee_id).first()
+        results.append({"type": "salary", "id": s.id, "employee": emp.name if emp else "?",
+                        "detail": f"Salary {s.month} - KD {s.net_salary:.3f}", "date": str(s.created_at.date() if s.created_at else "")})
+
+    # Pending advance/loans
+    q = db.query(AdvanceLoan).filter(AdvanceLoan.approval_status == "pending_approval")
+    for a in q.all():
+        emp = db.query(Employee).filter(Employee.id == a.employee_id).first()
+        results.append({"type": "advance_loan", "id": a.id, "employee": emp.name if emp else "?",
+                        "detail": f"{a.loan_type.title()} - KD {a.amount:.3f}", "date": str(a.date)})
+
+    # Pending benefits/deductions
+    q = db.query(StaffBenefitDeduction).filter(StaffBenefitDeduction.approval_status == "pending_approval")
+    for b in q.all():
+        emp = db.query(Employee).filter(Employee.id == b.employee_id).first()
+        results.append({"type": "benefit_deduction", "id": b.id, "employee": emp.name if emp else "?",
+                        "detail": f"{b.category.title()} - KD {b.amount:.3f}", "date": str(b.date)})
+
+    # Pending leaves
+    q = db.query(LeaveRecord).filter(LeaveRecord.approval_status == "pending_approval")
+    for l in q.all():
+        emp = db.query(Employee).filter(Employee.id == l.employee_id).first()
+        results.append({"type": "leave", "id": l.id, "employee": emp.name if emp else "?",
+                        "detail": f"{l.leave_type.replace('_', ' ').title()} - {l.days} days", "date": str(l.start_date)})
+
+    return results

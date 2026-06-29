@@ -10,6 +10,8 @@ class TransferItem(Base):
     name = Column(String, nullable=False)
     name_ar = Column(String, nullable=True)
     unit = Column(String, default="pcs")
+    unit_price = Column(Float, default=0)
+    opening_stock = Column(Float, default=0)
     category = Column(String, default="food")  # food, packaging
     is_active = Column(Boolean, default=True)
 
@@ -40,3 +42,4 @@ class TransferOrderLine(Base):
     dispatched_qty = Column(Float, nullable=True)
     received_qty = Column(Float, nullable=True)
     unit = Column(String, default="pcs")
+    unit_price = Column(Float, default=0)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from sqlalchemy.orm import Session
 from datetime import date
 from typing import Optional
@@ -76,6 +76,47 @@ def create_expense(
     db.commit()
     db.refresh(exp)
     return exp
+
+
+@router.put("/{expense_id}")
+def update_expense(
+    expense_id: int,
+    branch_id: int = Form(...), expense_date: str = Form(...),
+    description: str = Form(...), amount: float = Form(...),
+    category_id: Optional[int] = Form(None), supplier_id: Optional[int] = Form(None),
+    payment_method: str = Form("cash"), notes: str = Form(""),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    exp = db.query(Expense).filter(Expense.id == expense_id).first()
+    if not exp:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Expense not found")
+    exp.branch_id = branch_id
+    exp.category_id = category_id
+    exp.supplier_id = supplier_id if supplier_id else None
+    exp.date = date.fromisoformat(expense_date)
+    exp.description = description
+    exp.amount = amount
+    exp.payment_method = payment_method
+    exp.notes = notes or None
+    db.commit()
+    db.refresh(exp)
+    return exp
+
+
+@router.delete("/{expense_id}")
+def delete_expense(expense_id: int, db: Session = Depends(get_db),
+                   user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager"):
+        from fastapi import HTTPException
+        raise HTTPException(403, "Only owner/manager can delete expenses")
+    exp = db.query(Expense).filter(Expense.id == expense_id).first()
+    if not exp:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Expense not found")
+    db.delete(exp)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/supplier-ledger")

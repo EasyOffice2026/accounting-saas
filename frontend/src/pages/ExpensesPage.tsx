@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet, apiPost, apiDownload } from "../contexts/api";
+import { apiGet, apiPost, apiDownload, apiFetch } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Branch { id: number; name: string; name_ar?: string; }
 interface Category { id: number; name: string; name_ar: string; }
-interface Supplier { id: number; name: string; }
+interface Supplier { id: number; name: string; whatsapp?: string; }
 interface Expense {
   id: number; branch_id: number; category_id: number; date: string;
   description: string; amount: number; payment_method: string; supplier_id?: number;
@@ -31,8 +31,11 @@ export default function ExpensesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [expandedSupplier, setExpandedSupplier] = useState<number | null>(null);
+
+  const isManager = user?.role === "owner" || user?.role === "manager";
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);
@@ -48,9 +51,33 @@ export default function ExpensesPage() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    await apiPost("/api/expenses/", fd);
+    if (editingExpense) {
+      await apiFetch(`/api/expenses/${editingExpense.id}`, { method: "PUT", body: fd });
+      setEditingExpense(null);
+    } else {
+      await apiPost("/api/expenses/", fd);
+    }
     setShowForm(false);
     apiGet("/api/expenses/").then(setExpenses);
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm(t("confirm_delete"))) return;
+    await apiFetch(`/api/expenses/${id}`, { method: "DELETE" });
+    apiGet("/api/expenses/").then(setExpenses);
+  };
+
+  const handlePrint = (exp: Expense) => {
+    apiDownload(`/api/export/expense/${exp.id}/pdf`, `expense-${exp.id}.pdf`);
+  };
+
+  const handleWhatsApp = (exp: Expense) => {
+    const s = suppliers.find(su => su.id === exp.supplier_id);
+    const msg = encodeURIComponent(
+      `Expense Receipt\nDate: ${exp.date}\nDescription: ${exp.description}\nAmount: KD ${exp.amount.toFixed(3)}\nPayment: ${exp.payment_method}\nBranch: ${branchName(exp.branch_id)}`
+    );
+    const phone = s?.whatsapp || "";
+    window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
   };
 
   const branchName = (id: number) => { const b = branches.find(x => x.id === id); return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : ""; };
@@ -78,7 +105,7 @@ export default function ExpensesPage() {
               className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
               {t("export_pdf")}
             </button>
-            <button onClick={() => setShowForm(!showForm)}
+            <button onClick={() => { setShowForm(!showForm); setEditingExpense(null); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
               {showForm ? t("cancel") : t("add_new")}
             </button>
@@ -100,44 +127,45 @@ export default function ExpensesPage() {
 
       {tab === "expenses" && (
         <>
-          {showForm && (
+          {(showForm || editingExpense) && (
             <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
+              <h3 className="font-semibold">{editingExpense ? t("edit") : t("add_new")}</h3>
               <div className="grid grid-cols-2 gap-4">
                 {user?.branch_id ? (
                   <input type="hidden" name="branch_id" value={user.branch_id} />
                 ) : (
                   <div>
                     <label className="block text-sm font-medium mb-1">{t("branch")}</label>
-                    <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <select name="branch_id" required defaultValue={editingExpense?.branch_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                       {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
                     </select>
                   </div>
                 )}
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("category")}</label>
-                  <select name="category_id" className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="category_id" defaultValue={editingExpense?.category_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">--</option>
                     {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("supplier")}</label>
-                  <select name="supplier_id" className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="supplier_id" defaultValue={editingExpense?.supplier_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">-- {t("no_supplier")} --</option>
                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
-                  <input type="date" name="expense_date" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="date" name="expense_date" required defaultValue={editingExpense?.date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("amount")}</label>
-                  <input type="number" step="0.001" name="amount" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="number" step="0.001" name="amount" required defaultValue={editingExpense?.amount || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("payment_type")}</label>
-                  <select name="payment_method" className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="payment_method" defaultValue={editingExpense?.payment_method || "cash"} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="cash">{t("cash")}</option>
                     <option value="credit">{t("credit")}</option>
                   </select>
@@ -192,11 +220,12 @@ export default function ExpensesPage() {
                   <th className="px-4 py-3 text-left">{t("description")}</th>
                   <th className="px-4 py-3 text-right">{t("amount")}</th>
                   <th className="px-4 py-3 text-left">{t("payment_type")}</th>
+                  <th className="px-4 py-3 text-center">{t("actions")}</th>
                 </tr>
               </thead>
               <tbody>
                 {expenses.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : expenses.map(exp => (
                   <tr key={exp.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{exp.date}</td>
@@ -211,6 +240,20 @@ export default function ExpensesPage() {
                       }`}>
                         {t(exp.payment_method)}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex gap-1 justify-center flex-wrap">
+                        <button onClick={() => { setEditingExpense(exp); setShowForm(false); }}
+                          className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">{t("edit")}</button>
+                        <button onClick={() => handlePrint(exp)}
+                          className="px-2 py-1 bg-orange-500 text-white rounded text-xs hover:bg-orange-600">{t("print")}</button>
+                        {isManager && (
+                          <button onClick={() => handleDelete(exp.id)}
+                            className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">{t("delete")}</button>
+                        )}
+                        <button onClick={() => handleWhatsApp(exp)}
+                          className="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">WhatsApp</button>
+                      </div>
                     </td>
                   </tr>
                 ))}

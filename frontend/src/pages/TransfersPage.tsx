@@ -231,11 +231,7 @@ export default function TransfersPage() {
                   <input name="unit_price" type="number" step="0.001" defaultValue={editItem?.unit_price || 0}
                     className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">{t("opening_stock")}</label>
-                  <input name="opening_stock" type="number" step="0.01" defaultValue={editItem?.opening_stock || 0}
-                    className="w-full px-3 py-2 border rounded-lg text-sm" />
-                </div>
+
               </div>
               <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
                 {t("save")}
@@ -250,20 +246,18 @@ export default function TransfersPage() {
                   <th className="px-4 py-3 text-left">{t("item_name_ar")}</th>
                   <th className="px-4 py-3 text-left">{t("unit")}</th>
                   <th className="px-4 py-3 text-right">{t("unit_price")}</th>
-                  <th className="px-4 py-3 text-right">{t("opening_stock")}</th>
                   {isOwnerManager && <th className="px-4 py-3 text-center">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {items.filter(i => (i.category || "food") === itemCategory).length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : items.filter(i => (i.category || "food") === itemCategory).map(item => (
                   <tr key={item.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium">{item.name}</td>
                     <td className="px-4 py-3" dir="rtl">{item.name_ar || "—"}</td>
                     <td className="px-4 py-3">{item.unit}</td>
                     <td className="px-4 py-3 text-right font-mono">{(item.unit_price || 0).toFixed(3)}</td>
-                    <td className="px-4 py-3 text-right font-mono">{item.opening_stock || 0}</td>
                     {isOwnerManager && (
                       <td className="px-4 py-3 text-center">
                         <button onClick={() => { setEditItem(item); setShowItemForm(true); }}

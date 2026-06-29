@@ -203,6 +203,9 @@ def _migrate_columns():
                 # Assign all existing branches to brand 1 (Mudawwarah)
                 conn.execute(text("UPDATE branches SET brand_id = 1 WHERE brand_id IS NULL"))
                 conn.commit()
+            if "whatsapp_number" not in cols:
+                conn.execute(text("ALTER TABLE branches ADD COLUMN whatsapp_number TEXT"))
+                conn.commit()
 
         # Contracts table
         if "contracts" not in insp.get_table_names():

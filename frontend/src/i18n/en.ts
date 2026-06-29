@@ -243,6 +243,8 @@ export default {
   instance_id: "Instance ID",
   api_token: "API Token",
   default_phone: "Default Phone Number",
+  whatsapp_sent: "Sent via WhatsApp successfully!",
+  whatsapp_number: "WhatsApp Number",
   whatsapp_saved: "WhatsApp settings saved",
   whatsapp_save_error: "Failed to save WhatsApp settings",
   greenapi_setup_title: "Green API Setup Guide",

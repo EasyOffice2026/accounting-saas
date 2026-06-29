@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
-interface Branch { id: number; name: string; name_ar: string; }
+interface Branch { id: number; name: string; name_ar: string; whatsapp_number?: string; }
 interface Sale {
   id: number; branch_id: number; date: string;
   foodics_cash: number; foodics_knet: number; foodics_link: number; foodics_wamd: number;
@@ -368,6 +368,7 @@ export default function SalesPage() {
                 {t("physical_data")}
               </th>
               <th rowSpan={2} className="px-2 py-2 text-right">{t("difference")}</th>
+              <th rowSpan={2} className="px-2 py-2 text-center">{t("actions")}</th>
             </tr>
             <tr>
               {displayChannels.map(ch => (
@@ -382,7 +383,7 @@ export default function SalesPage() {
           </thead>
           <tbody>
             {sales.length === 0 ? (
-              <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+              <tr><td colSpan={12} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
             ) : sales.map(s => {
               const foodics = sumRow(s, "foodics");
               const physical = sumRow(s, "physical");
@@ -409,6 +410,26 @@ export default function SalesPage() {
                   </td>
                   <td className={`px-2 py-2 text-right font-mono font-bold ${diff !== 0 ? "text-red-600" : "text-green-600"}`}>
                     {diff.toFixed(3)}
+                  </td>
+                  <td className="px-2 py-2 text-center">
+                    <button onClick={async () => {
+                      const br = branches.find(b => b.id === s.branch_id);
+                      if (!br?.whatsapp_number) { alert(t("no_whatsapp") || "No WhatsApp number configured for this branch"); return; }
+                      try {
+                        const fd = new FormData();
+                        fd.append("branch_id", String(s.branch_id));
+                        fd.append("report_date", s.date);
+                        const res = await fetch("/api/whatsapp/send-sales", {
+                          method: "POST", body: fd,
+                          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+                        });
+                        if (!res.ok) { const err = await res.json(); alert(err.detail || "Failed"); return; }
+                        alert(t("whatsapp_sent") || "Sent!");
+                      } catch { alert("Failed to send"); }
+                    }}
+                      className="px-2 py-1 bg-green-500 text-white rounded text-[10px] hover:bg-green-600" title="Send to WhatsApp">
+                      📱
+                    </button>
                   </td>
                 </tr>
               );

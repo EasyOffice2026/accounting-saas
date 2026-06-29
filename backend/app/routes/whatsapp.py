@@ -9,6 +9,8 @@ from app.models.whatsapp import WhatsAppSettings
 from app.models.sale import Sale
 from app.models.branch import Branch
 from app.models.user import User
+from app.models.purchase import PurchaseOrder, PurchaseItem, Supplier
+from app.models.expense import Expense, ExpenseCategory
 from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
@@ -168,3 +170,155 @@ def preview_report(
     target_date = date.fromisoformat(report_date) if report_date else date.today()
     report = _build_daily_sales_report(db, target_date)
     return {"report": report, "date": str(target_date)}
+
+
+@router.post("/send-purchase")
+def send_purchase_whatsapp(
+    order_id: int = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Send purchase order details to the supplier's WhatsApp number."""
+    settings = db.query(WhatsAppSettings).first()
+    if not settings or not settings.instance_id or not settings.api_token:
+        raise HTTPException(400, "WhatsApp not configured. Go to Settings to set up Green API credentials.")
+
+    order = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(404, "Order not found")
+
+    supplier = db.query(Supplier).filter(Supplier.id == order.supplier_id).first()
+    if not supplier or not supplier.whatsapp:
+        raise HTTPException(400, "Supplier has no WhatsApp number configured")
+
+    items = db.query(PurchaseItem).filter(PurchaseItem.purchase_order_id == order.id).all()
+    branch = db.query(Branch).filter(Branch.id == order.branch_id).first()
+
+    lines = []
+    lines.append("📋 *Purchase Order*")
+    lines.append(f"📅 Date: {order.date}")
+    lines.append(f"🏪 Branch: {branch.name if branch else ''}")
+    lines.append(f"🏢 Supplier: {supplier.name}")
+    lines.append(f"💳 Payment: {order.payment_type}")
+    lines.append("")
+    lines.append("*Items:*")
+    for it in items:
+        lines.append(f"  • {it.item_name} — {it.quantity} {it.unit} × {it.unit_price:.3f} = KD {it.total:.3f}")
+    lines.append("")
+    lines.append(f"*Total: KD {order.total_amount:.3f}*")
+    if order.notes:
+        lines.append(f"📝 Notes: {order.notes}")
+
+    msg = "\n".join(lines)
+    result = _send_whatsapp_message(settings.instance_id, settings.api_token, supplier.whatsapp, msg, settings.api_url or "")
+
+    if "idMessage" in result:
+        return {"message": "Purchase order sent to supplier", "id": result["idMessage"]}
+    else:
+        raise HTTPException(500, f"Failed to send: {result}")
+
+
+@router.post("/send-expense")
+def send_expense_whatsapp(
+    expense_id: int = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Send expense details to the supplier's WhatsApp number."""
+    settings = db.query(WhatsAppSettings).first()
+    if not settings or not settings.instance_id or not settings.api_token:
+        raise HTTPException(400, "WhatsApp not configured. Go to Settings to set up Green API credentials.")
+
+    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+    if not expense:
+        raise HTTPException(404, "Expense not found")
+
+    supplier = db.query(Supplier).filter(Supplier.id == expense.supplier_id).first() if expense.supplier_id else None
+    if not supplier or not supplier.whatsapp:
+        raise HTTPException(400, "Supplier has no WhatsApp number configured")
+
+    branch = db.query(Branch).filter(Branch.id == expense.branch_id).first()
+    category = db.query(ExpenseCategory).filter(ExpenseCategory.id == expense.category_id).first() if expense.category_id else None
+
+    lines = []
+    lines.append("💰 *Expense Receipt*")
+    lines.append(f"📅 Date: {expense.date}")
+    lines.append(f"🏪 Branch: {branch.name if branch else ''}")
+    lines.append(f"🏢 Supplier: {supplier.name}")
+    if category:
+        lines.append(f"📁 Category: {category.name}")
+    lines.append(f"📝 Description: {expense.description}")
+    lines.append(f"💳 Payment: {expense.payment_method}")
+    lines.append(f"*Amount: KD {expense.amount:.3f}*")
+    if expense.notes:
+        lines.append(f"📝 Notes: {expense.notes}")
+
+    msg = "\n".join(lines)
+    result = _send_whatsapp_message(settings.instance_id, settings.api_token, supplier.whatsapp, msg, settings.api_url or "")
+
+    if "idMessage" in result:
+        return {"message": "Expense sent to supplier", "id": result["idMessage"]}
+    else:
+        raise HTTPException(500, f"Failed to send: {result}")
+
+
+@router.post("/send-sales")
+def send_sales_whatsapp(
+    branch_id: int = Form(...),
+    report_date: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Send sales report to the branch's configured WhatsApp number."""
+    settings = db.query(WhatsAppSettings).first()
+    if not settings or not settings.instance_id or not settings.api_token:
+        raise HTTPException(400, "WhatsApp not configured. Go to Settings to set up Green API credentials.")
+
+    branch = db.query(Branch).filter(Branch.id == branch_id).first()
+    if not branch or not branch.whatsapp_number:
+        raise HTTPException(400, "Branch has no WhatsApp number configured")
+
+    target_date = date.fromisoformat(report_date) if report_date else date.today()
+    sale = db.query(Sale).filter(Sale.branch_id == branch_id, Sale.date == target_date).first()
+
+    lines = []
+    lines.append(f"📊 *Sales Report — {branch.name}*")
+    lines.append(f"📅 Date: {target_date.strftime('%d/%m/%Y')}")
+    lines.append("")
+
+    if sale:
+        f_cash = sale.foodics_cash or 0
+        f_knet = sale.foodics_knet or 0
+        f_link = sale.foodics_link or 0
+        f_wamd = sale.foodics_wamd or 0
+        f_snoonu = getattr(sale, "foodics_snoonu", 0) or 0
+        foodics_total = f_cash + f_knet + f_link + f_wamd + f_snoonu
+
+        p_cash = sale.physical_cash or 0
+        p_knet = sale.physical_knet or 0
+        p_link = sale.physical_link or 0
+        p_wamd = sale.physical_wamd or 0
+        p_snoonu = getattr(sale, "physical_snoonu", 0) or 0
+        physical_total = p_cash + p_knet + p_link + p_wamd + p_snoonu
+
+        lines.append("*POS Data:*")
+        lines.append(f"  Cash: {f_cash:,.3f} | KNET: {f_knet:,.3f} | Link: {f_link:,.3f} | WAMD: {f_wamd:,.3f} | Snoonu: {f_snoonu:,.3f}")
+        lines.append(f"  *Total: KD {foodics_total:,.3f}*")
+        lines.append("")
+        lines.append("*Physical Data:*")
+        lines.append(f"  Cash: {p_cash:,.3f} | KNET: {p_knet:,.3f} | Link: {p_link:,.3f} | WAMD: {p_wamd:,.3f} | Snoonu: {p_snoonu:,.3f}")
+        lines.append(f"  *Total: KD {physical_total:,.3f}*")
+        lines.append("")
+        diff = physical_total - foodics_total
+        diff_sign = "+" if diff >= 0 else ""
+        lines.append(f"Difference: {diff_sign}{diff:,.3f}")
+    else:
+        lines.append("⚠️ No sales data entered for this date")
+
+    msg = "\n".join(lines)
+    result = _send_whatsapp_message(settings.instance_id, settings.api_token, branch.whatsapp_number, msg, settings.api_url or "")
+
+    if "idMessage" in result:
+        return {"message": "Sales report sent to branch", "id": result["idMessage"]}
+    else:
+        raise HTTPException(500, f"Failed to send: {result}")

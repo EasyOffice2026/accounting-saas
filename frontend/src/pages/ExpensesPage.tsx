@@ -72,13 +72,28 @@ export default function ExpensesPage() {
     apiDownload(`/api/export/expense/${exp.id}/pdf`, `expense-${exp.id}.pdf`);
   };
 
-  const handleWhatsApp = (exp: Expense) => {
+  const handleWhatsApp = async (exp: Expense) => {
     const s = suppliers.find(su => su.id === exp.supplier_id);
-    const msg = encodeURIComponent(
-      `Expense Receipt\nDate: ${exp.date}\nDescription: ${exp.description}\nAmount: KD ${exp.amount.toFixed(3)}\nPayment: ${exp.payment_method}\nBranch: ${branchName(exp.branch_id)}`
-    );
-    const phone = s?.whatsapp || "";
-    window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
+    if (!s?.whatsapp) { alert(t("no_whatsapp") || "No WhatsApp number"); return; }
+    try {
+      const fd = new FormData();
+      fd.append("expense_id", String(exp.id));
+      const res = await fetch("/api/whatsapp/send-expense", {
+        method: "POST", body: fd,
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.detail || "Failed to send");
+        return;
+      }
+      alert(t("whatsapp_sent") || "Sent successfully!");
+    } catch {
+      const msg = encodeURIComponent(
+        `Expense Receipt\nDate: ${exp.date}\nDescription: ${exp.description}\nAmount: KD ${exp.amount.toFixed(3)}\nPayment: ${exp.payment_method}\nBranch: ${branchName(exp.branch_id)}`
+      );
+      window.open(`https://wa.me/${s.whatsapp}?text=${msg}`, "_blank");
+    }
   };
 
   const branchName = (id: number) => { const b = branches.find(x => x.id === id); return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : ""; };

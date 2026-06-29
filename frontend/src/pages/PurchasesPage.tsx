@@ -387,9 +387,24 @@ export default function PurchasesPage() {
   const sendWhatsApp = async (order: PurchaseOrder) => {
     const supplier = getSupplier(order.supplier_id);
     if (!supplier?.whatsapp) { alert(t("no_whatsapp")); return; }
-    const orderItems: OrderItem[] = await apiGet(`/api/purchases/orders/${order.id}/items`);
-    const msg = buildOrderMessage(order, orderItems);
-    window.open(`https://wa.me/${supplier.whatsapp.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(msg)}`, "_blank");
+    try {
+      const fd = new FormData();
+      fd.append("order_id", String(order.id));
+      const res = await fetch("/api/whatsapp/send-purchase", {
+        method: "POST", body: fd,
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.detail || "Failed to send");
+        return;
+      }
+      alert(t("whatsapp_sent") || "Sent successfully!");
+    } catch {
+      const orderItems: OrderItem[] = await apiGet(`/api/purchases/orders/${order.id}/items`);
+      const msg = buildOrderMessage(order, orderItems);
+      window.open(`https://wa.me/${supplier.whatsapp.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(msg)}`, "_blank");
+    }
   };
 
 

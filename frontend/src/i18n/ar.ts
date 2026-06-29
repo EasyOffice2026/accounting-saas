@@ -243,6 +243,8 @@ export default {
   instance_id: "معرف المثيل",
   api_token: "رمز API",
   default_phone: "رقم الهاتف الافتراضي",
+  whatsapp_sent: "تم الإرسال عبر واتساب بنجاح!",
+  whatsapp_number: "رقم واتساب",
   whatsapp_saved: "تم حفظ إعدادات واتساب",
   whatsapp_save_error: "فشل في حفظ إعدادات واتساب",
   greenapi_setup_title: "دليل إعداد Green API",

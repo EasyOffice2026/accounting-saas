@@ -79,6 +79,7 @@ interface BranchItem {
   name_ar: string;
   brand_id: number | null;
   is_central_kitchen: boolean;
+  whatsapp_number: string;
   is_active: boolean;
 }
 
@@ -163,6 +164,7 @@ export default function SettingsPage() {
   const [brNameAr, setBrNameAr] = useState("");
   const [brBrandId, setBrBrandId] = useState<string>("");
   const [brIsCK, setBrIsCK] = useState(false);
+  const [brWhatsApp, setBrWhatsApp] = useState("");
   const [brMsg, setBrMsg] = useState("");
   const [brMsgType, setBrMsgType] = useState<"success" | "error">("success");
 
@@ -352,7 +354,7 @@ export default function SettingsPage() {
   };
 
   const resetBranchForm = () => {
-    setBrName(""); setBrNameAr(""); setBrBrandId(""); setBrIsCK(false);
+    setBrName(""); setBrNameAr(""); setBrBrandId(""); setBrIsCK(false); setBrWhatsApp("");
     setEditingBranch(null); setShowBranchForm(false);
   };
 
@@ -362,6 +364,7 @@ export default function SettingsPage() {
     setBrNameAr(b.name_ar);
     setBrBrandId(b.brand_id ? String(b.brand_id) : "");
     setBrIsCK(b.is_central_kitchen);
+    setBrWhatsApp(b.whatsapp_number || "");
     setShowBranchForm(true);
   };
 
@@ -372,6 +375,7 @@ export default function SettingsPage() {
     fd.append("name_ar", brNameAr);
     fd.append("is_central_kitchen", String(brIsCK));
     if (brBrandId) fd.append("brand_id", brBrandId);
+    fd.append("whatsapp_number", brWhatsApp);
     try {
       if (editingBranch) {
         const res = await apiFetch(`/api/branches/${editingBranch.id}`, { method: "PUT", body: fd });
@@ -542,6 +546,11 @@ export default function SettingsPage() {
                     {t("central_kitchen")}
                   </label>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("whatsapp_number")}</label>
+                  <input value={brWhatsApp} onChange={e => setBrWhatsApp(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="965XXXXXXXX" />
+                </div>
               </div>
               <div className="flex gap-2">
                 <button type="submit"
@@ -564,6 +573,7 @@ export default function SettingsPage() {
                   <th className="px-3 py-2 text-left">{t("branch_name_ar")}</th>
                   <th className="px-3 py-2 text-left">{t("brand")}</th>
                   <th className="px-3 py-2 text-left">{t("central_kitchen")}</th>
+                  <th className="px-3 py-2 text-left">{t("whatsapp")}</th>
                   <th className="px-3 py-2 text-left">{t("actions")}</th>
                 </tr>
               </thead>
@@ -576,6 +586,7 @@ export default function SettingsPage() {
                     <td className="px-3 py-2">
                       {b.is_central_kitchen ? <span className="text-green-600 text-xs font-medium">✓</span> : "—"}
                     </td>
+                    <td className="px-3 py-2 text-xs text-gray-500">{b.whatsapp_number || "—"}</td>
                     <td className="px-3 py-2">
                       <button onClick={() => handleEditBranch(b)}
                         className="text-blue-600 hover:underline text-xs mr-3">{t("edit")}</button>

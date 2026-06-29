@@ -11,5 +11,6 @@ class Branch(Base):
     name = Column(String, unique=True, nullable=False)
     name_ar = Column(String, nullable=True)
     is_central_kitchen = Column(Boolean, default=False)
+    whatsapp_number = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

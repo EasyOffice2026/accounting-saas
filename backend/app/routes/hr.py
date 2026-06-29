@@ -478,17 +478,10 @@ def generate_monthly_payroll(
             sp.branch_id = emp.branch_id
             sp.basic_salary = emp.actual_salary
             sp.total_days = total_days
-            # Preserve custom period dates if already set by user edit
-            if sp.period_start and sp.period_end and (sp.period_start != emp_period_start or sp.period_end != emp_period_end):
-                custom_days = (sp.period_end - sp.period_start).days + 1
-                custom_working_days = min(max(custom_days, 0), 30)
-                sp.days_worked = max(0, custom_working_days - total_leave_days)
-                prorated_salary = round(per_day * custom_working_days, 3)
-                net = prorated_salary + fixed_allowances + total_additions - fixed_deductions - loan_ded - penalty_total
-            else:
-                sp.days_worked = actual_days_worked
-                sp.period_start = emp_period_start
-                sp.period_end = emp_period_end
+            # Always recalculate period dates when regenerating
+            sp.days_worked = actual_days_worked
+            sp.period_start = emp_period_start
+            sp.period_end = emp_period_end
             sp.other_allowance = other_benefit_total
             sp.allowances = fixed_allowances
             sp.absence_deduction = absence_ded

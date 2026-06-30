@@ -62,6 +62,11 @@ export default function ContractsPage() {
         <form onSubmit={async (e) => {
           e.preventDefault();
           const fd = new FormData(e.currentTarget);
+          // Inject brand_id from localStorage
+          const savedBrand = localStorage.getItem("selectedBrandId");
+          if (savedBrand && savedBrand !== "group" && !fd.has("brand_id")) {
+            fd.append("brand_id", savedBrand);
+          }
           try {
             if (editing) {
               await apiFetch(`/api/hr/contracts/${editing.id}`, { method: "PUT", body: fd });

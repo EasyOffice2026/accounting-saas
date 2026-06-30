@@ -579,4 +579,28 @@ export default {
   tab_hr_leaves: "الموارد البشرية - الإجازات",
   tab_hr_resignation: "الموارد البشرية - الاستقالة",
 
+  // Missing keys
+  add_payment: "إضافة دفعة",
+  all_brands: "جميع العلامات التجارية",
+  brand: "العلامة التجارية",
+  due_date: "تاريخ الاستحقاق",
+  generate_schedule: "إنشاء جدول الدفع",
+  no_payments: "لم يتم تسجيل دفعات بعد",
+  overdue: "متأخر",
+  payment: "دفعة",
+  payment_schedule: "جدول الدفع",
+  payments: "الدفعات",
+  txn_date: "تاريخ المعاملة",
+  txn_type: "نوع المعاملة",
+  to_brand: "إلى العلامة التجارية",
+  deductions_amount: "مبلغ الخصومات",
+  absence: "غياب",
+  bonus: "مكافأة",
+  incentive: "حافز",
+  leave_salary: "راتب إجازة",
+  loan_deduction: "خصم قرض",
+  penalty: "جزاء",
+  ticket_payment: "دفع تذكرة",
+  input: "إدخال",
+
 };

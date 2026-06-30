@@ -579,4 +579,28 @@ export default {
   tab_hr_leaves: "HR - Leaves",
   tab_hr_resignation: "HR - Resignation",
 
+  // Missing keys
+  add_payment: "Add Payment",
+  all_brands: "All Brands",
+  brand: "Brand",
+  due_date: "Due Date",
+  generate_schedule: "Generate Schedule",
+  no_payments: "No payments recorded yet",
+  overdue: "Overdue",
+  payment: "Payment",
+  payment_schedule: "Payment Schedule",
+  payments: "Payments",
+  txn_date: "Transaction Date",
+  txn_type: "Transaction Type",
+  to_brand: "To Brand",
+  deductions_amount: "Deductions Amount",
+  absence: "Absence",
+  bonus: "Bonus",
+  incentive: "Incentive",
+  leave_salary: "Leave Salary",
+  loan_deduction: "Loan Deduction",
+  penalty: "Penalty",
+  ticket_payment: "Ticket Payment",
+  input: "Input",
+
 };

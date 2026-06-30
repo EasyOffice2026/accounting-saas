@@ -175,17 +175,13 @@ export default function ContractsPage() {
               <th className="px-3 py-3 text-left">{t("contract_type")}</th>
               <th className="px-3 py-3 text-left">{t("contract_period")}</th>
               <th className="px-3 py-3 text-right">{t("contract_value")}</th>
-              <th className="px-3 py-3 text-left">{t("start_date")}</th>
-              <th className="px-3 py-3 text-left">{t("end_date")}</th>
-              <th className="px-3 py-3 text-right">{t("monthly_payment")}</th>
-              <th className="px-3 py-3 text-center">{t("payment_day")}</th>
               <th className="px-3 py-3 text-center">{t("status")}</th>
               {isManager && <th className="px-3 py-3 text-center">{t("actions")}</th>}
             </tr>
           </thead>
           <tbody>
             {contracts.length === 0 ? (
-              <tr><td colSpan={isManager ? 10 : 9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+              <tr><td colSpan={isManager ? 6 : 5} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
             ) : contracts.map(c => (
               <React.Fragment key={c.id}>
               <tr className="border-b hover:bg-gray-50">
@@ -193,10 +189,6 @@ export default function ContractsPage() {
                 <td className="px-3 py-3">{c.kind || "—"}</td>
                 <td className="px-3 py-3">{c.period ? t(c.period) : "—"}</td>
                 <td className="px-3 py-3 text-right">{c.value}</td>
-                <td className="px-3 py-3">{c.start_date || "—"}</td>
-                <td className="px-3 py-3">{c.end_date || "—"}</td>
-                <td className="px-3 py-3 text-right">{c.monthly_payment}</td>
-                <td className="px-3 py-3 text-center">{c.payment_day}</td>
                 <td className="px-3 py-3 text-center">
                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                     c.status === "active" ? "bg-green-100 text-green-700" :
@@ -223,7 +215,7 @@ export default function ContractsPage() {
               {/* Payment tracking expanded row */}
               {expandedContract === c.id && (
                 <tr>
-                  <td colSpan={isManager ? 10 : 9} className="px-4 py-4 bg-gray-50">
+                  <td colSpan={isManager ? 6 : 5} className="px-4 py-4 bg-gray-50">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
                         <h4 className="font-semibold text-sm">{t("payment_schedule")} — {c.name}</h4>

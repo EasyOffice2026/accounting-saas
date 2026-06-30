@@ -193,15 +193,33 @@ def list_whatsapp_groups(db: Session = Depends(get_db), user: User = Depends(get
     if not settings or not settings.instance_id or not settings.api_token:
         raise HTTPException(400, "WhatsApp not configured")
     base = (settings.api_url or "https://api.green-api.com").rstrip("/")
-    url = f"{base}/waInstance{settings.instance_id}/getContacts/{settings.api_token}"
+    inst = settings.instance_id
+    token = settings.api_token
+    groups = []
+    # Try getChats first (returns groups with @g.us ids)
     try:
+        url = f"{base}/waInstance{inst}/getChats/{token}"
         resp = httpx.get(url, timeout=30)
-        contacts = resp.json()
-        groups = [{"id": c.get("id", ""), "name": c.get("name", "")}
-                  for c in contacts if isinstance(c, dict) and str(c.get("id", "")).endswith("@g.us")]
-        return groups
-    except Exception as e:
-        raise HTTPException(500, f"Failed to fetch groups: {str(e)}")
+        if resp.status_code == 200:
+            chats = resp.json()
+            if isinstance(chats, list):
+                groups = [{"id": c.get("id", ""), "name": c.get("name", "") or c.get("id", "")}
+                          for c in chats if isinstance(c, dict) and str(c.get("id", "")).endswith("@g.us")]
+    except Exception:
+        pass
+    # Fallback to getContacts if getChats returned nothing
+    if not groups:
+        try:
+            url = f"{base}/waInstance{inst}/getContacts/{token}"
+            resp = httpx.get(url, timeout=30)
+            if resp.status_code == 200:
+                contacts = resp.json()
+                if isinstance(contacts, list):
+                    groups = [{"id": c.get("id", ""), "name": c.get("name", "") or c.get("id", "")}
+                              for c in contacts if isinstance(c, dict) and str(c.get("id", "")).endswith("@g.us")]
+        except Exception:
+            pass
+    return groups
 
 
 @router.post("/send-daily-report")

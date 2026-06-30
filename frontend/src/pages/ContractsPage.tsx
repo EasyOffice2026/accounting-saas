@@ -15,7 +15,23 @@ interface ContractPaymentRecord {
   payment_method: string | null; reference: string | null; notes: string | null;
 }
 
-const DEFAULT_CONTRACT_TYPES = ["Rent Contract", "Legal Contract", "Internet Contract"];
+const DEFAULT_CONTRACT_TYPES = [
+  "Rent Contract", "Legal Contract", "Internet Contract",
+  "Subscription", "Maintenance Contract", "Consultancy Contract",
+  "Insurance Contract", "Service Contract"
+];
+
+// Map contract type keys to translation keys
+const CONTRACT_TYPE_KEYS: Record<string, string> = {
+  "Rent Contract": "ct_rent",
+  "Legal Contract": "ct_legal",
+  "Internet Contract": "ct_internet",
+  "Subscription": "ct_subscription",
+  "Maintenance Contract": "ct_maintenance",
+  "Consultancy Contract": "ct_consultancy",
+  "Insurance Contract": "ct_insurance",
+  "Service Contract": "ct_service",
+};
 
 export default function ContractsPage() {
   const { t } = useTranslation();
@@ -89,7 +105,7 @@ export default function ContractsPage() {
               <select value={selectedKind} onChange={e => { setSelectedKind(e.target.value); setCustomType(""); }}
                 className="w-full px-3 py-2 border rounded-lg text-sm">
                 <option value="">{t("select")}</option>
-                {contractTypes.map(k => <option key={k} value={k}>{k}</option>)}
+                {contractTypes.map(k => <option key={k} value={k}>{CONTRACT_TYPE_KEYS[k] ? t(CONTRACT_TYPE_KEYS[k]) : k}</option>)}
                 <option value="__custom__">{t("add_new_type")}</option>
               </select>
               {selectedKind === "__custom__" && (
@@ -191,7 +207,7 @@ export default function ContractsPage() {
               <React.Fragment key={c.id}>
               <tr className="border-b hover:bg-gray-50">
                 <td className="px-3 py-3 font-medium">{c.name}</td>
-                <td className="px-3 py-3">{c.kind || "—"}</td>
+                <td className="px-3 py-3">{c.kind ? (CONTRACT_TYPE_KEYS[c.kind] ? t(CONTRACT_TYPE_KEYS[c.kind]) : c.kind) : "—"}</td>
                 <td className="px-3 py-3">{c.period ? t(c.period) : "—"}</td>
                 <td className="px-3 py-3 text-right">{c.value}</td>
                 <td className="px-3 py-3 text-center">

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiGet, apiFetch, apiPost } from "../contexts/api";
 
 interface ContractRecord {
-  id: number; name: string; kind: string; place: string;
+  id: number; name: string; kind: string; place: string; period: string;
   value: number; start_date: string; end_date: string;
   monthly_payment: number; payment_day: number;
   notes: string; status: string; created_at: string;
@@ -94,8 +94,15 @@ export default function ContractsPage() {
               <input type="hidden" name="kind" value={selectedKind === "__custom__" ? customType : selectedKind} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">{t("contract_place")}</label>
-              <input type="text" name="place" defaultValue={editing?.place || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+              <label className="block text-sm font-medium mb-1">{t("contract_period")}</label>
+              <select name="period" defaultValue={editing?.period || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="">{t("select")}</option>
+                <option value="weekly">{t("weekly")}</option>
+                <option value="monthly">{t("monthly")}</option>
+                <option value="quarterly">{t("quarterly")}</option>
+                <option value="half_yearly">{t("half_yearly")}</option>
+                <option value="yearly">{t("yearly")}</option>
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">{t("contract_value")}</label>
@@ -166,7 +173,7 @@ export default function ContractsPage() {
             <tr>
               <th className="px-3 py-3 text-left">{t("contract_name")}</th>
               <th className="px-3 py-3 text-left">{t("contract_type")}</th>
-              <th className="px-3 py-3 text-left">{t("contract_place")}</th>
+              <th className="px-3 py-3 text-left">{t("contract_period")}</th>
               <th className="px-3 py-3 text-right">{t("contract_value")}</th>
               <th className="px-3 py-3 text-left">{t("start_date")}</th>
               <th className="px-3 py-3 text-left">{t("end_date")}</th>
@@ -184,7 +191,7 @@ export default function ContractsPage() {
               <tr className="border-b hover:bg-gray-50">
                 <td className="px-3 py-3 font-medium">{c.name}</td>
                 <td className="px-3 py-3">{c.kind || "—"}</td>
-                <td className="px-3 py-3">{c.place || "—"}</td>
+                <td className="px-3 py-3">{c.period ? t(c.period) : "—"}</td>
                 <td className="px-3 py-3 text-right">{c.value}</td>
                 <td className="px-3 py-3">{c.start_date || "—"}</td>
                 <td className="px-3 py-3">{c.end_date || "—"}</td>

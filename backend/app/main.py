@@ -240,6 +240,9 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE contracts ADD COLUMN brand_id INTEGER REFERENCES brands(id)"))
                 conn.execute(text("UPDATE contracts SET brand_id = 1 WHERE brand_id IS NULL"))
                 conn.commit()
+            if "period" not in cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN period TEXT"))
+                conn.commit()
 
         # Transfer order lines: add item_name_ar
         if "transfer_order_lines" in insp.get_table_names():

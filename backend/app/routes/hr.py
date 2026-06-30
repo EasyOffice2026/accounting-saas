@@ -1309,7 +1309,7 @@ def delete_resignation(res_id: int, db: Session = Depends(get_db),
 def _contract_to_dict(c):
     return {
         "id": c.id, "brand_id": c.brand_id, "name": c.name or "", "kind": c.kind or "",
-        "place": c.place or "", "value": c.value or 0,
+        "place": c.place or "", "period": c.period or "", "value": c.value or 0,
         "start_date": str(c.start_date) if c.start_date else "",
         "end_date": str(c.end_date) if c.end_date else "",
         "monthly_payment": c.monthly_payment or 0,
@@ -1332,6 +1332,7 @@ def list_contracts(brand_id: Optional[int] = None, db: Session = Depends(get_db)
 def create_contract(
     name: str = Form(...),
     kind: str = Form(""), place: str = Form(""),
+    period: str = Form(""),
     value: float = Form(0), start_date: str = Form(""),
     end_date: str = Form(""), monthly_payment: float = Form(0),
     payment_day: int = Form(1), notes: str = Form(""),
@@ -1343,6 +1344,7 @@ def create_contract(
         raise HTTPException(403, "Not authorized")
     c = Contract(
         name=name, kind=kind or None, place=place or None,
+        period=period or None,
         value=value, monthly_payment=monthly_payment,
         payment_day=payment_day, notes=notes or None, status=status,
         brand_id=brand_id,
@@ -1360,6 +1362,7 @@ def update_contract(
     contract_id: int,
     name: str = Form(...),
     kind: str = Form(""), place: str = Form(""),
+    period: str = Form(""),
     value: float = Form(0), start_date: str = Form(""),
     end_date: str = Form(""), monthly_payment: float = Form(0),
     payment_day: int = Form(1), notes: str = Form(""),
@@ -1374,6 +1377,7 @@ def update_contract(
     c.name = name
     c.kind = kind or None
     c.place = place or None
+    c.period = period or None
     c.value = value
     c.monthly_payment = monthly_payment
     c.payment_day = payment_day

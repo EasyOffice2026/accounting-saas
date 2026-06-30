@@ -224,6 +224,7 @@ class Contract(Base):
     name = Column(String, nullable=False)
     kind = Column(String, nullable=True)
     place = Column(String, nullable=True)
+    period = Column(String, nullable=True)  # weekly, monthly, quarterly, half_yearly, yearly
     value = Column(Float, default=0)
     start_date = Column(Date, nullable=True)
     end_date = Column(Date, nullable=True)

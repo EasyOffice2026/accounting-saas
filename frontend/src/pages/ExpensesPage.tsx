@@ -89,10 +89,7 @@ export default function ExpensesPage() {
       }
       alert(t("whatsapp_sent") || "Sent successfully!");
     } catch {
-      const msg = encodeURIComponent(
-        `Expense Receipt\nDate: ${exp.date}\nDescription: ${exp.description}\nAmount: KD ${exp.amount.toFixed(3)}\nPayment: ${exp.payment_method}\nBranch: ${branchName(exp.branch_id)}`
-      );
-      window.open(`https://wa.me/${s.whatsapp}?text=${msg}`, "_blank");
+      alert("Failed to send via Green API. Check Settings → WhatsApp Integration.");
     }
   };
 

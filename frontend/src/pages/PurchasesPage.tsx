@@ -372,18 +372,6 @@ export default function PurchasesPage() {
   const branchName = (id: number) => { const b = branches.find(x => x.id === id); return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : ""; };
   const getSupplier = (id: number) => suppliers.find(s => s.id === id);
 
-  const buildOrderMessage = (order: PurchaseOrder, orderItems: OrderItem[]) => {
-    const supplier = getSupplier(order.supplier_id);
-    let msg = `*Purchase Order #${order.id}*\n`;
-    msg += `Date: ${order.date}\nBranch: ${branchName(order.branch_id)}\n`;
-    msg += `Supplier: ${supplier?.name || ""}\nPayment: ${order.payment_type}\n\n*Items:*\n`;
-    orderItems.forEach((item, i) => {
-      msg += `${i + 1}. ${item.item_name} - ${item.quantity} ${item.unit} x KD ${item.unit_price.toFixed(3)} = KD ${item.total.toFixed(3)}\n`;
-    });
-    msg += `\n*Total: KD ${order.total_amount.toFixed(3)}*`;
-    return msg;
-  };
-
   const sendWhatsApp = async (order: PurchaseOrder) => {
     const supplier = getSupplier(order.supplier_id);
     if (!supplier?.whatsapp) { alert(t("no_whatsapp")); return; }
@@ -396,14 +384,12 @@ export default function PurchasesPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.detail || "Failed to send");
+        alert(err.detail || "Failed to send via Green API");
         return;
       }
-      alert(t("whatsapp_sent") || "Sent successfully!");
-    } catch {
-      const orderItems: OrderItem[] = await apiGet(`/api/purchases/orders/${order.id}/items`);
-      const msg = buildOrderMessage(order, orderItems);
-      window.open(`https://wa.me/${supplier.whatsapp.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(msg)}`, "_blank");
+      alert(t("whatsapp_sent") || "Sent successfully via Green API!");
+    } catch (e) {
+      alert("Failed to send via Green API. Check Settings → WhatsApp Integration.");
     }
   };
 

@@ -450,10 +450,11 @@ def generate_monthly_payroll(
         ).all()
         loan_ded = sum(l.monthly_deduction for l in active_loans)
 
-        # Auto-calculate benefits from StaffBenefitDeduction for this month
+        # Auto-calculate benefits from StaffBenefitDeduction for this month (approved only)
         ben_deds = db.query(StaffBenefitDeduction).filter(
             StaffBenefitDeduction.employee_id == emp.id,
             StaffBenefitDeduction.month == month,
+            StaffBenefitDeduction.approval_status == "approved",
         ).all()
         incentive_total = sum(b.amount for b in ben_deds if b.category == "incentive")
         bonus_total = sum(b.amount for b in ben_deds if b.category == "bonus")

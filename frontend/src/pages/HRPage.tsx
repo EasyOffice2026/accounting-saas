@@ -146,6 +146,9 @@ export default function HRPage() {
   const [deductionItems, setDeductionItems] = useState<BenefitDeduction[]>([]);
   const [showDeductionForm, setShowDeductionForm] = useState(false);
   const [editingDeduction, setEditingDeduction] = useState<BenefitDeduction | null>(null);
+  const [dedSelectedEmpId, setDedSelectedEmpId] = useState<number | null>(null);
+  const [dedDays, setDedDays] = useState<number>(0);
+  const [dedAmount, setDedAmount] = useState<number>(0);
 
   // Leave/Absence state
   const [leaveRecords, setLeaveRecords] = useState<LeaveRec[]>([]);
@@ -1815,18 +1818,29 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       {tab === "deductions" && (
         <div>
           {isManager && (
-            <button onClick={() => { setShowDeductionForm(!showDeductionForm); setEditingDeduction(null); }}
+            <button onClick={() => { setShowDeductionForm(!showDeductionForm); setEditingDeduction(null); setDedSelectedEmpId(null); setDedDays(0); setDedAmount(0); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
               {showDeductionForm ? t("cancel") : t("add_new")}
             </button>
           )}
 
-          {showDeductionForm && (
+          {showDeductionForm && (() => {
+            const dedEmp = employees.find(e => e.id === dedSelectedEmpId);
+            const dedSalary = dedEmp?.actual_salary || 0;
+            const dedDailyRate = dedSalary / 30;
+            return (
             <form onSubmit={handleDeductionSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("employee")}</label>
-                  <select name="employee_id" required defaultValue={editingDeduction?.employee_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="employee_id" required defaultValue={editingDeduction?.employee_id || ""}
+                    onChange={(e) => {
+                      const empId = Number(e.target.value);
+                      setDedSelectedEmpId(empId || null);
+                      setDedDays(0);
+                      setDedAmount(0);
+                    }}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select_employee")}</option>
                     {employees.map(e => <option key={e.id} value={e.id}>{e.name_ar || e.name}</option>)}
                   </select>
@@ -1839,9 +1853,30 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <option value="other_deduction">{t("other_deduction")}</option>
                   </select>
                 </div>
+                {dedSelectedEmpId && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("salary")}</label>
+                    <input type="text" readOnly value={`KD ${dedSalary.toFixed(3)}`}
+                      className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-100 font-mono" />
+                    <span className="text-xs text-gray-500">{t("daily_rate")}: KD {dedDailyRate.toFixed(3)}</span>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("days")}</label>
+                  <input type="number" min="0" max="30" step="1" value={dedDays}
+                    onChange={(e) => {
+                      const d = Number(e.target.value) || 0;
+                      setDedDays(d);
+                      setDedAmount(Number((dedDailyRate * d).toFixed(3)));
+                    }}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <span className="text-xs text-gray-500">{t("salary")} / 30 × {t("days")}</span>
+                </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("amount")}</label>
-                  <input type="number" step="0.001" name="amount" required defaultValue={editingDeduction?.amount || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="number" step="0.001" name="amount" required value={dedAmount}
+                    onChange={(e) => setDedAmount(Number(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
@@ -1861,7 +1896,8 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 {editingDeduction ? t("update") : t("save")}
               </button>
             </form>
-          )}
+            );
+          })()}
 
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
             <table className="w-full text-sm">
@@ -1899,7 +1935,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     </td>
                     {isManager && (
                       <td className="px-4 py-3 space-x-2">
-                        <button onClick={() => { setEditingDeduction(d); setShowDeductionForm(true); }}
+                        <button onClick={() => { setEditingDeduction(d); setShowDeductionForm(true); setDedSelectedEmpId(d.employee_id); setDedAmount(d.amount); setDedDays(0); }}
                           className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
                         <button onClick={() => handleDeleteDeduction(d.id)}
                           className="text-red-600 hover:underline text-xs">{t("delete")}</button>

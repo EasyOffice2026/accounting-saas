@@ -440,12 +440,42 @@ def generate_monthly_payroll(
             emp_period_days = min(max(emp_period_days, 0), 30)
 
         # Auto-calculate leave/absence days for this month
-        leave_recs = db.query(LeaveRecord).filter(
+        # Find leave records by month field OR by date range overlap with payroll period
+        leave_recs_by_month = db.query(LeaveRecord).filter(
             LeaveRecord.employee_id == emp.id,
             LeaveRecord.month == month,
+            LeaveRecord.approval_status == "approved",
         ).all()
-        unpaid_absence_days = sum(lr.days for lr in leave_recs if not lr.is_paid)
-        paid_leave_days = sum(lr.days for lr in leave_recs if lr.is_paid)
+        # Also find leave records whose date range overlaps with this payroll month
+        leave_recs_by_date = db.query(LeaveRecord).filter(
+            LeaveRecord.employee_id == emp.id,
+            LeaveRecord.start_date <= p_end,
+            LeaveRecord.end_date >= p_start,
+            LeaveRecord.approval_status == "approved",
+        ).all()
+        # Merge both sets (deduplicate by id)
+        seen_ids = set()
+        leave_recs = []
+        for lr in leave_recs_by_month + leave_recs_by_date:
+            if lr.id not in seen_ids:
+                seen_ids.add(lr.id)
+                leave_recs.append(lr)
+
+        # Calculate actual days within this payroll month for each leave record
+        unpaid_absence_days = 0
+        paid_leave_days = 0
+        for lr in leave_recs:
+            # Calculate overlap between leave period and payroll month
+            overlap_start = max(lr.start_date, p_start)
+            overlap_end = min(lr.end_date, p_end)
+            overlap_days = max(0, (overlap_end - overlap_start).days + 1)
+            # Cap at 30 days (salary basis)
+            overlap_days = min(overlap_days, 30)
+            if lr.is_paid:
+                paid_leave_days += overlap_days
+            else:
+                unpaid_absence_days += overlap_days
+
         total_leave_days = unpaid_absence_days + paid_leave_days
         actual_days_worked = max(0, emp_period_days - total_leave_days)
 

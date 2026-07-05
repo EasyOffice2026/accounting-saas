@@ -399,7 +399,21 @@ def generate_monthly_payroll(
 
     created = 0
     updated = 0
+    skipped_resigned = []
     for emp in employees:
+        # Skip employees whose last working date is before this payroll month
+        if emp.last_working_date and emp.last_working_date < p_start:
+            # Also clean up any existing pending salary record for this month
+            old_rec = db.query(SalaryPayment).filter(
+                SalaryPayment.employee_id == emp.id,
+                SalaryPayment.month == month,
+                SalaryPayment.status == "pending",
+            ).first()
+            if old_rec:
+                db.delete(old_rec)
+            skipped_resigned.append(emp.id)
+            continue
+
         existing = db.query(SalaryPayment).filter(
             SalaryPayment.employee_id == emp.id,
             SalaryPayment.month == month,

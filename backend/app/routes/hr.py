@@ -440,18 +440,16 @@ def generate_monthly_payroll(
             emp_period_days = min(max(emp_period_days, 0), 30)
 
         # Auto-calculate leave/absence days for this month
-        # Find leave records by month field OR by date range overlap with payroll period
+        # Simple rule: any leave record whose dates overlap with this payroll month
+        # No approval filter — if leave is recorded, it affects salary
         leave_recs_by_month = db.query(LeaveRecord).filter(
             LeaveRecord.employee_id == emp.id,
             LeaveRecord.month == month,
-            LeaveRecord.approval_status == "approved",
         ).all()
-        # Also find leave records whose date range overlaps with this payroll month
         leave_recs_by_date = db.query(LeaveRecord).filter(
             LeaveRecord.employee_id == emp.id,
             LeaveRecord.start_date <= p_end,
             LeaveRecord.end_date >= p_start,
-            LeaveRecord.approval_status == "approved",
         ).all()
         # Merge both sets (deduplicate by id)
         seen_ids = set()

@@ -10,13 +10,15 @@ interface Sale {
   foodics_talabat: number; foodics_keeta: number; foodics_jahez: number; foodics_other: number; foodics_snoonu: number;
   physical_cash: number; physical_knet: number; physical_link: number; physical_wamd: number;
   physical_talabat: number; physical_keeta: number; physical_jahez: number; physical_other: number; physical_snoonu: number;
+  cancelled_cash: number; cancelled_knet: number; cancelled_link: number;
+  cancelled_talabat: number; cancelled_keeta: number; cancelled_jahez: number; cancelled_snoonu: number;
   attachment_path: string | null;
 }
 
 const displayChannels = ["cash", "knet", "link"] as const;
 const allChannels = ["cash", "knet", "link", "talabat", "jahez", "keeta", "snoonu"] as const;
 
-function sumRow(s: Sale, prefix: "foodics" | "physical") {
+function sumRow(s: Sale, prefix: "foodics" | "physical" | "cancelled") {
   return allChannels.reduce((acc, ch) => acc + ((s as unknown as Record<string, number>)[`${prefix}_${ch}`] || 0), 0);
 }
 
@@ -30,6 +32,32 @@ export default function SalesPage() {
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
+
+  // Form state for new table-style entry
+  const [formBranch, setFormBranch] = useState<number | null>(null);
+  const [formDate, setFormDate] = useState("");
+  const [formDateLocked, setFormDateLocked] = useState(false);
+  const [formData, setFormData] = useState<Record<string, number>>({});
+
+  const formChannels = ["cash", "knet", "link", "talabat", "keeta", "jahez", "snoonu"] as const;
+
+  const getFormVal = (prefix: string, ch: string) => formData[`${prefix}_${ch}`] || 0;
+  const setFormVal = (prefix: string, ch: string, val: number) => {
+    setFormData(prev => ({ ...prev, [`${prefix}_${ch}`]: val }));
+  };
+  const formRowFinal = (ch: string) => {
+    return getFormVal("foodics", ch) - getFormVal("physical", ch) - getFormVal("cancelled", ch);
+  };
+  const formColTotal = (prefix: string) => formChannels.reduce((s, ch) => s + getFormVal(prefix, ch), 0);
+  const formFinalTotal = () => formChannels.reduce((s, ch) => s + formRowFinal(ch), 0);
+
+  const fetchNextDate = async (bid: number) => {
+    try {
+      const res = await apiGet(`/api/sales/next-date?branch_id=${bid}`);
+      setFormDate(res.next_date);
+      setFormDateLocked(res.has_previous);
+    } catch { /* ignore */ }
+  };
 
   const isStaff = user?.role === "staff";
   const isOwnerManager = user?.role === "owner" || user?.role === "manager";
@@ -102,11 +130,23 @@ export default function SalesPage() {
         return;
       }
       setShowForm(false);
+      setFormData({});
+      setFormDate("");
+      setFormDateLocked(false);
+      setFormBranch(null);
       loadSales(branchFilter);
     } catch {
       setError(t("duplicate_date_error"));
     }
   };
+
+  // Auto-fetch next date when form opens for staff users
+  useEffect(() => {
+    if (showForm && user?.branch_id) {
+      setFormBranch(user.branch_id);
+      fetchNextDate(user.branch_id);
+    }
+  }, [showForm, user?.branch_id]);
 
   const branchName = (id: number) => {
     const b = branches.find(br => br.id === id);
@@ -284,13 +324,21 @@ export default function SalesPage() {
 
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
+          {/* Branch & Date row */}
           <div className="grid grid-cols-2 gap-4">
             {user?.branch_id ? (
               <input type="hidden" name="branch_id" value={user.branch_id} />
             ) : (
               <div>
                 <label className="block text-sm font-medium mb-1">{t("branch")}</label>
-                <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm"
+                  value={formBranch ?? ""}
+                  onChange={e => {
+                    const bid = Number(e.target.value);
+                    setFormBranch(bid);
+                    if (bid) fetchNextDate(bid);
+                  }}>
+                  <option value="">{t("select")}</option>
                   {branches.filter(b => !b.name.includes("Central")).map(b => (
                     <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>
                   ))}
@@ -299,52 +347,98 @@ export default function SalesPage() {
             )}
             <div>
               <label className="block text-sm font-medium mb-1">{t("date")}</label>
-              <input type="date" name="sale_date" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+              <input type="date" name="sale_date" required
+                value={formDate}
+                readOnly={formDateLocked}
+                onChange={e => !formDateLocked && setFormDate(e.target.value)}
+                className={`w-full px-3 py-2 border rounded-lg text-sm ${formDateLocked ? "bg-gray-100 cursor-not-allowed" : ""}`} />
+              {formDateLocked && (
+                <p className="text-[10px] text-orange-600 mt-1">{t("date_sequential_note") || "Date is auto-set to maintain sequence. No days can be skipped."}</p>
+              )}
             </div>
           </div>
 
-          <h3 className="font-semibold text-emerald-700 text-sm">{t("pos_data")}</h3>
-          <div className="flex gap-1.5 flex-wrap">
-            {allChannels.map(ch => (
-              <div key={`f_${ch}`} className="flex flex-col items-center" style={{ minWidth: 0, flex: "1 1 0" }}>
-                <label className="text-[10px] text-gray-500 mb-0.5 truncate w-full text-center">{t(ch)}</label>
-                <input type="number" step="0.001" name={`foodics_${ch}`} defaultValue="0"
-                  className="w-full px-1 py-1 border rounded text-xs text-center" style={{ minWidth: "60px" }} />
-              </div>
-            ))}
+          {/* Table-style data entry: rows = channels, cols = POS, Physical, Cancelled, Final */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border px-3 py-2 text-left w-28"></th>
+                  <th className="border px-3 py-2 text-center text-emerald-700 font-semibold">{t("point_of_sale") || "Point of Sale"}</th>
+                  <th className="border px-3 py-2 text-center text-blue-700 font-semibold">{t("physical") || "Physical"}</th>
+                  <th className="border px-3 py-2 text-center text-red-700 font-semibold">{t("cancelled") || "Cancelled"}</th>
+                  <th className="border px-3 py-2 text-center text-gray-800 font-bold">{t("final_sales") || "Final Sales"}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {formChannels.map(ch => {
+                  const final = formRowFinal(ch);
+                  return (
+                    <tr key={ch} className="hover:bg-gray-50">
+                      <td className="border px-3 py-2 font-medium text-gray-700">{t(ch)}</td>
+                      <td className="border px-1 py-1">
+                        <input type="number" step="0.001" name={`foodics_${ch}`}
+                          value={getFormVal("foodics", ch) || ""}
+                          onChange={e => setFormVal("foodics", ch, parseFloat(e.target.value) || 0)}
+                          placeholder="0.000"
+                          className="w-full px-2 py-1.5 text-center text-sm border-0 focus:ring-2 focus:ring-emerald-300 rounded" />
+                      </td>
+                      <td className="border px-1 py-1">
+                        <input type="number" step="0.001" name={`physical_${ch}`}
+                          value={getFormVal("physical", ch) || ""}
+                          onChange={e => setFormVal("physical", ch, parseFloat(e.target.value) || 0)}
+                          placeholder="0.000"
+                          className="w-full px-2 py-1.5 text-center text-sm border-0 focus:ring-2 focus:ring-blue-300 rounded" />
+                      </td>
+                      <td className="border px-1 py-1">
+                        <input type="number" step="0.001" name={`cancelled_${ch}`}
+                          value={getFormVal("cancelled", ch) || ""}
+                          onChange={e => setFormVal("cancelled", ch, parseFloat(e.target.value) || 0)}
+                          placeholder="0.000"
+                          className="w-full px-2 py-1.5 text-center text-sm border-0 focus:ring-2 focus:ring-red-300 rounded" />
+                      </td>
+                      <td className={`border px-3 py-2 text-center font-mono font-bold ${final < 0 ? "text-red-600 bg-red-50" : final > 0 ? "text-orange-600 bg-orange-50" : "text-green-600 bg-green-50"}`}>
+                        {final.toFixed(3)}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {/* Totals row */}
+                <tr className="bg-gray-100 font-bold">
+                  <td className="border px-3 py-2">{t("total")}</td>
+                  <td className="border px-3 py-2 text-center font-mono text-emerald-700">{formColTotal("foodics").toFixed(3)}</td>
+                  <td className="border px-3 py-2 text-center font-mono text-blue-700">{formColTotal("physical").toFixed(3)}</td>
+                  <td className="border px-3 py-2 text-center font-mono text-red-700">{formColTotal("cancelled").toFixed(3)}</td>
+                  <td className={`border px-3 py-2 text-center font-mono ${formFinalTotal() < 0 ? "text-red-600" : formFinalTotal() > 0 ? "text-orange-600" : "text-green-600"}`}>
+                    {formFinalTotal().toFixed(3)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
 
-          <h3 className="font-semibold text-blue-700 text-sm">{t("physical_data")}</h3>
-          <div className="flex gap-1.5 flex-wrap">
-            {allChannels.map(ch => (
-              <div key={`p_${ch}`} className="flex flex-col items-center" style={{ minWidth: 0, flex: "1 1 0" }}>
-                <label className="text-[10px] text-gray-500 mb-0.5 truncate w-full text-center">{t(ch)}</label>
-                <input type="number" step="0.001" name={`physical_${ch}`} defaultValue="0"
-                  className="w-full px-1 py-1 border rounded text-xs text-center" style={{ minWidth: "60px" }} />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">{t("notes")}</label>
+              <textarea name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">{t("attachment")}</label>
+              <div className="flex gap-2">
+                <input type="file" name="attachment" ref={fileRef} className="text-sm" accept="image/*,.pdf" />
+                <input type="file" name="camera_attachment" ref={cameraRef} capture="environment" accept="image/*"
+                  className="hidden" onChange={e => {
+                    if (e.target.files?.[0] && fileRef.current) {
+                      const dt = new DataTransfer();
+                      dt.items.add(e.target.files[0]);
+                      fileRef.current.files = dt.files;
+                    }
+                  }} />
+                <button type="button" onClick={() => cameraRef.current?.click()}
+                  className="px-3 py-1.5 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
+                  {t("take_picture")}
+                </button>
               </div>
-            ))}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">{t("notes")}</label>
-            <textarea name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">{t("attachment")}</label>
-            <div className="flex gap-2">
-              <input type="file" name="attachment" ref={fileRef} className="text-sm" accept="image/*,.pdf" />
-              <input type="file" name="camera_attachment" ref={cameraRef} capture="environment" accept="image/*"
-                className="hidden" onChange={e => {
-                  if (e.target.files?.[0] && fileRef.current) {
-                    const dt = new DataTransfer();
-                    dt.items.add(e.target.files[0]);
-                    fileRef.current.files = dt.files;
-                  }
-                }} />
-              <button type="button" onClick={() => cameraRef.current?.click()}
-                className="px-3 py-1.5 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
-                📷 {t("take_picture")}
-              </button>
             </div>
           </div>
           <button type="submit"

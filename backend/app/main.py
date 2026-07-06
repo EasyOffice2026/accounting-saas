@@ -288,7 +288,7 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE suppliers ADD COLUMN whatsapp_group TEXT"))
                 conn.commit()
 
-        # Sales: add snoonu columns
+        # Sales: add snoonu and cancelled columns
         if "sales" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("sales")]
             if "foodics_snoonu" not in cols:
@@ -297,6 +297,11 @@ def _migrate_columns():
             if "physical_snoonu" not in cols:
                 conn.execute(text("ALTER TABLE sales ADD COLUMN physical_snoonu FLOAT DEFAULT 0"))
                 conn.commit()
+            for ch in ["cash", "knet", "link", "talabat", "keeta", "jahez", "snoonu"]:
+                col = f"cancelled_{ch}"
+                if col not in cols:
+                    conn.execute(text(f"ALTER TABLE sales ADD COLUMN {col} FLOAT DEFAULT 0"))
+            conn.commit()
 
         # Contract payments table
         if "contract_payments" not in insp.get_table_names():

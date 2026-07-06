@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 import os, uuid
 
@@ -45,6 +45,10 @@ def create_sale(
     physical_talabat: float = Form(0), physical_keeta: float = Form(0),
     physical_jahez: float = Form(0), physical_other: float = Form(0),
     physical_snoonu: float = Form(0),
+    cancelled_cash: float = Form(0), cancelled_knet: float = Form(0),
+    cancelled_link: float = Form(0), cancelled_talabat: float = Form(0),
+    cancelled_keeta: float = Form(0), cancelled_jahez: float = Form(0),
+    cancelled_snoonu: float = Form(0),
     notes: str = Form(""),
     attachment: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
@@ -80,6 +84,10 @@ def create_sale(
         physical_talabat=physical_talabat, physical_keeta=physical_keeta,
         physical_jahez=physical_jahez, physical_other=physical_other,
         physical_snoonu=physical_snoonu,
+        cancelled_cash=cancelled_cash, cancelled_knet=cancelled_knet,
+        cancelled_link=cancelled_link, cancelled_talabat=cancelled_talabat,
+        cancelled_keeta=cancelled_keeta, cancelled_jahez=cancelled_jahez,
+        cancelled_snoonu=cancelled_snoonu,
         notes=notes, attachment_path=attachment_path,
         created_by=user.id,
     )
@@ -133,6 +141,18 @@ def sales_summary(branch_id: Optional[int] = None, db: Session = Depends(get_db)
         "difference": total_physical - total_foodics,
         "count": len(rows),
     }
+
+
+@router.get("/next-date")
+def get_next_date(branch_id: int, db: Session = Depends(get_db),
+                  _=Depends(get_current_user)):
+    """Return the next expected date for sequential entry."""
+    latest = db.query(Sale).filter(Sale.branch_id == branch_id).order_by(Sale.date.desc()).first()
+    if latest:
+        next_d = latest.date + timedelta(days=1)
+    else:
+        next_d = date.today()
+    return {"next_date": next_d.isoformat(), "has_previous": latest is not None}
 
 
 @router.get("/returns")

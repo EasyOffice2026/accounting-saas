@@ -535,6 +535,10 @@ export default {
   due_on_day: "مستحق في يوم",
   expired: "منتهي",
   cancelled: "ملغى",
+  point_of_sale: "نقطة البيع",
+  physical: "الفعلي",
+  final_sales: "المبيعات النهائية",
+  date_sequential_note: "التاريخ يتم تعيينه تلقائياً للحفاظ على التسلسل. لا يمكن تخطي أي يوم.",
 
   // Brand / Multi-tenant
   select_company: "اختر الشركة",

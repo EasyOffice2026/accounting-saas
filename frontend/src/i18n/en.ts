@@ -535,6 +535,10 @@ export default {
   due_on_day: "due on day",
   expired: "Expired",
   cancelled: "Cancelled",
+  point_of_sale: "Point of Sale",
+  physical: "Physical",
+  final_sales: "Final Sales",
+  date_sequential_note: "Date is auto-set to maintain sequence. No days can be skipped.",
 
   // Brand / Multi-tenant
   select_company: "Select Company",

@@ -153,9 +153,15 @@ def create_employee(
         existing = db.query(Employee).filter(Employee.civil_id == civil_id.strip()).first()
         if existing:
             raise HTTPException(400, f"Employee with Civil ID {civil_id} already exists")
-    # Auto-generate staff_no
-    max_no = db.query(Employee).count()
-    generated_staff_no = f"EMP-{max_no + 1:04d}"
+    # Auto-generate staff_no with Emp-XXX pattern
+    import re as _re
+    max_num = 0
+    all_staff_nos = [e.staff_no for e in db.query(Employee.staff_no).all() if e.staff_no]
+    for sn in all_staff_nos:
+        m = _re.search(r'(\d+)$', sn)
+        if m:
+            max_num = max(max_num, int(m.group(1)))
+    generated_staff_no = f"Emp-{max_num + 1:03d}"
     emp = Employee(
         branch_id=branch_id, name=name, staff_no=generated_staff_no,
         name_ar=name_ar, civil_id=civil_id, position=position, phone=phone,

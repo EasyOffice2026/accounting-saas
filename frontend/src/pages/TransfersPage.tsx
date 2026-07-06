@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet, apiPost } from "../contexts/api";
+import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Branch { id: number; name: string; is_central_kitchen: boolean; }
@@ -173,11 +173,23 @@ export default function TransfersPage() {
             {showForm ? t("cancel") : t("new_request")}
           </button>
         )}
-        {tab === "items" && isOwnerManager && (
-          <button onClick={() => { setShowItemForm(!showItemForm); setEditItem(null); }}
-            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
-            {showItemForm ? t("cancel") : t("add_item")}
-          </button>
+        {tab === "items" && (
+          <div className="flex gap-2">
+            <button onClick={() => apiDownload(`/api/export/transfer-items/excel?category=${itemCategory}`, `transfer_items_${itemCategory}.xlsx`)}
+              className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+              {t("export_excel")}
+            </button>
+            <button onClick={() => apiDownload(`/api/export/transfer-items/pdf?category=${itemCategory}`, `transfer_items_${itemCategory}.pdf`)}
+              className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
+              {t("export_pdf")}
+            </button>
+            {isOwnerManager && (
+              <button onClick={() => { setShowItemForm(!showItemForm); setEditItem(null); }}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
+                {showItemForm ? t("cancel") : t("add_item")}
+              </button>
+            )}
+          </div>
         )}
       </div>
 

@@ -476,6 +476,20 @@ def export_cash(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[in
     return _respond(fmt, header, data, "cash_management", "Cash Management Report")
 
 
+@router.get("/transfer-items/{fmt}")
+def export_transfer_items(fmt: str, category: Optional[str] = None,
+                          db: Session = Depends(get_db), _=Depends(get_current_user)):
+    from app.models.transfer import TransferItem
+    q = db.query(TransferItem).filter(TransferItem.is_active == True)
+    if category:
+        q = q.filter(TransferItem.category == category)
+    items = q.order_by(TransferItem.name).all()
+    header = ["Item Name", "Item Name (Arabic)", "Unit", "Unit Price", "Category"]
+    data = [[i.name, i.name_ar or "", i.unit, f"{(i.unit_price or 0):.3f}", i.category or "food"] for i in items]
+    title = f"Transfer Items - {'Food' if category == 'food' else 'Packaging' if category == 'packaging' else 'All'}"
+    return _respond(fmt, header, data, "transfer_items", title)
+
+
 # ── Bulk Payslips PDF (one full A4 page per employee) ───────────────
 # NOTE: This route MUST be defined before /salary/{fmt} to avoid being
 # swallowed by the path-parameter route.

@@ -203,31 +203,34 @@ def build_sales_message(sale: Optional[Sale], branch: Branch, target_date: date,
         return "\n".join(head_lines)
 
     if ar:
-        cols = ["طريق", "نقطة البيع", "الفعلي", "ملغى", "النهائية"]
+        cols = ["طريق", "نقطة البيع", "الفعلي"]
         total_label = "الإجمالي"
+        diff_label = "الفرق"
     else:
-        cols = ["Channel", "POS", "Physical", "Cancelled", "Final"]
+        cols = ["Channel", "POS", "Physical"]
         total_label = "Total"
+        diff_label = "Difference"
 
     rows = []
-    t_pos = t_phys = t_can = t_fin = 0.0
+    t_pos = t_phys = 0.0
     for key, en_label, ar_label in SALES_CHANNELS:
         pos = getattr(sale, f"foodics_{key}", 0) or 0
         phys = getattr(sale, f"physical_{key}", 0) or 0
-        can = getattr(sale, f"cancelled_{key}", 0) or 0
-        fin = pos - phys - can
-        t_pos += pos; t_phys += phys; t_can += can; t_fin += fin
+        t_pos += pos; t_phys += phys
         label = ar_label if ar else en_label
-        rows.append([label, f"{pos:.3f}", f"{phys:.3f}", f"{can:.3f}", f"{fin:.3f}"])
-    rows.append([total_label, f"{t_pos:.3f}", f"{t_phys:.3f}", f"{t_can:.3f}", f"{t_fin:.3f}"])
+        rows.append([label, f"{pos:.3f}", f"{phys:.3f}"])
+    diff = t_pos - t_phys
+    rows.append([total_label, f"{t_pos:.3f}", f"{t_phys:.3f}"])
+    rows.append([diff_label, f"{diff:.3f}", ""])
 
     # Column widths for monospace alignment
-    widths = [max(len(cols[i]), max(len(r[i]) for r in rows)) for i in range(5)]
+    widths = [max(len(cols[i]), max(len(r[i]) for r in rows)) for i in range(3)]
 
     table = [_fmt_row(cols, widths), _fmt_row(["-" * w for w in widths], widths)]
-    for r in rows[:-1]:
+    for r in rows[:-2]:
         table.append(_fmt_row(r, widths))
     table.append(_fmt_row(["-" * w for w in widths], widths))
+    table.append(_fmt_row(rows[-2], widths))
     table.append(_fmt_row(rows[-1], widths))
 
     return "\n".join(head_lines) + "\n\n```\n" + "\n".join(table) + "\n```"

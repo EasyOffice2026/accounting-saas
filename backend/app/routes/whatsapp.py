@@ -171,65 +171,66 @@ def _send_to_group_if_configured(db: Session, group_field: str, message: str):
 
 
 SALES_CHANNELS = [
-    ("cash", "Cash", "كاش"),
+    ("cash", "Cash", "نقد"),
     ("knet", "KNET", "كي نت"),
     ("link", "Link", "رابط"),
-    ("wamd", "WAMD", "ومض"),
     ("talabat", "Talabat", "طلبات"),
     ("keeta", "Keeta", "كيتا"),
     ("jahez", "Jahez", "جاهز"),
     ("snoonu", "Snoonu", "سنونو"),
-    ("other", "Other", "أخرى"),
 ]
 
 
+def _fmt_row(cells, widths):
+    return " | ".join(str(c).rjust(w) for c, w in zip(cells, widths))
+
+
 def build_sales_message(sale: Optional[Sale], branch: Branch, target_date: date, lang: str = "en") -> str:
-    """Build a bilingual sales report message with per-category POS/Physical/Difference and totals."""
+    """Build a bilingual sales report table: channel | POS | Physical | Cancelled | Final."""
     ar = lang == "ar"
     br_name = (getattr(branch, "name_ar", None) or branch.name) if ar else branch.name
-    lines = []
+    head_lines = []
     if ar:
-        lines.append(f"\U0001f4ca *تقرير المبيعات — {br_name}*")
-        lines.append(f"\U0001f4c5 التاريخ: {target_date.strftime('%d/%m/%Y')}")
+        head_lines.append(f"تقرير مبيعات - {br_name}")
+        head_lines.append(f"التاريخ : {target_date.strftime('%d/%m/%Y')}")
     else:
-        lines.append(f"\U0001f4ca *Sales Report — {br_name}*")
-        lines.append(f"\U0001f4c5 Date: {target_date.strftime('%d/%m/%Y')}")
-    lines.append("")
+        head_lines.append(f"Sales Report - {br_name}")
+        head_lines.append(f"Date : {target_date.strftime('%d/%m/%Y')}")
 
     if not sale:
-        lines.append("\u26a0\ufe0f لا توجد بيانات مبيعات لهذا التاريخ" if ar else "\u26a0\ufe0f No sales data entered for this date")
-        return "\n".join(lines)
+        head_lines.append("")
+        head_lines.append("لا توجد بيانات مبيعات لهذا التاريخ" if ar else "No sales data entered for this date")
+        return "\n".join(head_lines)
 
-    header = ("*الفئة | نقاط البيع | الفعلي | الفرق*" if ar
-              else "*Category | POS | Physical | Difference*")
-    lines.append(header)
+    if ar:
+        cols = ["طريق", "نقطة البيع", "الفعلي", "ملغى", "النهائية"]
+        total_label = "الإجمالي"
+    else:
+        cols = ["Channel", "POS", "Physical", "Cancelled", "Final"]
+        total_label = "Total"
 
-    pos_total = 0.0
-    phys_total = 0.0
+    rows = []
+    t_pos = t_phys = t_can = t_fin = 0.0
     for key, en_label, ar_label in SALES_CHANNELS:
         pos = getattr(sale, f"foodics_{key}", 0) or 0
         phys = getattr(sale, f"physical_{key}", 0) or 0
-        if not pos and not phys:
-            continue
-        pos_total += pos
-        phys_total += phys
-        d = phys - pos
-        sign = "+" if d >= 0 else ""
+        can = getattr(sale, f"cancelled_{key}", 0) or 0
+        fin = pos - phys - can
+        t_pos += pos; t_phys += phys; t_can += can; t_fin += fin
         label = ar_label if ar else en_label
-        lines.append(f"{label}: {pos:,.3f} | {phys:,.3f} | {sign}{d:,.3f}")
+        rows.append([label, f"{pos:.3f}", f"{phys:.3f}", f"{can:.3f}", f"{fin:.3f}"])
+    rows.append([total_label, f"{t_pos:.3f}", f"{t_phys:.3f}", f"{t_can:.3f}", f"{t_fin:.3f}"])
 
-    diff = phys_total - pos_total
-    diff_sign = "+" if diff >= 0 else ""
-    lines.append("")
-    if ar:
-        lines.append(f"*الإجمالي — نقاط البيع: {pos_total:,.3f} د.ك*")
-        lines.append(f"*الإجمالي — الفعلي: {phys_total:,.3f} د.ك*")
-        lines.append(f"*الفرق: {diff_sign}{diff:,.3f}*")
-    else:
-        lines.append(f"*Total POS: KD {pos_total:,.3f}*")
-        lines.append(f"*Total Physical: KD {phys_total:,.3f}*")
-        lines.append(f"*Difference: {diff_sign}{diff:,.3f}*")
-    return "\n".join(lines)
+    # Column widths for monospace alignment
+    widths = [max(len(cols[i]), max(len(r[i]) for r in rows)) for i in range(5)]
+
+    table = [_fmt_row(cols, widths), _fmt_row(["-" * w for w in widths], widths)]
+    for r in rows[:-1]:
+        table.append(_fmt_row(r, widths))
+    table.append(_fmt_row(["-" * w for w in widths], widths))
+    table.append(_fmt_row(rows[-1], widths))
+
+    return "\n".join(head_lines) + "\n\n```\n" + "\n".join(table) + "\n```"
 
 
 def _send_to_entity_group(db: Session, group_id: str, message: str):

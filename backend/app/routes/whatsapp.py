@@ -182,7 +182,7 @@ SALES_CHANNELS = [
 
 
 def _fmt_row(cells, widths):
-    return " | ".join(str(c).rjust(w) for c, w in zip(cells, widths))
+    return " ".join(str(c).rjust(w) for c, w in zip(cells, widths))
 
 
 def build_sales_message(sale: Optional[Sale], branch: Branch, target_date: date, lang: str = "en") -> str:
@@ -203,7 +203,7 @@ def build_sales_message(sale: Optional[Sale], branch: Branch, target_date: date,
         return "\n".join(head_lines)
 
     if ar:
-        cols = ["طريق", "نقطة البيع", "الفعلي"]
+        cols = ["طريق", "سيستم", "الفعلي"]
         total_label = "الإجمالي"
         diff_label = "الفرق"
     else:
@@ -225,11 +225,12 @@ def build_sales_message(sale: Optional[Sale], branch: Branch, target_date: date,
 
     # Column widths for monospace alignment
     widths = [max(len(cols[i]), max(len(r[i]) for r in rows)) for i in range(3)]
+    sep = "-" * (sum(widths) + len(widths) - 1)
 
-    table = [_fmt_row(cols, widths), _fmt_row(["-" * w for w in widths], widths)]
+    table = [_fmt_row(cols, widths), sep]
     for r in rows[:-2]:
         table.append(_fmt_row(r, widths))
-    table.append(_fmt_row(["-" * w for w in widths], widths))
+    table.append(sep)
     table.append(_fmt_row(rows[-2], widths))
     table.append(_fmt_row(rows[-1], widths))
 

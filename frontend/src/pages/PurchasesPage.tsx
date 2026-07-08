@@ -378,6 +378,7 @@ export default function PurchasesPage() {
     try {
       const fd = new FormData();
       fd.append("order_id", String(order.id));
+      fd.append("lang", i18n.language);
       const res = await fetch("/api/whatsapp/send-purchase", {
         method: "POST", body: fd,
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },

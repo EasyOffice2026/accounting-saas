@@ -237,6 +237,62 @@ def build_sales_message(sale: Optional[Sale], branch: Branch, target_date: date,
     return "\n".join(head_lines) + "\n\n```\n" + "\n".join(table) + "\n```"
 
 
+def _payment_label(payment_type: str, ar: bool) -> str:
+    pt = (payment_type or "").lower()
+    if ar:
+        return {"cash": "نقدي", "credit": "آجل"}.get(pt, payment_type or "")
+    return (payment_type or "").capitalize()
+
+
+def build_purchase_message(order, supplier, branch, items, lang: str = "en") -> str:
+    """Build a bilingual purchase order WhatsApp message. items: list of dicts or PurchaseItem objs."""
+    ar = lang == "ar"
+    sup_name = (getattr(supplier, "name_ar", None) or supplier.name) if (ar and supplier) else (supplier.name if supplier else "")
+    br_name = (getattr(branch, "name_ar", None) or branch.name) if (ar and branch) else (branch.name if branch else "")
+    unit_cur = "د.ك" if ar else "KD"
+
+    def _get(it, key):
+        return it.get(key) if isinstance(it, dict) else getattr(it, key)
+
+    lines = []
+    if ar:
+        lines.append(f"\U0001f4cb *طلب شراء رقم {order.id}*")
+        lines.append(f"\U0001f4c5 التاريخ: {order.date}")
+        lines.append(f"\U0001f3ea الفرع: {br_name}")
+        lines.append(f"\U0001f3e2 المورد: {sup_name}")
+        lines.append(f"\U0001f4b3 الدفع: {_payment_label(order.payment_type, True)}")
+        lines.append("")
+        lines.append("*الأصناف:*")
+    else:
+        lines.append(f"\U0001f4cb *Purchase Order #{order.id}*")
+        lines.append(f"\U0001f4c5 Date: {order.date}")
+        lines.append(f"\U0001f3ea Branch: {br_name}")
+        lines.append(f"\U0001f3e2 Supplier: {sup_name}")
+        lines.append(f"\U0001f4b3 Payment: {_payment_label(order.payment_type, False)}")
+        lines.append("")
+        lines.append("*Items:*")
+
+    for it in items:
+        name = _get(it, "item_name")
+        qty = float(_get(it, "quantity"))
+        unit = _get(it, "unit") or "pcs"
+        price = float(_get(it, "unit_price"))
+        tot = float(_get(it, "total"))
+        lines.append(f"  \u2022 {name} \u2014 {qty:g} {unit} \u00d7 {price:.3f} = {unit_cur} {tot:.3f}")
+
+    lines.append("")
+    total = getattr(order, "total_amount", 0) or 0
+    if ar:
+        lines.append(f"*الإجمالي: {unit_cur} {total:.3f}*")
+        if getattr(order, "notes", None):
+            lines.append(f"\U0001f4dd ملاحظات: {order.notes}")
+    else:
+        lines.append(f"*Total: {unit_cur} {total:.3f}*")
+        if getattr(order, "notes", None):
+            lines.append(f"\U0001f4dd Notes: {order.notes}")
+    return "\n".join(lines)
+
+
 def _send_to_entity_group(db: Session, group_id: str, message: str):
     """Send a message to a specific entity's WhatsApp group (branch or supplier). Returns True if sent."""
     settings = db.query(WhatsAppSettings).first()
@@ -331,10 +387,11 @@ def preview_report(
 @router.post("/send-purchase")
 def send_purchase_whatsapp(
     order_id: int = Form(...),
+    lang: str = Form("en"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Send purchase order details to the supplier's WhatsApp number."""
+    """Send purchase order details to the supplier's WhatsApp group (fallback to number)."""
     settings = db.query(WhatsAppSettings).first()
     if not settings or not settings.instance_id or not settings.api_token:
         raise HTTPException(400, "WhatsApp not configured. Go to Settings to set up Green API credentials.")
@@ -351,22 +408,7 @@ def send_purchase_whatsapp(
     items = db.query(PurchaseItem).filter(PurchaseItem.purchase_order_id == order.id).all()
     branch = db.query(Branch).filter(Branch.id == order.branch_id).first()
 
-    lines = []
-    lines.append("📋 *Purchase Order*")
-    lines.append(f"📅 Date: {order.date}")
-    lines.append(f"🏪 Branch: {branch.name if branch else ''}")
-    lines.append(f"🏢 Supplier: {supplier.name}")
-    lines.append(f"💳 Payment: {order.payment_type}")
-    lines.append("")
-    lines.append("*Items:*")
-    for it in items:
-        lines.append(f"  • {it.item_name} — {it.quantity} {it.unit} × {it.unit_price:.3f} = KD {it.total:.3f}")
-    lines.append("")
-    lines.append(f"*Total: KD {order.total_amount:.3f}*")
-    if order.notes:
-        lines.append(f"📝 Notes: {order.notes}")
-
-    msg = "\n".join(lines)
+    msg = build_purchase_message(order, supplier, branch, items, lang)
     result = _send_whatsapp_message(settings.instance_id, settings.api_token, target, msg, settings.api_url or "")
 
     if "idMessage" in result:

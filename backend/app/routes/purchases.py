@@ -338,22 +338,13 @@ def create_order(
         db.add(pi)
     db.commit()
 
-    # Auto-send to supplier's WhatsApp group
+    # Auto-send Arabic purchase order to supplier's WhatsApp group
     try:
-        from app.routes.whatsapp import _send_to_entity_group
+        from app.routes.whatsapp import _send_to_entity_group, build_purchase_message
         supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
         if supplier and supplier.whatsapp_group:
             branch = db.query(Branch).filter(Branch.id == branch_id).first()
-            sup_name = supplier.name
-            br_name = branch.name if branch else ""
-            item_lines = "\n".join([f"  \u2022 {i['item_name']} \u2014 {i['quantity']} {i.get('unit', 'pcs')} \u00d7 {float(i['unit_price']):.3f} = KD {float(i['total']):.3f}" for i in items_list])
-            msg = (f"\U0001f4cb *Purchase Order #{po.id}*\n"
-                   f"\U0001f4c5 Date: {order_date}\n"
-                   f"\U0001f3ea Branch: {br_name}\n"
-                   f"\U0001f3e2 Supplier: {sup_name}\n"
-                   f"\U0001f4b3 Payment: {payment_type}\n\n"
-                   f"*Items:*\n{item_lines}\n\n"
-                   f"*Total: KD {total:.3f}*")
+            msg = build_purchase_message(po, supplier, branch, items_list, "ar")
             _send_to_entity_group(db, supplier.whatsapp_group, msg)
     except Exception:
         pass

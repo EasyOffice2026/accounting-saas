@@ -539,6 +539,9 @@ export default {
   physical: "Physical",
   final_sales: "Final Sales",
   date_sequential_note: "Date is auto-set to maintain sequence. No days can be skipped.",
+  payment_ledger: "Payment Ledger",
+  search_contract: "Search Contract",
+  select_contract_ledger: "Search and select a contract to view its payment schedule and ledger.",
 
   // Brand / Multi-tenant
   select_company: "Select Company",

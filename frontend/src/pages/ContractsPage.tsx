@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet, apiFetch, apiPost } from "../contexts/api";
+import { apiGet, apiFetch, apiPost, apiDownload } from "../contexts/api";
 
 interface ContractRecord {
   id: number; name: string; kind: string; place: string; period: string;
@@ -43,9 +43,18 @@ export default function ContractsPage() {
   const [expandedContract, setExpandedContract] = useState<number | null>(null);
   const [payments, setPayments] = useState<ContractPaymentRecord[]>([]);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [tab, setTab] = useState<"contracts" | "ledger">("contracts");
+  const [ledgerSearch, setLedgerSearch] = useState("");
+  const [ledgerContractId, setLedgerContractId] = useState<number | null>(null);
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager = currentUser.role === "owner" || currentUser.role === "manager";
+  const brandParam = (() => {
+    const b = localStorage.getItem("selectedBrandId");
+    return b && b !== "group" ? `?brand_id=${b}` : "";
+  })();
+
+  const loadPayments = (cid: number) => apiGet(`/api/hr/contracts/${cid}/payments`).then(setPayments);
 
   // Build unique contract types list from defaults + existing contracts
   const contractTypes = Array.from(new Set([
@@ -62,17 +71,203 @@ export default function ContractsPage() {
     else setSelectedKind("");
   }, [editing]);
 
+  const renderPaymentSection = (c: ContractRecord) => (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h4 className="font-semibold text-sm">{t("payment_schedule")} — {c.name}</h4>
+        <div className="flex gap-2 flex-wrap">
+          {payments.length === 0 && c.monthly_payment > 0 && (
+            <button onClick={async () => {
+              await apiPost(`/api/hr/contracts/${c.id}/generate-payments`, new FormData());
+              loadPayments(c.id);
+            }} className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
+              {t("generate_schedule")}
+            </button>
+          )}
+          <button onClick={() => setShowPaymentForm(!showPaymentForm)}
+            className="px-3 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
+            {showPaymentForm ? t("cancel") : t("add_payment")}
+          </button>
+          {payments.length > 0 && (
+            <>
+              <button onClick={() => apiDownload(`/api/export/contract-payments/excel?contract_id=${c.id}`, `ledger_${c.name}.xlsx`)}
+                className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">{t("export_excel")}</button>
+              <button onClick={() => apiDownload(`/api/export/contract-payments/pdf?contract_id=${c.id}`, `ledger_${c.name}.pdf`)}
+                className="px-3 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700">{t("export_pdf")}</button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {showPaymentForm && (
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.currentTarget);
+          await apiFetch(`/api/hr/contracts/${c.id}/payments`, { method: "POST", body: fd });
+          setShowPaymentForm(false);
+          loadPayments(c.id);
+        }} className="bg-white p-4 rounded border grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <label className="block text-xs mb-1">{t("due_date")}</label>
+            <input type="date" name="due_date" required className="w-full border rounded px-2 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs mb-1">{t("amount")}</label>
+            <input type="number" step="0.001" name="amount" required defaultValue={c.monthly_payment}
+              className="w-full border rounded px-2 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs mb-1">{t("status")}</label>
+            <select name="status" className="w-full border rounded px-2 py-1.5 text-sm">
+              <option value="pending">{t("pending")}</option>
+              <option value="paid">{t("paid")}</option>
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button type="submit" className="px-4 py-1.5 bg-emerald-600 text-white rounded text-sm">{t("save")}</button>
+          </div>
+        </form>
+      )}
+
+      {payments.length > 0 && (
+        <div className="flex gap-4 text-sm flex-wrap">
+          <span className="text-green-700 font-medium">
+            {t("paid")}: KD {payments.filter(p => p.status === "paid").reduce((s, p) => s + p.amount, 0).toFixed(3)}
+          </span>
+          <span className="text-amber-700 font-medium">
+            {t("pending")}: KD {payments.filter(p => p.status === "pending").reduce((s, p) => s + p.amount, 0).toFixed(3)}
+          </span>
+          <span className="text-red-700 font-medium">
+            {t("overdue")}: KD {payments.filter(p => p.status === "overdue").reduce((s, p) => s + p.amount, 0).toFixed(3)}
+          </span>
+          <span className="text-gray-700 font-bold">
+            {t("total")}: KD {payments.reduce((s, p) => s + p.amount, 0).toFixed(3)}
+          </span>
+        </div>
+      )}
+
+      <table className="w-full text-xs bg-white rounded border">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="px-3 py-2 text-left">{t("due_date")}</th>
+            <th className="px-3 py-2 text-right">{t("amount")}</th>
+            <th className="px-3 py-2 text-center">{t("status")}</th>
+            <th className="px-3 py-2 text-left">{t("paid_date")}</th>
+            <th className="px-3 py-2 text-left">{t("payment_method")}</th>
+            <th className="px-3 py-2 text-left">{t("reference")}</th>
+            <th className="px-3 py-2 text-center">{t("actions")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {payments.length === 0 ? (
+            <tr><td colSpan={7} className="px-3 py-4 text-center text-gray-400">{t("no_payments")}</td></tr>
+          ) : payments.map(p => (
+            <tr key={p.id} className={`border-t ${p.status === "paid" ? "bg-green-50" : p.status === "overdue" ? "bg-red-50" : ""}`}>
+              <td className="px-3 py-2">{p.due_date}</td>
+              <td className="px-3 py-2 text-right font-mono">KD {p.amount.toFixed(3)}</td>
+              <td className="px-3 py-2 text-center">
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                  p.status === "paid" ? "bg-green-100 text-green-700" :
+                  p.status === "overdue" ? "bg-red-100 text-red-700" :
+                  "bg-amber-100 text-amber-700"
+                }`}>{t(p.status)}</span>
+              </td>
+              <td className="px-3 py-2">{p.paid_date || "—"}</td>
+              <td className="px-3 py-2">{p.payment_method || "—"}</td>
+              <td className="px-3 py-2">{p.reference || "—"}</td>
+              <td className="px-3 py-2 text-center space-x-1">
+                {p.status !== "paid" && (
+                  <button onClick={async () => {
+                    const fd = new FormData();
+                    fd.append("status", "paid");
+                    fd.append("paid_date", new Date().toISOString().slice(0, 10));
+                    fd.append("amount", String(p.amount));
+                    await apiFetch(`/api/hr/contract-payments/${p.id}`, { method: "PUT", body: fd });
+                    loadPayments(c.id);
+                  }} className="text-green-600 hover:underline">{t("mark_paid")}</button>
+                )}
+                <button onClick={async () => {
+                  if (!confirm(t("confirm_delete"))) return;
+                  await apiFetch(`/api/hr/contract-payments/${p.id}`, { method: "DELETE" });
+                  loadPayments(c.id);
+                }} className="text-red-600 hover:underline">{t("delete")}</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const ledgerContract = contracts.find(c => c.id === ledgerContractId) || null;
+
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-gray-800">{t("contracts_tab")}</h1>
-        {isManager && (
-          <button onClick={() => { setShowForm(!showForm); setEditing(null); }}
-            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
-            {showForm ? t("cancel") : t("add_contract")}
-          </button>
-        )}
+        <div className="flex gap-2">
+          {tab === "contracts" && (
+            <>
+              <button onClick={() => apiDownload(`/api/export/contracts/excel${brandParam}`, "contracts.xlsx")}
+                className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">{t("export_excel")}</button>
+              <button onClick={() => apiDownload(`/api/export/contracts/pdf${brandParam}`, "contracts.pdf")}
+                className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">{t("export_pdf")}</button>
+            </>
+          )}
+          {isManager && tab === "contracts" && (
+            <button onClick={() => { setShowForm(!showForm); setEditing(null); }}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
+              {showForm ? t("cancel") : t("add_contract")}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
+        {(["contracts", "ledger"] as const).map(tb => (
+          <button key={tb} onClick={() => { setTab(tb); setPayments([]); setLedgerContractId(null); setShowPaymentForm(false); }}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition ${
+              tab === tb ? "bg-white shadow text-emerald-700" : "text-gray-500 hover:text-gray-700"
+            }`}>
+            {tb === "contracts" ? t("contracts_tab") : t("payment_ledger")}
+          </button>
+        ))}
+      </div>
+
+      {/* ===== LEDGER TAB ===== */}
+      {tab === "ledger" && (
+        <div className="space-y-4">
+          <div className="bg-white p-4 rounded-xl shadow-sm border">
+            <label className="block text-sm font-medium mb-1">{t("search_contract")}</label>
+            <input type="text" value={ledgerSearch} onChange={e => setLedgerSearch(e.target.value)}
+              placeholder={t("search_contract")} className="w-full px-3 py-2 border rounded-lg text-sm" />
+            {ledgerSearch && (
+              <div className="mt-2 border rounded-lg divide-y max-h-60 overflow-y-auto">
+                {contracts.filter(c => c.name.toLowerCase().includes(ledgerSearch.toLowerCase())).length === 0 ? (
+                  <div className="px-3 py-3 text-sm text-gray-400">{t("no_data")}</div>
+                ) : contracts.filter(c => c.name.toLowerCase().includes(ledgerSearch.toLowerCase())).map(c => (
+                  <button key={c.id} onClick={() => { setLedgerContractId(c.id); setShowPaymentForm(false); loadPayments(c.id); }}
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 ${ledgerContractId === c.id ? "bg-emerald-50 font-medium" : ""}`}>
+                    {c.name} <span className="text-gray-400">— {c.kind ? (CONTRACT_TYPE_KEYS[c.kind] ? t(CONTRACT_TYPE_KEYS[c.kind]) : c.kind) : "—"}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {ledgerContract ? (
+            <div className="bg-white p-4 rounded-xl shadow-sm border">
+              {renderPaymentSection(ledgerContract)}
+            </div>
+          ) : (
+            <div className="bg-white p-8 rounded-xl shadow-sm border text-center text-gray-400 text-sm">
+              {t("select_contract_ledger")}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "contracts" && (<>
 
       {(showForm || editing) && (
         <form onSubmit={async (e) => {
@@ -237,125 +432,7 @@ export default function ContractsPage() {
               {expandedContract === c.id && (
                 <tr>
                   <td colSpan={isManager ? 6 : 5} className="px-4 py-4 bg-gray-50">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-semibold text-sm">{t("payment_schedule")} — {c.name}</h4>
-                        <div className="flex gap-2">
-                          {payments.length === 0 && c.monthly_payment > 0 && (
-                            <button onClick={async () => {
-                              await apiPost(`/api/hr/contracts/${c.id}/generate-payments`, new FormData());
-                              apiGet(`/api/hr/contracts/${c.id}/payments`).then(setPayments);
-                            }} className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
-                              {t("generate_schedule")}
-                            </button>
-                          )}
-                          <button onClick={() => setShowPaymentForm(!showPaymentForm)}
-                            className="px-3 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
-                            {showPaymentForm ? t("cancel") : t("add_payment")}
-                          </button>
-                        </div>
-                      </div>
-
-                      {showPaymentForm && (
-                        <form onSubmit={async (e) => {
-                          e.preventDefault();
-                          const fd = new FormData(e.currentTarget);
-                          await apiFetch(`/api/hr/contracts/${c.id}/payments`, { method: "POST", body: fd });
-                          setShowPaymentForm(false);
-                          apiGet(`/api/hr/contracts/${c.id}/payments`).then(setPayments);
-                        }} className="bg-white p-4 rounded border grid grid-cols-2 md:grid-cols-4 gap-3">
-                          <div>
-                            <label className="block text-xs mb-1">{t("due_date")}</label>
-                            <input type="date" name="due_date" required className="w-full border rounded px-2 py-1.5 text-sm" />
-                          </div>
-                          <div>
-                            <label className="block text-xs mb-1">{t("amount")}</label>
-                            <input type="number" step="0.001" name="amount" required defaultValue={c.monthly_payment}
-                              className="w-full border rounded px-2 py-1.5 text-sm" />
-                          </div>
-                          <div>
-                            <label className="block text-xs mb-1">{t("status")}</label>
-                            <select name="status" className="w-full border rounded px-2 py-1.5 text-sm">
-                              <option value="pending">{t("pending")}</option>
-                              <option value="paid">{t("paid")}</option>
-                            </select>
-                          </div>
-                          <div className="flex items-end">
-                            <button type="submit" className="px-4 py-1.5 bg-emerald-600 text-white rounded text-sm">{t("save")}</button>
-                          </div>
-                        </form>
-                      )}
-
-                      {/* Payment summary */}
-                      {payments.length > 0 && (
-                        <div className="flex gap-4 text-sm">
-                          <span className="text-green-700 font-medium">
-                            {t("paid")}: KD {payments.filter(p => p.status === "paid").reduce((s, p) => s + p.amount, 0).toFixed(3)}
-                          </span>
-                          <span className="text-amber-700 font-medium">
-                            {t("pending")}: KD {payments.filter(p => p.status === "pending").reduce((s, p) => s + p.amount, 0).toFixed(3)}
-                          </span>
-                          <span className="text-red-700 font-medium">
-                            {t("overdue")}: KD {payments.filter(p => p.status === "overdue").reduce((s, p) => s + p.amount, 0).toFixed(3)}
-                          </span>
-                          <span className="text-gray-700 font-bold">
-                            {t("total")}: KD {payments.reduce((s, p) => s + p.amount, 0).toFixed(3)}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Payments table */}
-                      <table className="w-full text-xs bg-white rounded border">
-                        <thead className="bg-gray-100">
-                          <tr>
-                            <th className="px-3 py-2 text-left">{t("due_date")}</th>
-                            <th className="px-3 py-2 text-right">{t("amount")}</th>
-                            <th className="px-3 py-2 text-center">{t("status")}</th>
-                            <th className="px-3 py-2 text-left">{t("paid_date")}</th>
-                            <th className="px-3 py-2 text-left">{t("payment_method")}</th>
-                            <th className="px-3 py-2 text-left">{t("reference")}</th>
-                            <th className="px-3 py-2 text-center">{t("actions")}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {payments.length === 0 ? (
-                            <tr><td colSpan={7} className="px-3 py-4 text-center text-gray-400">{t("no_payments")}</td></tr>
-                          ) : payments.map(p => (
-                            <tr key={p.id} className={`border-t ${p.status === "paid" ? "bg-green-50" : p.status === "overdue" ? "bg-red-50" : ""}`}>
-                              <td className="px-3 py-2">{p.due_date}</td>
-                              <td className="px-3 py-2 text-right font-mono">KD {p.amount.toFixed(3)}</td>
-                              <td className="px-3 py-2 text-center">
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                  p.status === "paid" ? "bg-green-100 text-green-700" :
-                                  p.status === "overdue" ? "bg-red-100 text-red-700" :
-                                  "bg-amber-100 text-amber-700"
-                                }`}>{t(p.status)}</span>
-                              </td>
-                              <td className="px-3 py-2">{p.paid_date || "—"}</td>
-                              <td className="px-3 py-2">{p.payment_method || "—"}</td>
-                              <td className="px-3 py-2">{p.reference || "—"}</td>
-                              <td className="px-3 py-2 text-center space-x-1">
-                                {p.status !== "paid" && (
-                                  <button onClick={async () => {
-                                    const fd = new FormData();
-                                    fd.append("status", "paid");
-                                    fd.append("paid_date", new Date().toISOString().slice(0, 10));
-                                    fd.append("amount", String(p.amount));
-                                    await apiFetch(`/api/hr/contract-payments/${p.id}`, { method: "PUT", body: fd });
-                                    apiGet(`/api/hr/contracts/${c.id}/payments`).then(setPayments);
-                                  }} className="text-green-600 hover:underline">{t("mark_paid")}</button>
-                                )}
-                                <button onClick={async () => {
-                                  if (!confirm(t("confirm_delete"))) return;
-                                  await apiFetch(`/api/hr/contract-payments/${p.id}`, { method: "DELETE" });
-                                  apiGet(`/api/hr/contracts/${c.id}/payments`).then(setPayments);
-                                }} className="text-red-600 hover:underline">{t("delete")}</button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    {renderPaymentSection(c)}
                   </td>
                 </tr>
               )}
@@ -364,6 +441,7 @@ export default function ContractsPage() {
           </tbody>
         </table>
       </div>
+      </>)}
     </div>
   );
 }

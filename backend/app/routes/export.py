@@ -476,6 +476,39 @@ def export_cash(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[in
     return _respond(fmt, header, data, "cash_management", "Cash Management Report")
 
 
+@router.get("/contracts/{fmt}")
+def export_contracts(fmt: str, brand_id: Optional[int] = None,
+                     db: Session = Depends(get_db), _=Depends(get_current_user)):
+    from app.models.hr import Contract
+    q = db.query(Contract)
+    if brand_id:
+        q = q.filter(Contract.brand_id == brand_id)
+    rows = q.order_by(Contract.id.desc()).all()
+    header = ["Contract Name", "Type", "Period", "Value", "Start Date", "End Date",
+              "Monthly Payment", "Status"]
+    data = [[c.name, c.kind or "", c.period or "", f"{(c.value or 0):.3f}",
+             str(c.start_date or ""), str(c.end_date or ""),
+             f"{(c.monthly_payment or 0):.3f}", c.status or ""] for c in rows]
+    return _respond(fmt, header, data, "contracts", "Contracts & Subscriptions")
+
+
+@router.get("/contract-payments/{fmt}")
+def export_contract_payments(fmt: str, contract_id: int,
+                             db: Session = Depends(get_db), _=Depends(get_current_user)):
+    from app.models.hr import Contract, ContractPayment
+    c = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not c:
+        raise HTTPException(404, "Contract not found")
+    rows = db.query(ContractPayment).filter(ContractPayment.contract_id == contract_id)\
+        .order_by(ContractPayment.due_date).all()
+    header = ["Due Date", "Amount", "Status", "Paid Date", "Payment Method", "Reference", "Notes"]
+    data = [[str(p.due_date or ""), f"{(p.amount or 0):.3f}", p.status or "",
+             str(p.paid_date or ""), p.payment_method or "", p.reference or "",
+             p.notes or ""] for p in rows]
+    return _respond(fmt, header, data, f"contract_{contract_id}_ledger",
+                    f"Payment Ledger - {c.name}")
+
+
 @router.get("/transfer-items/{fmt}")
 def export_transfer_items(fmt: str, category: Optional[str] = None,
                           db: Session = Depends(get_db), _=Depends(get_current_user)):

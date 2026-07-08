@@ -539,6 +539,9 @@ export default {
   physical: "الفعلي",
   final_sales: "المبيعات النهائية",
   date_sequential_note: "التاريخ يتم تعيينه تلقائياً للحفاظ على التسلسل. لا يمكن تخطي أي يوم.",
+  payment_ledger: "سجل المدفوعات",
+  search_contract: "بحث عن عقد",
+  select_contract_ledger: "ابحث واختر عقداً لعرض جدول المدفوعات والسجل الخاص به.",
 
   // Brand / Multi-tenant
   select_company: "اختر الشركة",

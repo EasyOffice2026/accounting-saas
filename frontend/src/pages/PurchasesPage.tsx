@@ -374,7 +374,7 @@ export default function PurchasesPage() {
 
   const sendWhatsApp = async (order: PurchaseOrder) => {
     const supplier = getSupplier(order.supplier_id);
-    if (!supplier?.whatsapp) { alert(t("no_whatsapp")); return; }
+    if (!supplier?.whatsapp && !supplier?.whatsapp_group) { alert(t("no_whatsapp")); return; }
     try {
       const fd = new FormData();
       fd.append("order_id", String(order.id));

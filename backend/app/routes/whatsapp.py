@@ -344,8 +344,9 @@ def send_purchase_whatsapp(
         raise HTTPException(404, "Order not found")
 
     supplier = db.query(Supplier).filter(Supplier.id == order.supplier_id).first()
-    if not supplier or not supplier.whatsapp:
-        raise HTTPException(400, "Supplier has no WhatsApp number configured")
+    target = (getattr(supplier, "whatsapp_group", None) or supplier.whatsapp) if supplier else None
+    if not target:
+        raise HTTPException(400, "Supplier has no WhatsApp group or number configured")
 
     items = db.query(PurchaseItem).filter(PurchaseItem.purchase_order_id == order.id).all()
     branch = db.query(Branch).filter(Branch.id == order.branch_id).first()
@@ -366,7 +367,7 @@ def send_purchase_whatsapp(
         lines.append(f"📝 Notes: {order.notes}")
 
     msg = "\n".join(lines)
-    result = _send_whatsapp_message(settings.instance_id, settings.api_token, supplier.whatsapp, msg, settings.api_url or "")
+    result = _send_whatsapp_message(settings.instance_id, settings.api_token, target, msg, settings.api_url or "")
 
     if "idMessage" in result:
         return {"message": "Purchase order sent to supplier", "id": result["idMessage"]}
@@ -390,8 +391,9 @@ def send_expense_whatsapp(
         raise HTTPException(404, "Expense not found")
 
     supplier = db.query(Supplier).filter(Supplier.id == expense.supplier_id).first() if expense.supplier_id else None
-    if not supplier or not supplier.whatsapp:
-        raise HTTPException(400, "Supplier has no WhatsApp number configured")
+    target = (getattr(supplier, "whatsapp_group", None) or supplier.whatsapp) if supplier else None
+    if not target:
+        raise HTTPException(400, "Supplier has no WhatsApp group or number configured")
 
     branch = db.query(Branch).filter(Branch.id == expense.branch_id).first()
     category = db.query(ExpenseCategory).filter(ExpenseCategory.id == expense.category_id).first() if expense.category_id else None
@@ -410,7 +412,7 @@ def send_expense_whatsapp(
         lines.append(f"📝 Notes: {expense.notes}")
 
     msg = "\n".join(lines)
-    result = _send_whatsapp_message(settings.instance_id, settings.api_token, supplier.whatsapp, msg, settings.api_url or "")
+    result = _send_whatsapp_message(settings.instance_id, settings.api_token, target, msg, settings.api_url or "")
 
     if "idMessage" in result:
         return {"message": "Expense sent to supplier", "id": result["idMessage"]}

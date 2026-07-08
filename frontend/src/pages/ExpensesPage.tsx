@@ -5,7 +5,7 @@ import { useAuth } from "../contexts/AuthContext";
 
 interface Branch { id: number; name: string; name_ar?: string; }
 interface Category { id: number; name: string; name_ar: string; }
-interface Supplier { id: number; name: string; whatsapp?: string; }
+interface Supplier { id: number; name: string; whatsapp?: string; whatsapp_group?: string; }
 interface Expense {
   id: number; branch_id: number; category_id: number; date: string;
   description: string; amount: number; payment_method: string; supplier_id?: number;
@@ -74,7 +74,7 @@ export default function ExpensesPage() {
 
   const handleWhatsApp = async (exp: Expense) => {
     const s = suppliers.find(su => su.id === exp.supplier_id);
-    if (!s?.whatsapp) { alert(t("no_whatsapp") || "No WhatsApp number"); return; }
+    if (!s?.whatsapp && !s?.whatsapp_group) { alert(t("no_whatsapp") || "No WhatsApp group or number"); return; }
     try {
       const fd = new FormData();
       fd.append("expense_id", String(exp.id));

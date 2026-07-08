@@ -95,22 +95,12 @@ def create_sale(
     db.commit()
     db.refresh(sale)
 
-    # Auto-send to branch's WhatsApp group
+    # Auto-send detailed report to branch's WhatsApp group (Arabic message)
     try:
-        from app.routes.whatsapp import _send_to_entity_group
+        from app.routes.whatsapp import _send_to_entity_group, build_sales_message
         branch = db.query(Branch).filter(Branch.id == branch_id).first()
         if branch and branch.whatsapp_group:
-            br_name = branch.name
-            f_total = foodics_cash + foodics_knet + foodics_link + foodics_wamd + foodics_talabat + foodics_keeta + foodics_jahez + foodics_other + foodics_snoonu
-            p_total = physical_cash + physical_knet + physical_link + physical_wamd + physical_talabat + physical_keeta + physical_jahez + physical_other + physical_snoonu
-            diff = p_total - f_total
-            diff_sign = "+" if diff >= 0 else ""
-            msg = (f"\U0001f4ca *Sales Entry*\n"
-                   f"\U0001f4c5 Date: {sale_date}\n"
-                   f"\U0001f3ea Branch: {br_name}\n\n"
-                   f"*POS Data:* KD {f_total:,.3f}\n"
-                   f"*Physical:* KD {p_total:,.3f}\n"
-                   f"Difference: {diff_sign}{diff:,.3f}")
+            msg = build_sales_message(sale, branch, sale.date, "ar")
             _send_to_entity_group(db, branch.whatsapp_group, msg)
     except Exception:
         pass

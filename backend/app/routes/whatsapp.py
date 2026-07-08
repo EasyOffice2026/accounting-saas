@@ -170,6 +170,68 @@ def _send_to_group_if_configured(db: Session, group_field: str, message: str):
         return False
 
 
+SALES_CHANNELS = [
+    ("cash", "Cash", "كاش"),
+    ("knet", "KNET", "كي نت"),
+    ("link", "Link", "رابط"),
+    ("wamd", "WAMD", "ومض"),
+    ("talabat", "Talabat", "طلبات"),
+    ("keeta", "Keeta", "كيتا"),
+    ("jahez", "Jahez", "جاهز"),
+    ("snoonu", "Snoonu", "سنونو"),
+    ("other", "Other", "أخرى"),
+]
+
+
+def build_sales_message(sale: Optional[Sale], branch: Branch, target_date: date, lang: str = "en") -> str:
+    """Build a bilingual sales report message with per-category POS/Physical/Difference and totals."""
+    ar = lang == "ar"
+    br_name = (getattr(branch, "name_ar", None) or branch.name) if ar else branch.name
+    lines = []
+    if ar:
+        lines.append(f"\U0001f4ca *تقرير المبيعات — {br_name}*")
+        lines.append(f"\U0001f4c5 التاريخ: {target_date.strftime('%d/%m/%Y')}")
+    else:
+        lines.append(f"\U0001f4ca *Sales Report — {br_name}*")
+        lines.append(f"\U0001f4c5 Date: {target_date.strftime('%d/%m/%Y')}")
+    lines.append("")
+
+    if not sale:
+        lines.append("\u26a0\ufe0f لا توجد بيانات مبيعات لهذا التاريخ" if ar else "\u26a0\ufe0f No sales data entered for this date")
+        return "\n".join(lines)
+
+    header = ("*الفئة | نقاط البيع | الفعلي | الفرق*" if ar
+              else "*Category | POS | Physical | Difference*")
+    lines.append(header)
+
+    pos_total = 0.0
+    phys_total = 0.0
+    for key, en_label, ar_label in SALES_CHANNELS:
+        pos = getattr(sale, f"foodics_{key}", 0) or 0
+        phys = getattr(sale, f"physical_{key}", 0) or 0
+        if not pos and not phys:
+            continue
+        pos_total += pos
+        phys_total += phys
+        d = phys - pos
+        sign = "+" if d >= 0 else ""
+        label = ar_label if ar else en_label
+        lines.append(f"{label}: {pos:,.3f} | {phys:,.3f} | {sign}{d:,.3f}")
+
+    diff = phys_total - pos_total
+    diff_sign = "+" if diff >= 0 else ""
+    lines.append("")
+    if ar:
+        lines.append(f"*الإجمالي — نقاط البيع: {pos_total:,.3f} د.ك*")
+        lines.append(f"*الإجمالي — الفعلي: {phys_total:,.3f} د.ك*")
+        lines.append(f"*الفرق: {diff_sign}{diff:,.3f}*")
+    else:
+        lines.append(f"*Total POS: KD {pos_total:,.3f}*")
+        lines.append(f"*Total Physical: KD {phys_total:,.3f}*")
+        lines.append(f"*Difference: {diff_sign}{diff:,.3f}*")
+    return "\n".join(lines)
+
+
 def _send_to_entity_group(db: Session, group_id: str, message: str):
     """Send a message to a specific entity's WhatsApp group (branch or supplier). Returns True if sent."""
     settings = db.query(WhatsAppSettings).first()
@@ -355,59 +417,29 @@ def send_expense_whatsapp(
 def send_sales_whatsapp(
     branch_id: int = Form(...),
     report_date: Optional[str] = Form(None),
+    lang: str = Form("en"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Send sales report to the branch's configured WhatsApp number."""
+    """Send sales report to the branch's configured WhatsApp group (fallback to number)."""
     settings = db.query(WhatsAppSettings).first()
     if not settings or not settings.instance_id or not settings.api_token:
         raise HTTPException(400, "WhatsApp not configured. Go to Settings to set up Green API credentials.")
 
     branch = db.query(Branch).filter(Branch.id == branch_id).first()
-    if not branch or not branch.whatsapp_number:
-        raise HTTPException(400, "Branch has no WhatsApp number configured")
+    if not branch:
+        raise HTTPException(404, "Branch not found")
+    target = getattr(branch, "whatsapp_group", None) or branch.whatsapp_number
+    if not target:
+        raise HTTPException(400, "Branch has no WhatsApp group or number configured")
 
     target_date = date.fromisoformat(report_date) if report_date else date.today()
     sale = db.query(Sale).filter(Sale.branch_id == branch_id, Sale.date == target_date).first()
 
-    lines = []
-    lines.append(f"📊 *Sales Report — {branch.name}*")
-    lines.append(f"📅 Date: {target_date.strftime('%d/%m/%Y')}")
-    lines.append("")
-
-    if sale:
-        f_cash = sale.foodics_cash or 0
-        f_knet = sale.foodics_knet or 0
-        f_link = sale.foodics_link or 0
-        f_wamd = sale.foodics_wamd or 0
-        f_snoonu = getattr(sale, "foodics_snoonu", 0) or 0
-        foodics_total = f_cash + f_knet + f_link + f_wamd + f_snoonu
-
-        p_cash = sale.physical_cash or 0
-        p_knet = sale.physical_knet or 0
-        p_link = sale.physical_link or 0
-        p_wamd = sale.physical_wamd or 0
-        p_snoonu = getattr(sale, "physical_snoonu", 0) or 0
-        physical_total = p_cash + p_knet + p_link + p_wamd + p_snoonu
-
-        lines.append("*POS Data:*")
-        lines.append(f"  Cash: {f_cash:,.3f} | KNET: {f_knet:,.3f} | Link: {f_link:,.3f} | WAMD: {f_wamd:,.3f} | Snoonu: {f_snoonu:,.3f}")
-        lines.append(f"  *Total: KD {foodics_total:,.3f}*")
-        lines.append("")
-        lines.append("*Physical Data:*")
-        lines.append(f"  Cash: {p_cash:,.3f} | KNET: {p_knet:,.3f} | Link: {p_link:,.3f} | WAMD: {p_wamd:,.3f} | Snoonu: {p_snoonu:,.3f}")
-        lines.append(f"  *Total: KD {physical_total:,.3f}*")
-        lines.append("")
-        diff = physical_total - foodics_total
-        diff_sign = "+" if diff >= 0 else ""
-        lines.append(f"Difference: {diff_sign}{diff:,.3f}")
-    else:
-        lines.append("⚠️ No sales data entered for this date")
-
-    msg = "\n".join(lines)
-    result = _send_whatsapp_message(settings.instance_id, settings.api_token, branch.whatsapp_number, msg, settings.api_url or "")
+    msg = build_sales_message(sale, branch, target_date, lang)
+    result = _send_whatsapp_message(settings.instance_id, settings.api_token, target, msg, settings.api_url or "")
 
     if "idMessage" in result:
-        return {"message": "Sales report sent to branch", "id": result["idMessage"]}
+        return {"message": "Sales report sent", "id": result["idMessage"]}
     else:
         raise HTTPException(500, f"Failed to send: {result}")

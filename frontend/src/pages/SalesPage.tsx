@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
-interface Branch { id: number; name: string; name_ar: string; whatsapp_number?: string; }
+interface Branch { id: number; name: string; name_ar: string; whatsapp_number?: string; whatsapp_group?: string; }
 interface Sale {
   id: number; branch_id: number; date: string;
   foodics_cash: number; foodics_knet: number; foodics_link: number; foodics_wamd: number;
@@ -508,11 +508,12 @@ export default function SalesPage() {
                   <td className="px-2 py-2 text-center">
                     <button onClick={async () => {
                       const br = branches.find(b => b.id === s.branch_id);
-                      if (!br?.whatsapp_number) { alert(t("no_whatsapp") || "No WhatsApp number configured for this branch"); return; }
+                      if (!br?.whatsapp_group && !br?.whatsapp_number) { alert(t("no_whatsapp") || "No WhatsApp group or number configured for this branch"); return; }
                       try {
                         const fd = new FormData();
                         fd.append("branch_id", String(s.branch_id));
                         fd.append("report_date", s.date);
+                        fd.append("lang", i18n.language);
                         const res = await fetch("/api/whatsapp/send-sales", {
                           method: "POST", body: fd,
                           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },

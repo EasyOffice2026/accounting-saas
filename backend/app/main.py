@@ -319,6 +319,19 @@ def _migrate_columns():
             )"""))
             conn.commit()
 
+        # Seed employers table from existing distinct employee.employer values
+        if "employers" in insp.get_table_names() and "employees" in insp.get_table_names():
+            existing_count = conn.execute(text("SELECT COUNT(*) FROM employers")).scalar()
+            if not existing_count:
+                rows = conn.execute(text(
+                    "SELECT DISTINCT employer FROM employees WHERE employer IS NOT NULL AND employer != ''"
+                )).fetchall()
+                for r in rows:
+                    nm = (r[0] or "").strip()
+                    if nm:
+                        conn.execute(text("INSERT INTO employers (name) VALUES (:n) ON CONFLICT (name) DO NOTHING"), {"n": nm})
+                conn.commit()
+
         # HR Approval workflow columns
         _approval_tables = ["salary_payments", "advance_loans", "staff_benefits_deductions", "leave_records"]
         for tbl in _approval_tables:

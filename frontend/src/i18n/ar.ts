@@ -542,6 +542,8 @@ export default {
   payment_ledger: "سجل المدفوعات",
   search_contract: "بحث عن عقد",
   select_contract_ledger: "ابحث واختر عقداً لعرض جدول المدفوعات والسجل الخاص به.",
+  manage: "إدارة",
+  add: "إضافة",
 
   // Brand / Multi-tenant
   select_company: "اختر الشركة",

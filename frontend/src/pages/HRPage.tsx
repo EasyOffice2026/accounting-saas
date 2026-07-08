@@ -162,7 +162,12 @@ export default function HRPage() {
   const [resEmpId, setResEmpId] = useState<number | null>(null);
 
   // Employer list (unique, no duplicates)
-  const [employers, setEmployers] = useState<string[]>([]);
+  const [employers, setEmployers] = useState<{ id: number; name: string; name_ar: string }[]>([]);
+  const [showEmployerMgr, setShowEmployerMgr] = useState(false);
+  const [newEmployerName, setNewEmployerName] = useState("");
+  const [newEmployerNameAr, setNewEmployerNameAr] = useState("");
+
+  const loadEmployers = () => apiGet("/api/hr/employers").then(setEmployers);
 
   // Brands for cross-brand transfers
   const [brands, setBrands] = useState<BrandItem[]>([]);
@@ -179,7 +184,7 @@ export default function HRPage() {
     fetch("/api/branches/", { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } })
       .then(r => r.json()).then((b: any[]) => setAllBranches(b));
     apiGet("/api/hr/employees").then(setEmployees);
-    apiGet("/api/hr/employers").then(setEmployers);
+    loadEmployers();
     apiGet("/api/hr/brands").then(setBrands);
   }, []);
 
@@ -266,7 +271,7 @@ export default function HRPage() {
       setShowForm(false);
       setEditingEmp(null);
       apiGet("/api/hr/employees").then(setEmployees);
-      apiGet("/api/hr/employers").then(setEmployers);
+      loadEmployers();
     } catch (err: unknown) { alert((err as Error).message); }
   };
 
@@ -903,11 +908,15 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t("employer_label")}</label>
-                  <input list="employer-list" name="employer" defaultValue={editingEmp?.employer || ""} placeholder={t("employer_label")} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  <datalist id="employer-list">
-                    {employers.map(e => <option key={e} value={e} />)}
-                  </datalist>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium">{t("employer_label")}</label>
+                    <button type="button" onClick={() => setShowEmployerMgr(true)}
+                      className="text-emerald-600 hover:underline text-xs">{t("manage")}</button>
+                  </div>
+                  <select name="employer" defaultValue={editingEmp?.employer || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">{t("select")}</option>
+                    {employers.map(e => <option key={e.id} value={e.name}>{i18n.language === "ar" ? (e.name_ar || e.name) : e.name}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("join_date")}</label>
@@ -973,7 +982,11 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <td className="px-3 py-3">{emp.position}</td>
                     <td className="px-3 py-3">{emp.civil_id}</td>
                     <td className="px-3 py-3">{emp.phone}</td>
-                    <td className="px-3 py-3">{emp.employer || "—"}</td>
+                    <td className="px-3 py-3">{(() => {
+                      if (!emp.employer) return "—";
+                      const match = employers.find(e => e.name === emp.employer);
+                      return i18n.language === "ar" && match?.name_ar ? match.name_ar : emp.employer;
+                    })()}</td>
                     <td className="px-3 py-3">{emp.residency_expiry || "—"}</td>
                     <td className="px-3 py-3">{emp.health_card_expiry || "—"}</td>
                     {isManager && (
@@ -991,6 +1004,50 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
             </table>
           </div>
         </>
+      )}
+
+      {/* Employer Manager Modal */}
+      {showEmployerMgr && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowEmployerMgr(false)}>
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">{t("employer_label")}</h3>
+              <button onClick={() => setShowEmployerMgr(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <input value={newEmployerName} onChange={e => setNewEmployerName(e.target.value)}
+                placeholder={t("name") + " (EN)"} className="px-3 py-2 border rounded-lg text-sm" />
+              <input value={newEmployerNameAr} onChange={e => setNewEmployerNameAr(e.target.value)}
+                placeholder={t("name") + " (AR)"} dir="rtl" className="px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <button onClick={async () => {
+              if (!newEmployerName.trim()) return;
+              const fd = new FormData();
+              fd.append("name", newEmployerName.trim());
+              fd.append("name_ar", newEmployerNameAr.trim());
+              const res = await apiFetch("/api/hr/employers", { method: "POST", body: fd });
+              if (!res.ok) { const d = await res.json(); alert(d.detail || "Error"); return; }
+              setNewEmployerName(""); setNewEmployerNameAr("");
+              loadEmployers();
+            }} className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
+              {t("add")}
+            </button>
+            <div className="border rounded-lg divide-y max-h-72 overflow-y-auto">
+              {employers.length === 0 ? (
+                <div className="px-3 py-3 text-sm text-gray-400 text-center">{t("no_data")}</div>
+              ) : employers.map(e => (
+                <div key={e.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                  <span>{e.name}{e.name_ar ? <span className="text-gray-400" dir="rtl"> — {e.name_ar}</span> : null}</span>
+                  <button onClick={async () => {
+                    if (!confirm(t("confirm_delete"))) return;
+                    await apiFetch(`/api/hr/employers/${e.id}`, { method: "DELETE" });
+                    loadEmployers();
+                  }} className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Salary Management Tab */}

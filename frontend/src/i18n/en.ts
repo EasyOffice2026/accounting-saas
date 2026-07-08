@@ -542,6 +542,8 @@ export default {
   payment_ledger: "Payment Ledger",
   search_contract: "Search Contract",
   select_contract_ledger: "Search and select a contract to view its payment schedule and ledger.",
+  manage: "Manage",
+  add: "Add",
 
   // Brand / Multi-tenant
   select_company: "Select Company",

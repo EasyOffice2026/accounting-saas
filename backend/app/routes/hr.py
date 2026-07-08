@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, Form, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from datetime import date, time
 from typing import Optional
 import calendar
 
 from app.database import get_db
-from app.models.hr import Brand, Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, LeaveRecord, Resignation, Contract, ContractPayment
+from app.models.hr import Brand, Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, LeaveRecord, Resignation, Contract, ContractPayment, Employer
 from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
@@ -125,9 +126,40 @@ def list_employees(branch_id: Optional[int] = None, brand_id: Optional[int] = No
 
 @router.get("/employers")
 def list_employers(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    """Return unique employer names for dropdown (no duplicates)."""
-    rows = db.query(Employee.employer).filter(Employee.employer != None, Employee.employer != "").distinct().all()
-    return sorted(set(r[0] for r in rows if r[0]))
+    """Return managed employer list (no duplicates)."""
+    rows = db.query(Employer).order_by(Employer.name).all()
+    return [{"id": e.id, "name": e.name, "name_ar": e.name_ar or ""} for e in rows]
+
+
+@router.post("/employers")
+def create_employer(name: str = Form(...), name_ar: str = Form(""),
+                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    name = name.strip()
+    if not name:
+        raise HTTPException(400, "Name required")
+    existing = db.query(Employer).filter(func.lower(Employer.name) == name.lower()).first()
+    if existing:
+        raise HTTPException(400, f"Employer '{name}' already exists")
+    e = Employer(name=name, name_ar=name_ar.strip() or None)
+    db.add(e)
+    db.commit()
+    db.refresh(e)
+    return {"id": e.id, "name": e.name, "name_ar": e.name_ar or ""}
+
+
+@router.delete("/employers/{employer_id}")
+def delete_employer(employer_id: int, db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    e = db.query(Employer).filter(Employer.id == employer_id).first()
+    if not e:
+        raise HTTPException(404, "Employer not found")
+    db.delete(e)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/employees")

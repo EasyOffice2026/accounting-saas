@@ -235,6 +235,14 @@ class Contract(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class Employer(Base):
+    __tablename__ = "employers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True)
+    name_ar = Column(String, nullable=True)
+
+
 class ContractPayment(Base):
     __tablename__ = "contract_payments"
 

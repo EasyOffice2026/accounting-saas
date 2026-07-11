@@ -175,7 +175,7 @@ export default function HRPage() {
   const [allBranches, setAllBranches] = useState<(Branch & { brand_id?: number })[]>([]);
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-  const isManager = currentUser.role === "owner" || currentUser.role === "manager";
+  const isManager = currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant";
   const canViewSalary = ["owner", "manager", "accountant"].includes(currentUser.role);
 
   useEffect(() => {

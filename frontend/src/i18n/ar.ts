@@ -276,6 +276,7 @@ export default {
   role: "الدور",
   owner: "مالك",
   manager: "مدير",
+  accountant: "محاسب",
   staff: "موظف",
   active: "نشط",
   inactive: "غير نشط",

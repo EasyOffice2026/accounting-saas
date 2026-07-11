@@ -53,7 +53,7 @@ export default function TransfersPage() {
 
 
 
-  const isOwnerManager = user?.role === "owner" || user?.role === "manager";
+  const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   const isCentralKitchen = branches.find(b => b.id === user?.branch_id)?.is_central_kitchen || false;
 
   useEffect(() => {

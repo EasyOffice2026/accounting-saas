@@ -19,7 +19,7 @@ const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles
   { path: "/cash", icon: Banknote, key: "cash_management" },
   { path: "/transfers", icon: ArrowLeftRight, key: "internal_transfer" },
   { path: "/contracts", icon: FileText, key: "contracts_tab" },
-  { path: "/settings", icon: Settings, key: "settings", roles: ["owner", "manager"] },
+  { path: "/settings", icon: Settings, key: "settings", roles: ["owner", "manager", "accountant"] },
 ];
 
 export default function Layout() {

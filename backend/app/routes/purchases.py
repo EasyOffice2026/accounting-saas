@@ -27,7 +27,7 @@ def list_categories(db: Session = Depends(get_db), _=Depends(get_current_user)):
 @router.post("/categories")
 def create_category(name: str = Form(...), name_ar: str = Form(""),
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     existing = db.query(PurchaseCategory).filter(
         PurchaseCategory.name == name.strip(), PurchaseCategory.is_active == True
@@ -44,7 +44,7 @@ def create_category(name: str = Form(...), name_ar: str = Form(""),
 @router.put("/categories/{cat_id}")
 def update_category(cat_id: int, name: str = Form(...), name_ar: str = Form(""),
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     cat = db.query(PurchaseCategory).filter(PurchaseCategory.id == cat_id).first()
     if not cat:
@@ -64,7 +64,7 @@ def update_category(cat_id: int, name: str = Form(...), name_ar: str = Form(""),
 
 @router.delete("/categories/{cat_id}")
 def delete_category(cat_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     cat = db.query(PurchaseCategory).filter(PurchaseCategory.id == cat_id).first()
     if not cat:
@@ -117,7 +117,7 @@ def update_supplier(supplier_id: int, name: str = Form(...), email: str = Form("
 
 @router.delete("/suppliers/{supplier_id}")
 def delete_supplier(supplier_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s:
@@ -131,7 +131,7 @@ def delete_supplier(supplier_id: int, db: Session = Depends(get_db), user: User 
 
 @router.delete("/orders/{order_id}")
 def delete_order(order_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     order = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
     if not order:
@@ -207,7 +207,7 @@ def update_order(
 
 @router.delete("/invoices/{invoice_id}")
 def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not inv:

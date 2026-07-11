@@ -68,7 +68,7 @@ export default function PurchasesPage() {
   const [catMsg, setCatMsg] = useState("");
   const [catMsgType, setCatMsgType] = useState<"success" | "error">("success");
 
-  const isManager = user?.role === "owner" || user?.role === "manager";
+  const isManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);

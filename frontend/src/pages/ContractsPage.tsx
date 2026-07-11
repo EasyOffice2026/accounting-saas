@@ -48,7 +48,7 @@ export default function ContractsPage() {
   const [ledgerContractId, setLedgerContractId] = useState<number | null>(null);
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-  const isManager = currentUser.role === "owner" || currentUser.role === "manager";
+  const isManager = currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant";
   const brandParam = (() => {
     const b = localStorage.getItem("selectedBrandId");
     return b && b !== "group" ? `?brand_id=${b}` : "";

@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 
 @router.get("/")
 def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     users = db.query(User).order_by(User.id).all()
     return [

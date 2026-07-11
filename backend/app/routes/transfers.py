@@ -27,7 +27,7 @@ def create_transfer_item(
     category: str = Form("food"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Only owner/manager can manage transfer items")
     item = TransferItem(name=name, name_ar=name_ar or None, unit=unit, unit_price=unit_price, opening_stock=opening_stock, category=category)
     db.add(item)
@@ -44,7 +44,7 @@ def update_transfer_item(
     category: str = Form("food"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Only owner/manager can manage transfer items")
     item = db.query(TransferItem).filter(TransferItem.id == item_id).first()
     if not item:
@@ -63,7 +63,7 @@ def update_transfer_item(
 @router.delete("/items/{item_id}")
 def delete_transfer_item(item_id: int, db: Session = Depends(get_db),
                          user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Only owner/manager can manage transfer items")
     item = db.query(TransferItem).filter(TransferItem.id == item_id).first()
     if not item:

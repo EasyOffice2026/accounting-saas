@@ -677,6 +677,7 @@ export default function SettingsPage() {
                   className="w-full px-3 py-2 border rounded-lg text-sm">
                   <option value="owner">{t("owner")}</option>
                   <option value="manager">{t("manager")}</option>
+                  <option value="accountant">{t("accountant")}</option>
                   <option value="staff">{t("staff")}</option>
                 </select>
               </div>
@@ -727,6 +728,7 @@ export default function SettingsPage() {
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                       u.role === "owner" ? "bg-purple-100 text-purple-700" :
                       u.role === "manager" ? "bg-blue-100 text-blue-700" :
+                      u.role === "accountant" ? "bg-emerald-100 text-emerald-700" :
                       "bg-gray-100 text-gray-700"
                     }`}>{t(u.role)}</span>
                   </td>

@@ -276,6 +276,7 @@ export default {
   role: "Role",
   owner: "Owner",
   manager: "Manager",
+  accountant: "Accountant",
   staff: "Staff",
   active: "Active",
   inactive: "Inactive",

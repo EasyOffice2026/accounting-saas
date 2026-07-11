@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
 
 @router.get("/settings")
 def get_settings(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     s = db.query(WhatsAppSettings).first()
     if not s:
@@ -52,7 +52,7 @@ def save_settings(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     s = db.query(WhatsAppSettings).first()
     if not s:
@@ -310,7 +310,7 @@ def _send_to_entity_group(db: Session, group_id: str, message: str):
 @router.get("/groups")
 def list_whatsapp_groups(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Fetch list of WhatsApp groups from Green API instance."""
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     settings = db.query(WhatsAppSettings).first()
     if not settings or not settings.instance_id or not settings.api_token:
@@ -352,7 +352,7 @@ def send_daily_report(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
 
     settings = db.query(WhatsAppSettings).first()

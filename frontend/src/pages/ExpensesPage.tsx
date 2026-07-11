@@ -36,7 +36,7 @@ export default function ExpensesPage() {
   const [expandedSupplier, setExpandedSupplier] = useState<number | null>(null);
   const [ledgerSearch, setLedgerSearch] = useState("");
 
-  const isManager = user?.role === "owner" || user?.role === "manager";
+  const isManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);

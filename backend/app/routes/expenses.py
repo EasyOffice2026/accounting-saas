@@ -130,7 +130,7 @@ def update_expense(
 @router.delete("/{expense_id}")
 def delete_expense(expense_id: int, db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         from fastapi import HTTPException
         raise HTTPException(403, "Only owner/manager can delete expenses")
     exp = db.query(Expense).filter(Expense.id == expense_id).first()

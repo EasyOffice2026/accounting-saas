@@ -22,12 +22,13 @@ def list_sales(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
                user: User = Depends(get_current_user)):
     q = db.query(Sale)
     bb_ids = _brand_branch_ids(db, brand_id)
-    if branch_id:
+    if user.role == "staff" and user.branch_id:
+        # Branch staff only ever see their own branch's sales
+        q = q.filter(Sale.branch_id == user.branch_id)
+    elif branch_id:
         q = q.filter(Sale.branch_id == branch_id)
     elif bb_ids is not None:
         q = q.filter(Sale.branch_id.in_(bb_ids))
-    elif user.role == "staff" and user.branch_id:
-        q = q.filter(Sale.branch_id == user.branch_id)
     return q.order_by(Sale.date.desc()).all()
 
 

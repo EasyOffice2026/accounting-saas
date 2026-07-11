@@ -60,7 +60,7 @@ export default function SalesPage() {
   };
 
   const isStaff = user?.role === "staff";
-  const isOwnerManager = user?.role === "owner" || user?.role === "manager";
+  const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
 
   // Foodics sync state
   const [showFoodicsSync, setShowFoodicsSync] = useState(false);

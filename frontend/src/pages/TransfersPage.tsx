@@ -32,6 +32,7 @@ export default function TransfersPage() {
   const [orders, setOrders] = useState<TOrder[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [showItemForm, setShowItemForm] = useState(false);
   const [editItem, setEditItem] = useState<TItem | null>(null);
 
@@ -125,13 +126,20 @@ export default function TransfersPage() {
         };
       });
     if (selectedItems.length === 0) return;
+    if (submitting) return;
+    if (!window.confirm(t("confirm_submit_request"))) return;
     const fd = new FormData(e.currentTarget);
     fd.append("items", JSON.stringify(selectedItems));
     if (user?.branch_id) fd.set("requesting_branch_id", String(user.branch_id));
-    await apiPost("/api/transfers/orders", fd);
-    setShowForm(false);
-    setCheckedItems({});
-    reload();
+    setSubmitting(true);
+    try {
+      await apiPost("/api/transfers/orders", fd);
+      setShowForm(false);
+      setCheckedItems({});
+      reload();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const openAction = (order: TOrder, type: "dispatch" | "receive") => {
@@ -145,18 +153,24 @@ export default function TransfersPage() {
 
   const handleActionSubmit = async () => {
     if (!actionOrder) return;
+    if (submitting) return;
     const fd = new FormData();
     const lines = actionQtys.map(a => ({
       line_id: a.line_id,
       [actionType === "dispatch" ? "dispatched_qty" : "received_qty"]: a.qty,
     }));
     fd.append("lines", JSON.stringify(lines));
-    await fetch(`/api/transfers/orders/${actionOrder.id}/${actionType}`, {
-      method: "POST", body: fd,
-      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-    });
-    setActionOrder(null);
-    reload();
+    setSubmitting(true);
+    try {
+      await fetch(`/api/transfers/orders/${actionOrder.id}/${actionType}`, {
+        method: "POST", body: fd,
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      setActionOrder(null);
+      reload();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const pendingOrders = orders.filter(o => o.status !== "received");
@@ -421,8 +435,9 @@ export default function TransfersPage() {
                 <input name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" />
               </div>
 
-              <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
-                {t("submit_request")}
+              <button type="submit" disabled={submitting}
+                className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                {submitting ? t("submitting") : t("submit_request")}
               </button>
             </form>
           )}
@@ -443,11 +458,21 @@ export default function TransfersPage() {
                     <span className="text-sm text-gray-500">{order.date}</span>
                   </div>
                   <div className="flex items-center gap-2">
+                    {user?.branch_id && (user.branch_id === order.source_branch_id || user.branch_id === order.requesting_branch_id) && (
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        user.branch_id === order.source_branch_id ? "bg-purple-100 text-purple-700" : "bg-teal-100 text-teal-700"
+                      }`}>
+                        {user.branch_id === order.source_branch_id ? `↑ ${t("outgoing")}` : `↓ ${t("incoming")}`}
+                      </span>
+                    )}
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                       order.status === "requested" ? "bg-yellow-100 text-yellow-700" :
                       order.status === "dispatched" ? "bg-blue-100 text-blue-700" :
                       "bg-green-100 text-green-700"
-                    }`}>{t(order.status)}</span>
+                    }`}>
+                      {order.status === "requested" ? t("pending_dispatch") :
+                       order.status === "dispatched" ? t("sent_pending_receipt") : t(order.status)}
+                    </span>
                     {order.status === "requested" && (isOwnerManager || isCentralKitchen || user?.branch_id === order.source_branch_id) && (
                       <button onClick={() => openAction(order, "dispatch")}
                         className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
@@ -523,7 +548,16 @@ export default function TransfersPage() {
                   <span className="mx-2 text-gray-400">|</span>
                   <span className="text-sm text-gray-500">{order.date}</span>
                 </div>
-                <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">{t("received")}</span>
+                <div className="flex items-center gap-2">
+                  {user?.branch_id && (user.branch_id === order.source_branch_id || user.branch_id === order.requesting_branch_id) && (
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      user.branch_id === order.source_branch_id ? "bg-purple-100 text-purple-700" : "bg-teal-100 text-teal-700"
+                    }`}>
+                      {user.branch_id === order.source_branch_id ? `↑ ${t("outgoing")}` : `↓ ${t("incoming")}`}
+                    </span>
+                  )}
+                  <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">{t("received")}</span>
+                </div>
               </div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
@@ -678,9 +712,9 @@ export default function TransfersPage() {
               ))}
             </div>
             <div className="flex gap-3">
-              <button onClick={handleActionSubmit}
-                className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
-                {actionType === "dispatch" ? t("confirm_dispatch") : t("confirm_receive")}
+              <button onClick={handleActionSubmit} disabled={submitting}
+                className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                {submitting ? t("submitting") : (actionType === "dispatch" ? t("confirm_dispatch") : t("confirm_receive"))}
               </button>
               <button onClick={() => setActionOrder(null)}
                 className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm">

@@ -24,6 +24,21 @@ def _brand_branch_ids(db: Session, brand_id: Optional[int]) -> Optional[list]:
     return ids
 
 
+def _staff_branch_id(user) -> Optional[int]:
+    """Branch id a user is restricted to (branch staff only), else None."""
+    if user is not None and user.role == "staff" and user.branch_id:
+        return user.branch_id
+    return None
+
+
+def _staff_emp_ids(db: Session, user) -> Optional[list]:
+    """Employee ids in a branch-staff user's own branch, else None (no filter)."""
+    bid = _staff_branch_id(user)
+    if bid is None:
+        return None
+    return [e.id for e in db.query(Employee.id).filter(Employee.branch_id == bid).all()]
+
+
 # --- Brands ---
 @router.get("/brands")
 def list_brands(db: Session = Depends(get_db), _=Depends(get_current_user)):
@@ -284,8 +299,11 @@ def delete_employee(
 # --- Attendance ---
 @router.get("/attendance")
 def list_attendance(employee_id: Optional[int] = None, att_date: Optional[str] = None,
-                    db: Session = Depends(get_db), _=Depends(get_current_user)):
+                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Attendance)
+    staff_emp_ids = _staff_emp_ids(db, user)
+    if staff_emp_ids is not None:
+        q = q.filter(Attendance.employee_id.in_(staff_emp_ids)) if staff_emp_ids else q.filter(False)
     if employee_id:
         q = q.filter(Attendance.employee_id == employee_id)
     if att_date:
@@ -841,11 +859,18 @@ def delete_salary_payment(
 
 # --- Staff Transfers ---
 @router.get("/transfers")
-def list_transfers(brand_id: Optional[int] = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_transfers(brand_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(StaffTransfer)
-    bb_ids = _brand_branch_ids(db, brand_id)
-    if bb_ids is not None:
-        q = q.filter(StaffTransfer.from_branch_id.in_(bb_ids))
+    sbid = _staff_branch_id(user)
+    if sbid is not None:
+        # Branch staff see transfers involving their branch (in or out)
+        q = q.filter(
+            (StaffTransfer.from_branch_id == sbid) | (StaffTransfer.to_branch_id == sbid)
+        )
+    else:
+        bb_ids = _brand_branch_ids(db, brand_id)
+        if bb_ids is not None:
+            q = q.filter(StaffTransfer.from_branch_id.in_(bb_ids))
     return q.order_by(StaffTransfer.created_at.desc()).all()
 
 
@@ -918,6 +943,9 @@ def list_loans(employee_id: Optional[int] = None, brand_id: Optional[int] = None
     if user.role not in SALARY_VISIBLE_ROLES:
         raise HTTPException(403, "Not authorized")
     q = db.query(AdvanceLoan)
+    staff_emp_ids = _staff_emp_ids(db, user)
+    if staff_emp_ids is not None:
+        q = q.filter(AdvanceLoan.employee_id.in_(staff_emp_ids)) if staff_emp_ids else q.filter(False)
     if employee_id:
         q = q.filter(AdvanceLoan.employee_id == employee_id)
     elif brand_id:
@@ -1012,6 +1040,9 @@ def list_benefits_deductions(employee_id: Optional[int] = None, month: Optional[
     if user.role not in SALARY_VISIBLE_ROLES:
         raise HTTPException(403, "Not authorized")
     q = db.query(StaffBenefitDeduction)
+    staff_emp_ids = _staff_emp_ids(db, user)
+    if staff_emp_ids is not None:
+        q = q.filter(StaffBenefitDeduction.employee_id.in_(staff_emp_ids)) if staff_emp_ids else q.filter(False)
     if employee_id:
         q = q.filter(StaffBenefitDeduction.employee_id == employee_id)
     if month:
@@ -1095,8 +1126,11 @@ def delete_benefit_deduction(bd_id: int, db: Session = Depends(get_db),
 @router.get("/leaves")
 def list_leaves(employee_id: Optional[int] = None, month: Optional[str] = None,
                 brand_id: Optional[int] = None,
-                db: Session = Depends(get_db), _=Depends(get_current_user)):
+                db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(LeaveRecord)
+    staff_emp_ids = _staff_emp_ids(db, user)
+    if staff_emp_ids is not None:
+        q = q.filter(LeaveRecord.employee_id.in_(staff_emp_ids)) if staff_emp_ids else q.filter(False)
     if employee_id:
         q = q.filter(LeaveRecord.employee_id == employee_id)
     if month:
@@ -1241,6 +1275,9 @@ def list_resignations(brand_id: Optional[int] = None, db: Session = Depends(get_
     if user.role not in SALARY_VISIBLE_ROLES:
         raise HTTPException(403, "Not authorized")
     q = db.query(Resignation)
+    staff_emp_ids = _staff_emp_ids(db, user)
+    if staff_emp_ids is not None:
+        q = q.filter(Resignation.employee_id.in_(staff_emp_ids)) if staff_emp_ids else q.filter(False)
     if brand_id:
         bb_ids = _brand_branch_ids(db, brand_id)
         if bb_ids is not None:

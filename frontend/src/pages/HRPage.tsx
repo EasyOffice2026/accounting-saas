@@ -1535,12 +1535,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       {/* Staff Transfers Tab */}
       {tab === "transfers" && (
         <div>
-          {isManager && (
-            <button onClick={() => setShowTransferForm(!showTransferForm)}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
-              {showTransferForm ? t("cancel") : t("new_transfer")}
-            </button>
-          )}
+          <button onClick={() => setShowTransferForm(!showTransferForm)}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
+            {showTransferForm ? t("cancel") : (isManager ? t("new_transfer") : t("request_transfer"))}
+          </button>
 
           {showTransferForm && (
             <form onSubmit={handleTransferSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
@@ -1770,12 +1768,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       {/* Benefits Tab (Incentive, Bonus, Leave Salary, Ticket) */}
       {tab === "benefits" && (
         <div>
-          {isManager && (
-            <button onClick={() => { setShowBenefitForm(!showBenefitForm); setEditingBenefit(null); }}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
-              {showBenefitForm ? t("cancel") : t("add_new")}
-            </button>
-          )}
+          <button onClick={() => { setShowBenefitForm(!showBenefitForm); setEditingBenefit(null); }}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
+            {showBenefitForm ? t("cancel") : (isManager ? t("add_new") : t("request_new"))}
+          </button>
 
           {showBenefitForm && (
             <form onSubmit={handleBenefitSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
@@ -2009,12 +2005,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       {/* Leave / Absence Tab */}
       {tab === "leaves" && (
         <div>
-          {isManager && (
-            <button onClick={() => { setShowLeaveForm(!showLeaveForm); setEditingLeave(null); }}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
-              {showLeaveForm ? t("cancel") : t("add_leave")}
-            </button>
-          )}
+          <button onClick={() => { setShowLeaveForm(!showLeaveForm); setEditingLeave(null); }}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
+            {showLeaveForm ? t("cancel") : (isManager ? t("add_leave") : t("request_leave"))}
+          </button>
 
           {showLeaveForm && (
             <form className="bg-white rounded-xl shadow p-4 mb-4 grid grid-cols-2 md:grid-cols-3 gap-3"

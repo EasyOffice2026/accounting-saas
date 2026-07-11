@@ -1037,8 +1037,6 @@ def delete_loan(loan_id: int, db: Session = Depends(get_db),
 def list_benefits_deductions(employee_id: Optional[int] = None, month: Optional[str] = None,
                              brand_id: Optional[int] = None,
                              db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in SALARY_VISIBLE_ROLES:
-        raise HTTPException(403, "Not authorized")
     q = db.query(StaffBenefitDeduction)
     staff_emp_ids = _staff_emp_ids(db, user)
     if staff_emp_ids is not None:
@@ -1066,8 +1064,7 @@ def create_benefit_deduction(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
-        raise HTTPException(403, "Not authorized")
+    is_mgr = user.role in ("owner", "manager", "accountant")
     bd = StaffBenefitDeduction(
         employee_id=employee_id,
         category=category,
@@ -1075,6 +1072,8 @@ def create_benefit_deduction(
         date=date.fromisoformat(bd_date),
         month=month or None,
         notes=notes,
+        approval_status="approved" if is_mgr else "pending_approval",
+        approved_by=user.id if is_mgr else None,
     )
     db.add(bd)
     db.commit()
@@ -1165,8 +1164,7 @@ def create_leave(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
-        raise HTTPException(403, "Not authorized")
+    is_mgr = user.role in ("owner", "manager", "accountant")
     sd = date.fromisoformat(start_date)
     ed = date.fromisoformat(end_date)
     days = (ed - sd).days + 1
@@ -1181,6 +1179,8 @@ def create_leave(
         is_paid=is_paid,
         month=month or None,
         notes=notes,
+        approval_status="approved" if is_mgr else "pending_approval",
+        approved_by=user.id if is_mgr else None,
     )
     db.add(rec)
     db.commit()

@@ -241,7 +241,11 @@ def branch_transfer_summary(brand_id: Optional[int] = None,
         q = q.filter(TransferOrder.date >= date.fromisoformat(start_date))
     if end_date:
         q = q.filter(TransferOrder.date <= date.fromisoformat(end_date))
-    if bb_ids is not None:
+    if user.role == "staff" and user.branch_id:
+        branch = db.query(Branch).filter(Branch.id == user.branch_id).first()
+        if branch and not branch.is_central_kitchen:
+            q = q.filter(TransferOrder.requesting_branch_id == user.branch_id)
+    elif bb_ids is not None:
         q = q.filter(TransferOrder.requesting_branch_id.in_(bb_ids))
     q = q.group_by(
         TransferOrder.requesting_branch_id,

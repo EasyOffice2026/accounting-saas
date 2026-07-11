@@ -957,10 +957,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 <tr>
                   <th className="px-3 py-3 text-left">{t("staff_no")}</th>
                   <th className="px-3 py-3 text-left">{t("name")}</th>
-                  <th className="px-3 py-3 text-left">{t("branch")}</th>
+                  {isManager && <th className="px-3 py-3 text-left">{t("branch")}</th>}
                   <th className="px-3 py-3 text-left">{t("position")}</th>
                   <th className="px-3 py-3 text-left">{t("civil_id")}</th>
-                  <th className="px-3 py-3 text-left">{t("phone")}</th>
+                  {isManager && <th className="px-3 py-3 text-left">{t("phone")}</th>}
                   <th className="px-3 py-3 text-left">{t("employer_label")}</th>
                   <th className="px-3 py-3 text-left">{t("residency_expiry")}</th>
                   <th className="px-3 py-3 text-left">{t("health_card_expiry")}</th>
@@ -969,7 +969,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
               </thead>
               <tbody>
                 {employees.length === 0 ? (
-                  <tr><td colSpan={isManager ? 10 : 9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={isManager ? 10 : 7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : employees.filter(emp => {
                   if (!empSearch) return true;
                   const q = empSearch.toLowerCase();
@@ -978,10 +978,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <tr key={emp.id} className="border-b hover:bg-gray-50">
                     <td className="px-3 py-3">{emp.staff_no || "—"}</td>
                     <td className="px-3 py-3" dir="rtl">{emp.name_ar || emp.name}</td>
-                    <td className="px-3 py-3">{branchName(emp.branch_id)}</td>
+                    {isManager && <td className="px-3 py-3">{branchName(emp.branch_id)}</td>}
                     <td className="px-3 py-3">{emp.position}</td>
                     <td className="px-3 py-3">{emp.civil_id}</td>
-                    <td className="px-3 py-3">{emp.phone}</td>
+                    {isManager && <td className="px-3 py-3">{emp.phone}</td>}
                     <td className="px-3 py-3">{(() => {
                       if (!emp.employer) return "—";
                       const match = employers.find(e => e.name === emp.employer);

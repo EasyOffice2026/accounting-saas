@@ -283,12 +283,13 @@ def list_orders(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
                 user: User = Depends(get_current_user)):
     q = db.query(PurchaseOrder)
     bb_ids = _brand_branch_ids(db, brand_id)
-    if branch_id:
+    if user.role == "staff" and user.branch_id:
+        # Branch staff only ever see their own branch's purchase orders
+        q = q.filter(PurchaseOrder.branch_id == user.branch_id)
+    elif branch_id:
         q = q.filter(PurchaseOrder.branch_id == branch_id)
     elif bb_ids is not None:
         q = q.filter(PurchaseOrder.branch_id.in_(bb_ids))
-    elif user.role == "staff" and user.branch_id:
-        q = q.filter(PurchaseOrder.branch_id == user.branch_id)
     return q.order_by(PurchaseOrder.date.desc()).all()
 
 
@@ -484,6 +485,8 @@ def get_receiving(order_id: int, db: Session = Depends(get_db), _=Depends(get_cu
 def list_invoices(supplier_id: Optional[int] = None, status: Optional[str] = None,
                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Invoice)
+    if user.role == "staff" and user.branch_id:
+        q = q.filter(Invoice.branch_id == user.branch_id)
     if supplier_id:
         q = q.filter(Invoice.supplier_id == supplier_id)
     if status:

@@ -37,12 +37,13 @@ def list_expenses(branch_id: Optional[int] = None, brand_id: Optional[int] = Non
                   user: User = Depends(get_current_user)):
     q = db.query(Expense)
     bb_ids = _brand_branch_ids(db, brand_id)
-    if branch_id:
+    if user.role == "staff" and user.branch_id:
+        # Branch staff only ever see their own branch's expenses
+        q = q.filter(Expense.branch_id == user.branch_id)
+    elif branch_id:
         q = q.filter(Expense.branch_id == branch_id)
     elif bb_ids is not None:
         q = q.filter(Expense.branch_id.in_(bb_ids))
-    elif user.role == "staff" and user.branch_id:
-        q = q.filter(Expense.branch_id == user.branch_id)
     return q.order_by(Expense.date.desc()).all()
 
 

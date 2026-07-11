@@ -54,6 +54,9 @@ export default function TransfersPage() {
   const [consumption, setConsumption] = useState<BranchConsumption[]>([]);
   const [conStartDate, setConStartDate] = useState("");
   const [conEndDate, setConEndDate] = useState("");
+  const [conBranchFilter, setConBranchFilter] = useState<string>("all");
+  const [conGroupView, setConGroupView] = useState(false);
+  const [conExpanded, setConExpanded] = useState<Record<string, boolean>>({});
 
 
 
@@ -650,6 +653,27 @@ export default function TransfersPage() {
         <div className="space-y-4">
           <div className="bg-white rounded-xl shadow-sm border p-4">
             <div className="flex items-end gap-3 flex-wrap">
+              {isOwnerManager && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("branch")}</label>
+                  <select value={conBranchFilter} onChange={e => setConBranchFilter(e.target.value)}
+                    className="px-3 py-2 border rounded-lg text-sm">
+                    <option value="all">{t("all_branches")}</option>
+                    {consumption.map(bc => (
+                      <option key={bc.branch_id} value={bc.branch_id}>
+                        {i18n.language === "ar" ? (bc.branch_name_ar || bc.branch_name) : bc.branch_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {isOwnerManager && (
+                <label className="flex items-center gap-2 text-sm text-gray-700 pb-2 cursor-pointer">
+                  <input type="checkbox" checked={conGroupView} onChange={e => setConGroupView(e.target.checked)}
+                    className="w-4 h-4" />
+                  {t("group_view")}
+                </label>
+              )}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">{t("start_date")}</label>
                 <input type="date" value={conStartDate} onChange={e => setConStartDate(e.target.value)}
@@ -677,50 +701,93 @@ export default function TransfersPage() {
             </div>
           </div>
 
-          {consumption.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-sm border p-8 text-center text-gray-400">{t("no_data")}</div>
-          ) : consumption.map(bc => (
-            <div key={bc.branch_id} className="bg-white rounded-xl shadow-sm border overflow-hidden">
-              <div className="px-5 py-3 bg-gray-50 border-b flex items-center justify-between">
-                <span className="font-semibold text-gray-800">
-                  {i18n.language === "ar" ? (bc.branch_name_ar || bc.branch_name) : bc.branch_name}
-                  {i18n.language === "ar" && bc.branch_name && <span className="text-xs text-gray-400 ml-2">({bc.branch_name})</span>}
-                  {i18n.language !== "ar" && bc.branch_name_ar && <span className="text-xs text-gray-400 ml-2" dir="rtl">({bc.branch_name_ar})</span>}
-                </span>
-                <span className="text-sm font-bold text-emerald-700">{t("grand_total")}: {bc.total_amount.toFixed(3)}</span>
-              </div>
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left">{t("item_name")}</th>
-                    <th className="px-4 py-2 text-left">{t("unit")}</th>
-                    <th className="px-4 py-2 text-right">{t("total_qty")}</th>
-                    <th className="px-4 py-2 text-right">{t("unit_price")}</th>
-                    <th className="px-4 py-2 text-right">{t("total_amount")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bc.items.map((item, idx) => (
-                    <tr key={idx} className="border-t">
-                      <td className="px-4 py-2">
-                        {i18n.language === "ar" ? (item.item_name_ar || item.item_name) : item.item_name}
-                        {i18n.language === "ar" && item.item_name && <span className="text-xs text-gray-400 ml-1">({item.item_name})</span>}
-                        {i18n.language !== "ar" && item.item_name_ar && <span className="text-xs text-gray-400 ml-1" dir="rtl">({item.item_name_ar})</span>}
-                      </td>
-                      <td className="px-4 py-2">{item.unit}</td>
-                      <td className="px-4 py-2 text-right font-mono">{item.total_qty}</td>
-                      <td className="px-4 py-2 text-right font-mono">{item.total_qty > 0 ? (item.total_amount / item.total_qty).toFixed(3) : "0.000"}</td>
-                      <td className="px-4 py-2 text-right font-mono font-semibold">{item.total_amount.toFixed(3)}</td>
-                    </tr>
-                  ))}
-                  <tr className="border-t bg-emerald-50 font-bold">
-                    <td colSpan={4} className="px-4 py-2 text-right">{t("grand_total")}</td>
-                    <td className="px-4 py-2 text-right font-mono text-emerald-700">{bc.total_amount.toFixed(3)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          ))}
+          {(() => {
+            const filtered = conBranchFilter === "all"
+              ? consumption
+              : consumption.filter(bc => bc.branch_id === Number(conBranchFilter));
+
+            let cards: { key: string; title: string; title_ar: string; items: BranchConsumption["items"]; total_amount: number }[];
+            if (conGroupView) {
+              const map = new Map<string, BranchConsumption["items"][number]>();
+              let total = 0;
+              filtered.forEach(bc => bc.items.forEach(it => {
+                const k = `${it.item_name}||${it.unit}`;
+                const ex = map.get(k);
+                if (ex) {
+                  ex.total_qty += it.total_qty;
+                  ex.total_amount = Math.round((ex.total_amount + it.total_amount) * 1000) / 1000;
+                } else {
+                  map.set(k, { ...it });
+                }
+                total += it.total_amount;
+              }));
+              cards = [{
+                key: "group", title: t("group_view"), title_ar: t("group_view"),
+                items: Array.from(map.values()),
+                total_amount: Math.round(total * 1000) / 1000,
+              }];
+            } else {
+              cards = filtered.map(bc => ({
+                key: String(bc.branch_id),
+                title: bc.branch_name, title_ar: bc.branch_name_ar || bc.branch_name,
+                items: bc.items, total_amount: bc.total_amount,
+              }));
+            }
+
+            if (cards.length === 0) {
+              return <div className="bg-white rounded-xl shadow-sm border p-8 text-center text-gray-400">{t("no_data")}</div>;
+            }
+
+            return cards.map(card => {
+              const isOpen = conExpanded[card.key];
+              return (
+                <div key={card.key} className="bg-white rounded-xl shadow-sm border overflow-hidden">
+                  <div className="px-5 py-3 bg-gray-50 border-b flex items-center justify-between cursor-pointer hover:bg-gray-100"
+                    onClick={() => setConExpanded(prev => ({ ...prev, [card.key]: !prev[card.key] }))}>
+                    <span className="font-semibold text-gray-800 flex items-center">
+                      <span className="mr-2 text-gray-400 text-xs">{isOpen ? "▼" : "▶"}</span>
+                      {i18n.language === "ar" ? card.title_ar : card.title}
+                      {i18n.language === "ar" && card.title && card.title !== card.title_ar && <span className="text-xs text-gray-400 ml-2">({card.title})</span>}
+                      {i18n.language !== "ar" && card.title_ar && card.title_ar !== card.title && <span className="text-xs text-gray-400 ml-2" dir="rtl">({card.title_ar})</span>}
+                    </span>
+                    <span className="text-sm font-bold text-emerald-700">{t("grand_total")}: {card.total_amount.toFixed(3)}</span>
+                  </div>
+                  {isOpen && (
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left">{t("item_name")}</th>
+                        <th className="px-4 py-2 text-left">{t("unit")}</th>
+                        <th className="px-4 py-2 text-right">{t("total_qty")}</th>
+                        <th className="px-4 py-2 text-right">{t("unit_price")}</th>
+                        <th className="px-4 py-2 text-right">{t("total_amount")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {card.items.map((item, idx) => (
+                        <tr key={idx} className="border-t">
+                          <td className="px-4 py-2">
+                            {i18n.language === "ar" ? (item.item_name_ar || item.item_name) : item.item_name}
+                            {i18n.language === "ar" && item.item_name && <span className="text-xs text-gray-400 ml-1">({item.item_name})</span>}
+                            {i18n.language !== "ar" && item.item_name_ar && <span className="text-xs text-gray-400 ml-1" dir="rtl">({item.item_name_ar})</span>}
+                          </td>
+                          <td className="px-4 py-2">{item.unit}</td>
+                          <td className="px-4 py-2 text-right font-mono">{item.total_qty}</td>
+                          <td className="px-4 py-2 text-right font-mono">{item.total_qty > 0 ? (item.total_amount / item.total_qty).toFixed(3) : "0.000"}</td>
+                          <td className="px-4 py-2 text-right font-mono font-semibold">{item.total_amount.toFixed(3)}</td>
+                        </tr>
+                      ))}
+                      <tr className="border-t bg-emerald-50 font-bold">
+                        <td colSpan={4} className="px-4 py-2 text-right">{t("grand_total")}</td>
+                        <td className="px-4 py-2 text-right font-mono text-emerald-700">{card.total_amount.toFixed(3)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  )}
+                </div>
+              );
+            });
+          })()}
         </div>
       )}
 

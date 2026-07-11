@@ -107,12 +107,12 @@ def list_employees(branch_id: Optional[int] = None, brand_id: Optional[int] = No
                    user: User = Depends(get_current_user)):
     q = db.query(Employee)
     bb_ids = _brand_branch_ids(db, brand_id)
-    if branch_id:
+    if user.role == "staff" and user.branch_id:
+        q = q.filter(Employee.branch_id == user.branch_id)
+    elif branch_id:
         q = q.filter(Employee.branch_id == branch_id)
     elif bb_ids is not None:
         q = q.filter(Employee.branch_id.in_(bb_ids))
-    elif user.role == "staff" and user.branch_id:
-        q = q.filter(Employee.branch_id == user.branch_id)
     rows = q.all()
     hide_salary = user.role not in SALARY_VISIBLE_ROLES
     result = []

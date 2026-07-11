@@ -1438,7 +1438,9 @@ def _contract_to_dict(c):
 
 
 @router.get("/contracts")
-def list_contracts(brand_id: Optional[int] = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_contracts(brand_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
     q = db.query(Contract)
     if brand_id:
         q = q.filter(Contract.brand_id == brand_id)
@@ -1523,7 +1525,9 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db),
 
 # --- Contract Payments ---
 @router.get("/contracts/{contract_id}/payments")
-def list_contract_payments(contract_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_contract_payments(contract_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
     rows = db.query(ContractPayment).filter(ContractPayment.contract_id == contract_id)\
         .order_by(ContractPayment.due_date).all()
     return [{

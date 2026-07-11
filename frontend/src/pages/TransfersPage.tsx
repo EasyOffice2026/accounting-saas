@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet, apiPost, apiDownload } from "../contexts/api";
+import { apiGet, apiPost, apiDownload, apiFetch } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Branch { id: number; name: string; name_ar?: string; is_central_kitchen: boolean; brand_id?: number | null; }
@@ -32,6 +32,7 @@ export default function TransfersPage() {
   const [orders, setOrders] = useState<TOrder[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<TOrder | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showItemForm, setShowItemForm] = useState(false);
   const [editItem, setEditItem] = useState<TItem | null>(null);
@@ -49,6 +50,7 @@ export default function TransfersPage() {
   const [actionQtys, setActionQtys] = useState<{ line_id: number; qty: string }[]>([]);
 
   // Branch consumption
+  const [expandedOrders, setExpandedOrders] = useState<Record<number, boolean>>({});
   const [consumption, setConsumption] = useState<BranchConsumption[]>([]);
   const [conStartDate, setConStartDate] = useState("");
   const [conEndDate, setConEndDate] = useState("");
@@ -133,13 +135,33 @@ export default function TransfersPage() {
     if (user?.branch_id) fd.set("requesting_branch_id", String(user.branch_id));
     setSubmitting(true);
     try {
-      await apiPost("/api/transfers/orders", fd);
+      if (editingOrder) {
+        await apiFetch(`/api/transfers/orders/${editingOrder.id}`, { method: "PUT", body: fd });
+      } else {
+        await apiPost("/api/transfers/orders", fd);
+      }
       setShowForm(false);
+      setEditingOrder(null);
       setCheckedItems({});
       reload();
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const openEditOrder = (order: TOrder) => {
+    setEditingOrder(order);
+    const checked: Record<number, string> = {};
+    order.lines.forEach(l => { checked[l.item_id] = String(l.requested_qty); });
+    setCheckedItems(checked);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDeleteOrder = async (orderId: number) => {
+    if (!window.confirm(t("confirm_delete"))) return;
+    await apiFetch(`/api/transfers/orders/${orderId}`, { method: "DELETE" });
+    reload();
   };
 
   const openAction = (order: TOrder, type: "dispatch" | "receive") => {
@@ -183,7 +205,7 @@ export default function TransfersPage() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("internal_transfer")}</h2>
         {tab === "requests" && (
-          <button onClick={() => { setShowForm(!showForm); if (showForm) setCheckedItems({}); }}
+          <button onClick={() => { setShowForm(!showForm); if (showForm) { setCheckedItems({}); setEditingOrder(null); } }}
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
             {showForm ? t("cancel") : t("new_request")}
           </button>
@@ -324,13 +346,13 @@ export default function TransfersPage() {
       {tab === "requests" && (
         <>
           {showForm && (
-            <form onSubmit={handleRequestSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-4 space-y-4">
-              <h3 className="font-semibold">{t("new_request")}</h3>
+            <form key={editingOrder?.id ?? "new"} onSubmit={handleRequestSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-4 space-y-4">
+              <h3 className="font-semibold">{editingOrder ? `${t("edit")} #${editingOrder.id}` : t("new_request")}</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("source_branch")}</label>
                   <select name="source_branch_id" required
-                    defaultValue={branches.find(b => b.is_central_kitchen)?.id || ""}
+                    defaultValue={editingOrder ? (editingOrder.source_branch_id ?? "") : (branches.find(b => b.is_central_kitchen)?.id || "")}
                     className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select")}</option>
                     {branches.map(b =>
@@ -345,7 +367,9 @@ export default function TransfersPage() {
                 ) : (
                   <div>
                     <label className="block text-sm font-medium mb-1">{t("destination_branch")}</label>
-                    <select name="requesting_branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <select name="requesting_branch_id" required
+                      defaultValue={editingOrder ? editingOrder.requesting_branch_id : ""}
+                      className="w-full px-3 py-2 border rounded-lg text-sm">
                       <option value="">{t("select")}</option>
                       {branches.map(b =>
                         <option key={b.id} value={b.id}>
@@ -357,7 +381,7 @@ export default function TransfersPage() {
                 )}
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
-                  <input type="date" name="order_date" required defaultValue={new Date().toISOString().slice(0, 10)}
+                  <input type="date" name="order_date" required defaultValue={editingOrder ? editingOrder.date : new Date().toISOString().slice(0, 10)}
                     className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
               </div>
@@ -437,7 +461,7 @@ export default function TransfersPage() {
 
               <button type="submit" disabled={submitting}
                 className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                {submitting ? t("submitting") : t("submit_request")}
+                {submitting ? t("submitting") : (editingOrder ? t("save") : t("submit_request"))}
               </button>
             </form>
           )}
@@ -473,6 +497,18 @@ export default function TransfersPage() {
                       {order.status === "requested" ? t("pending_dispatch") :
                        order.status === "dispatched" ? t("sent_pending_receipt") : t(order.status)}
                     </span>
+                    {order.status === "requested" && (
+                      <>
+                        <button onClick={() => openEditOrder(order)}
+                          className="px-3 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600">
+                          {t("edit")}
+                        </button>
+                        <button onClick={() => handleDeleteOrder(order.id)}
+                          className="px-3 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">
+                          {t("delete")}
+                        </button>
+                      </>
+                    )}
                     {order.status === "requested" && (isOwnerManager || isCentralKitchen || user?.branch_id === order.source_branch_id) && (
                       <button onClick={() => openAction(order, "dispatch")}
                         className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
@@ -538,8 +574,10 @@ export default function TransfersPage() {
             <div className="bg-white rounded-xl shadow-sm border p-8 text-center text-gray-400">{t("no_data")}</div>
           ) : historyOrders.map(order => (
             <div key={order.id} className="bg-white rounded-xl shadow-sm border overflow-hidden">
-              <div className="px-5 py-3 flex items-center justify-between bg-gray-50 border-b">
-                <div>
+              <div className="px-5 py-3 flex items-center justify-between bg-gray-50 border-b cursor-pointer hover:bg-gray-100"
+                onClick={() => setExpandedOrders(prev => ({ ...prev, [order.id]: !prev[order.id] }))}>
+                <div className="flex items-center">
+                  <span className="mr-2 text-gray-400 text-xs">{expandedOrders[order.id] ? "▼" : "▶"}</span>
                   <span className="font-semibold text-gray-800">#{order.id}</span>
                   <span className="mx-2 text-gray-400">|</span>
                   <span className="text-sm text-gray-600">
@@ -547,6 +585,10 @@ export default function TransfersPage() {
                   </span>
                   <span className="mx-2 text-gray-400">|</span>
                   <span className="text-sm text-gray-500">{order.date}</span>
+                  <span className="mx-2 text-gray-400">|</span>
+                  <span className="text-sm font-semibold text-emerald-700">
+                    {t("total")}: {order.lines.reduce((sum, l) => sum + (l.unit_price || 0) * l.requested_qty, 0).toFixed(3)}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   {user?.branch_id && (user.branch_id === order.source_branch_id || user.branch_id === order.requesting_branch_id) && (
@@ -559,6 +601,7 @@ export default function TransfersPage() {
                   <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">{t("received")}</span>
                 </div>
               </div>
+              {expandedOrders[order.id] && (
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
@@ -596,6 +639,7 @@ export default function TransfersPage() {
                   </tr>
                 </tbody>
               </table>
+              )}
             </div>
           ))}
         </div>

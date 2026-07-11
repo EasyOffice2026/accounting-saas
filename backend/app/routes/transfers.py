@@ -165,6 +165,63 @@ def create_transfer_order(
     return {"id": order.id, "status": "created"}
 
 
+@router.put("/orders/{order_id}")
+def update_transfer_order(
+    order_id: int,
+    requesting_branch_id: int = Form(...),
+    source_branch_id: Optional[int] = Form(None),
+    order_date: str = Form(...),
+    items: str = Form("[]"),
+    notes: str = Form(""),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    order = db.query(TransferOrder).filter(TransferOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if order.status != "requested":
+        raise HTTPException(400, "Only pending requests can be edited")
+    items_list = json.loads(items)
+    if not items_list:
+        raise HTTPException(400, "At least one item is required")
+    if source_branch_id and source_branch_id == requesting_branch_id:
+        raise HTTPException(400, "Source and destination branch cannot be the same")
+
+    order.requesting_branch_id = requesting_branch_id
+    order.source_branch_id = source_branch_id
+    order.date = date.fromisoformat(order_date)
+    order.notes = notes or None
+
+    db.query(TransferOrderLine).filter(TransferOrderLine.transfer_order_id == order.id).delete()
+    for item in items_list:
+        db.add(TransferOrderLine(
+            transfer_order_id=order.id,
+            item_id=int(item["item_id"]),
+            item_name=item["item_name"],
+            item_name_ar=item.get("item_name_ar") or None,
+            requested_qty=float(item["requested_qty"]),
+            unit=item.get("unit", "pcs"),
+            unit_price=float(item.get("unit_price", 0)),
+        ))
+    db.commit()
+    return {"id": order.id, "status": "updated"}
+
+
+@router.delete("/orders/{order_id}")
+def delete_transfer_order(
+    order_id: int,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    order = db.query(TransferOrder).filter(TransferOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if order.status != "requested":
+        raise HTTPException(400, "Only pending requests can be deleted")
+    db.query(TransferOrderLine).filter(TransferOrderLine.transfer_order_id == order.id).delete()
+    db.delete(order)
+    db.commit()
+    return {"status": "deleted"}
+
+
 # --- Dispatch (Central Kitchen marks items sent) ---
 @router.post("/orders/{order_id}/dispatch")
 def dispatch_order(

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
-interface Branch { id: number; name: string; is_central_kitchen: boolean; }
+interface Branch { id: number; name: string; name_ar?: string; is_central_kitchen: boolean; brand_id?: number | null; }
 interface TItem { id: number; name: string; name_ar: string; unit: string; unit_price: number; opening_stock: number; category: string; }
 interface OrderLine {
   id: number; item_id: number; item_name: string; item_name_ar: string | null;
@@ -12,6 +12,7 @@ interface OrderLine {
 
 interface TOrder {
   id: number; requesting_branch_id: number; branch_name: string;
+  source_branch_id: number | null; source_branch_name: string;
   date: string; status: string; notes: string; lines: OrderLine[];
 }
 
@@ -311,15 +312,31 @@ export default function TransfersPage() {
           {showForm && (
             <form onSubmit={handleRequestSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-4 space-y-4">
               <h3 className="font-semibold">{t("new_request")}</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("source_branch")}</label>
+                  <select name="source_branch_id" required
+                    defaultValue={branches.find(b => b.is_central_kitchen)?.id || ""}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">{t("select")}</option>
+                    {branches.map(b =>
+                      <option key={b.id} value={b.id}>
+                        {(i18n.language === "ar" && b.name_ar ? b.name_ar : b.name)}{b.is_central_kitchen ? ` (${t("central_kitchen")})` : ""}
+                      </option>
+                    )}
+                  </select>
+                </div>
                 {user?.branch_id ? (
                   <input type="hidden" name="requesting_branch_id" value={user.branch_id} />
                 ) : (
                   <div>
-                    <label className="block text-sm font-medium mb-1">{t("requesting_branch")}</label>
+                    <label className="block text-sm font-medium mb-1">{t("destination_branch")}</label>
                     <select name="requesting_branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
-                      {branches.filter(b => !b.is_central_kitchen).map(b =>
-                        <option key={b.id} value={b.id}>{b.name}</option>
+                      <option value="">{t("select")}</option>
+                      {branches.map(b =>
+                        <option key={b.id} value={b.id}>
+                          {(i18n.language === "ar" && b.name_ar ? b.name_ar : b.name)}{b.is_central_kitchen ? ` (${t("central_kitchen")})` : ""}
+                        </option>
                       )}
                     </select>
                   </div>
@@ -406,7 +423,9 @@ export default function TransfersPage() {
                   <div>
                     <span className="font-semibold text-gray-800">#{order.id}</span>
                     <span className="mx-2 text-gray-400">|</span>
-                    <span className="text-sm text-gray-600">{order.branch_name}</span>
+                    <span className="text-sm text-gray-600">
+                      {order.source_branch_name ? `${order.source_branch_name} → ${order.branch_name}` : order.branch_name}
+                    </span>
                     <span className="mx-2 text-gray-400">|</span>
                     <span className="text-sm text-gray-500">{order.date}</span>
                   </div>
@@ -416,7 +435,7 @@ export default function TransfersPage() {
                       order.status === "dispatched" ? "bg-blue-100 text-blue-700" :
                       "bg-green-100 text-green-700"
                     }`}>{t(order.status)}</span>
-                    {order.status === "requested" && (isOwnerManager || isCentralKitchen) && (
+                    {order.status === "requested" && (isOwnerManager || isCentralKitchen || user?.branch_id === order.source_branch_id) && (
                       <button onClick={() => openAction(order, "dispatch")}
                         className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
                         {t("dispatch")}
@@ -485,7 +504,9 @@ export default function TransfersPage() {
                 <div>
                   <span className="font-semibold text-gray-800">#{order.id}</span>
                   <span className="mx-2 text-gray-400">|</span>
-                  <span className="text-sm text-gray-600">{order.branch_name}</span>
+                  <span className="text-sm text-gray-600">
+                    {order.source_branch_name ? `${order.source_branch_name} → ${order.branch_name}` : order.branch_name}
+                  </span>
                   <span className="mx-2 text-gray-400">|</span>
                   <span className="text-sm text-gray-500">{order.date}</span>
                 </div>

@@ -78,13 +78,20 @@ def delete_transfer_item(item_id: int, db: Session = Depends(get_db),
 def list_transfer_orders(brand_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(TransferOrder)
     bb_ids = _brand_branch_ids(db, brand_id)
-    # Staff sees only their branch requests; Central Kitchen staff sees all
+    # Staff sees only orders involving their branch (as source or destination);
+    # Central Kitchen staff sees all
     if user.role == "staff" and user.branch_id:
         branch = db.query(Branch).filter(Branch.id == user.branch_id).first()
         if branch and not branch.is_central_kitchen:
-            q = q.filter(TransferOrder.requesting_branch_id == user.branch_id)
+            q = q.filter(
+                (TransferOrder.requesting_branch_id == user.branch_id)
+                | (TransferOrder.source_branch_id == user.branch_id)
+            )
     elif bb_ids is not None:
-        q = q.filter(TransferOrder.requesting_branch_id.in_(bb_ids))
+        q = q.filter(
+            (TransferOrder.requesting_branch_id.in_(bb_ids))
+            | (TransferOrder.source_branch_id.in_(bb_ids))
+        )
     orders = q.order_by(TransferOrder.date.desc()).all()
     branches = {b.id: b.name for b in db.query(Branch).all()}
     result = []
@@ -96,6 +103,8 @@ def list_transfer_orders(brand_id: Optional[int] = None, db: Session = Depends(g
             "id": o.id,
             "requesting_branch_id": o.requesting_branch_id,
             "branch_name": branches.get(o.requesting_branch_id, ""),
+            "source_branch_id": o.source_branch_id,
+            "source_branch_name": branches.get(o.source_branch_id, "") if o.source_branch_id else "",
             "date": str(o.date),
             "status": o.status,
             "notes": o.notes,
@@ -118,6 +127,7 @@ def list_transfer_orders(brand_id: Optional[int] = None, db: Session = Depends(g
 @router.post("/orders")
 def create_transfer_order(
     requesting_branch_id: int = Form(...),
+    source_branch_id: Optional[int] = Form(None),
     order_date: str = Form(...),
     items: str = Form("[]"),
     notes: str = Form(""),
@@ -126,9 +136,12 @@ def create_transfer_order(
     items_list = json.loads(items)
     if not items_list:
         raise HTTPException(400, "At least one item is required")
+    if source_branch_id and source_branch_id == requesting_branch_id:
+        raise HTTPException(400, "Source and destination branch cannot be the same")
 
     order = TransferOrder(
         requesting_branch_id=requesting_branch_id,
+        source_branch_id=source_branch_id,
         date=date.fromisoformat(order_date),
         notes=notes or None,
         created_by=user.id,

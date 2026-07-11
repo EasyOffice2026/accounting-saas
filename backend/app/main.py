@@ -166,6 +166,13 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE advance_loans ADD COLUMN deduction_month TEXT"))
                 conn.commit()
 
+        # Transfer orders - add source_branch_id for branch-to-branch transfers
+        if "transfer_orders" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("transfer_orders")]
+            if "source_branch_id" not in cols:
+                conn.execute(text("ALTER TABLE transfer_orders ADD COLUMN source_branch_id INTEGER"))
+                conn.commit()
+
         # Resignation table - add dues_cleared_consent columns
         if "resignations" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("resignations")]

@@ -21,6 +21,7 @@ class TransferOrder(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     requesting_branch_id = Column(Integer, ForeignKey("branches.id"), nullable=False)
+    source_branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True)
     date = Column(Date, nullable=False)
     status = Column(String, default="requested")  # requested, dispatched, received
     notes = Column(Text, nullable=True)

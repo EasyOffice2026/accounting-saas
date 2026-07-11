@@ -229,6 +229,8 @@ export default {
   total_amount: "إجمالي المبلغ",
   new_request: "طلب جديد",
   requesting_branch: "الفرع الطالب",
+  source_branch: "من (الفرع المصدر)",
+  destination_branch: "إلى (الفرع المستلم)",
   submit_request: "إرسال الطلب",
   requested: "مطلوب",
   dispatched: "تم الإرسال",

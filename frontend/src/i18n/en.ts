@@ -229,6 +229,8 @@ export default {
   total_amount: "Total Amount",
   new_request: "New Request",
   requesting_branch: "Requesting Branch",
+  source_branch: "From (Source Branch)",
+  destination_branch: "To (Destination Branch)",
   submit_request: "Submit Request",
   requested: "Requested",
   dispatched: "Dispatched",

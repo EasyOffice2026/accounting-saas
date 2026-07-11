@@ -361,7 +361,15 @@ export default function TransfersPage() {
                     {t("packaging_items")}
                   </button>
                 </div>
-                <div className="border rounded-lg divide-y max-h-80 overflow-y-auto">
+                <div className="flex items-center gap-3 px-4 py-2 bg-gray-100 border border-b-0 rounded-t-lg text-xs font-semibold text-gray-600">
+                  <span className="w-4"></span>
+                  <span className="flex-1">{t("item_name")}</span>
+                  <span className="w-12">{t("unit")}</span>
+                  <span className="w-16 text-right">{t("unit_price")}</span>
+                  <span className="w-20 text-center">{t("requested")}</span>
+                  <span className="w-20 text-right">{t("total")}</span>
+                </div>
+                <div className="border rounded-b-lg divide-y max-h-80 overflow-y-auto">
                   {items.filter(i => (i.category || "food") === requestCategory).map(item => {
                     const isChecked = checkedItems[item.id] !== undefined;
                     return (
@@ -381,7 +389,7 @@ export default function TransfersPage() {
                         </span>
                         <span className="text-xs text-gray-400 w-12">{item.unit}</span>
                         <span className="text-xs text-gray-500 w-16 text-right">{(item.unit_price || 0).toFixed(3)}</span>
-                        {isChecked && (
+                        {isChecked ? (
                           <>
                             <input type="number" step="0.01" min="0.01"
                               value={checkedItems[item.id]}
@@ -391,6 +399,11 @@ export default function TransfersPage() {
                             <span className="text-xs font-semibold text-emerald-700 w-20 text-right">
                               {((item.unit_price || 0) * Number(checkedItems[item.id] || 0)).toFixed(3)}
                             </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="w-20 text-center text-gray-300">—</span>
+                            <span className="w-20 text-right text-gray-300">—</span>
                           </>
                         )}
                       </div>

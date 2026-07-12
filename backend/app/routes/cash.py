@@ -42,6 +42,8 @@ def list_transactions(
     for r in rows:
         if r.txn_type == "opening_balance":
             balance = r.amount
+        elif r.category == "deposit":
+            balance -= r.amount  # deposit to bank reduces cash on hand
         elif r.txn_type == "cash_in":
             balance += r.amount
         else:  # cash_out
@@ -106,17 +108,19 @@ def cash_summary(
         Expense.payment_method == "cash",
     ).scalar()
 
-    # Manual transactions
+    # Manual transactions (deposits are tracked separately below to avoid double counting)
     cash_in_manual = db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
         CashTransaction.branch_id == branch_id,
         CashTransaction.date == target_date,
         CashTransaction.txn_type == "cash_in",
+        CashTransaction.category != "deposit",
     ).scalar()
 
     cash_out_manual = db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
         CashTransaction.branch_id == branch_id,
         CashTransaction.date == target_date,
         CashTransaction.txn_type == "cash_out",
+        CashTransaction.category != "deposit",
     ).scalar()
 
     deposits = db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
@@ -161,18 +165,25 @@ def cash_summary(
         Expense.branch_id == branch_id, date_filter_exp,
         Expense.payment_method == "cash",
     ).scalar())
-    # Prior days' manual cash_in
+    # Prior days' manual cash_in (excluding deposits, tracked separately)
     prior_cash_in = float(db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
         CashTransaction.branch_id == branch_id, date_filter_txn,
         CashTransaction.txn_type == "cash_in",
+        CashTransaction.category != "deposit",
     ).scalar())
-    # Prior days' manual cash_out
+    # Prior days' manual cash_out (excluding deposits, tracked separately)
     prior_cash_out = float(db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
         CashTransaction.branch_id == branch_id, date_filter_txn,
         CashTransaction.txn_type == "cash_out",
+        CashTransaction.category != "deposit",
+    ).scalar())
+    # Prior days' deposits (money moved to bank, reduces cash on hand)
+    prior_deposits = float(db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
+        CashTransaction.branch_id == branch_id, date_filter_txn,
+        CashTransaction.category == "deposit",
     ).scalar())
 
-    opening_balance = ob_start + (prior_sales + prior_cash_in) - (prior_purchases + prior_expenses + prior_cash_out)
+    opening_balance = ob_start + (prior_sales + prior_cash_in) - (prior_purchases + prior_expenses + prior_cash_out + prior_deposits)
 
     total_in = float(opening_balance) + float(cash_sales) + float(cash_in_manual)
     total_out = float(cash_purchases) + float(cash_expenses) + float(cash_out_manual) + float(deposits)

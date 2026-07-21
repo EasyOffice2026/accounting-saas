@@ -176,7 +176,10 @@ def _send_whatsapp_message(settings, phone: str, message: str) -> dict:
         if resp.status_code in (200, 201):
             mid = ""
             if isinstance(data, dict):
+                # WEBJS returns {"id": ...}; NOWEB returns {"key": {"id": ...}}
                 raw_id = data.get("id")
+                if not raw_id and isinstance(data.get("key"), dict):
+                    raw_id = data["key"].get("id")
                 if isinstance(raw_id, dict):
                     mid = raw_id.get("_serialized") or raw_id.get("id") or ""
                 elif raw_id:

@@ -24,6 +24,7 @@ interface PaymentConfig {
 }
 
 interface WhatsAppConfig {
+  provider: string;
   instance_id: string;
   api_url: string;
   default_phone: string;
@@ -121,6 +122,7 @@ export default function SettingsPage() {
   const [pgMsgType, setPgMsgType] = useState<"success" | "error">("success");
 
   // WhatsApp state
+  const [waProvider, setWaProvider] = useState("greenapi");
   const [waInstanceId, setWaInstanceId] = useState("");
   const [waApiToken, setWaApiToken] = useState("");
   const [waApiUrl, setWaApiUrl] = useState("");
@@ -215,6 +217,7 @@ export default function SettingsPage() {
     });
     apiGet("/api/whatsapp/settings").then((data: WhatsAppConfig | null) => {
       if (data) {
+        setWaProvider(data.provider || "greenapi");
         setWaInstanceId(data.instance_id);
         setWaApiUrl(data.api_url);
         setWaPhone(data.default_phone);
@@ -1045,6 +1048,7 @@ export default function SettingsPage() {
           setWaSaving(true);
           try {
             const fd = new URLSearchParams();
+            fd.append("provider", waProvider);
             if (waInstanceId) fd.append("instance_id", waInstanceId);
             if (waApiToken) fd.append("api_token", waApiToken);
             if (waApiUrl) fd.append("api_url", waApiUrl);
@@ -1072,26 +1076,40 @@ export default function SettingsPage() {
           setWaSaving(false);
         }} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <label className="block text-sm font-medium mb-1">{t("wa_provider")}</label>
+              <select value={waProvider} onChange={e => setWaProvider(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="greenapi">Green API</option>
+                <option value="waha">WAHA (self-hosted)</option>
+              </select>
+            </div>
             <div>
-              <label className="block text-sm font-medium mb-1">{t("instance_id")}</label>
+              <label className="block text-sm font-medium mb-1">
+                {waProvider === "waha" ? t("wa_session") : t("instance_id")}
+              </label>
               <input value={waInstanceId} onChange={e => setWaInstanceId(e.target.value)}
-                placeholder="1101234567"
+                placeholder={waProvider === "waha" ? "default" : "1101234567"}
                 className="w-full px-3 py-2 border rounded-lg text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">
-                {t("api_token")} {waHasToken && <span className="text-green-600 text-xs">({t("configured")})</span>}
+                {waProvider === "waha" ? t("wa_api_key") : t("api_token")} {waHasToken && <span className="text-green-600 text-xs">({t("configured")})</span>}
               </label>
               <input type="password" value={waApiToken} onChange={e => setWaApiToken(e.target.value)}
-                placeholder={waHasToken ? t("leave_blank_keep") : "abc123..."}
+                placeholder={waHasToken ? t("leave_blank_keep") : (waProvider === "waha" ? t("wa_api_key_optional") : "abc123...")}
                 className="w-full px-3 py-2 border rounded-lg text-sm" />
             </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium mb-1">API URL</label>
               <input value={waApiUrl} onChange={e => setWaApiUrl(e.target.value)}
-                placeholder="https://7107.api.greenapi.com"
+                placeholder={waProvider === "waha" ? "https://your-waha-host" : "https://7107.api.greenapi.com"}
                 className="w-full px-3 py-2 border rounded-lg text-sm" />
-              <p className="text-xs text-gray-400 mt-1">From Green API dashboard (e.g. https://7107.api.greenapi.com)</p>
+              <p className="text-xs text-gray-400 mt-1">
+                {waProvider === "waha"
+                  ? "Your self-hosted WAHA base URL (e.g. https://mudawwarah-waha.fly.dev)"
+                  : "From Green API dashboard (e.g. https://7107.api.greenapi.com)"}
+              </p>
             </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium mb-1">{t("default_phone")}</label>

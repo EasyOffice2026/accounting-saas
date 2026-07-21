@@ -40,6 +40,7 @@ def get_settings(db: Session = Depends(get_db), user: User = Depends(get_current
 
 @router.post("/settings")
 def save_settings(
+    provider: str = Form(""),
     instance_id: str = Form(""),
     api_token: str = Form(""),
     api_url: str = Form(""),
@@ -58,6 +59,8 @@ def save_settings(
     if not s:
         s = WhatsAppSettings(provider="greenapi")
         db.add(s)
+    if provider:
+        s.provider = provider
     if instance_id:
         s.instance_id = instance_id
     if api_token:
@@ -133,24 +136,58 @@ def _build_daily_sales_report(db: Session, report_date: date) -> str:
     return "\n".join(lines)
 
 
-def _send_whatsapp_message(instance_id: str, api_token: str, phone: str, message: str, api_url: str = "") -> dict:
-    """Send a WhatsApp message via Green API. Supports both phone numbers and group IDs."""
-    base = api_url.rstrip("/") if api_url else "https://api.green-api.com"
-    url = f"{base}/waInstance{instance_id}/sendMessage/{api_token}"
+def _is_configured(settings) -> bool:
+    """Whether the WhatsApp provider has the minimum credentials to send."""
+    if not settings:
+        return False
+    if (settings.provider or "greenapi").lower() == "waha":
+        return bool(settings.api_url)
+    return bool(settings.instance_id and settings.api_token)
+
+
+def _chat_id(phone: str) -> str:
+    """Normalize a phone/group into a WhatsApp chat id (@c.us / @g.us)."""
     phone = phone.strip()
-    # If it's a group ID (contains @g.us), use as-is
-    if "@g.us" in phone:
-        chat_id = phone
-    else:
-        # Ensure phone has country code, default to Kuwait (+965)
-        phone = phone.replace("+", "").replace(" ", "").replace("-", "")
-        if len(phone) == 8:
-            phone = "965" + phone
-        chat_id = f"{phone}@c.us"
-    payload = {
-        "chatId": chat_id,
-        "message": message,
-    }
+    if "@g.us" in phone or "@c.us" in phone:
+        return phone
+    phone = phone.replace("+", "").replace(" ", "").replace("-", "")
+    if len(phone) == 8:  # Kuwait local number
+        phone = "965" + phone
+    return f"{phone}@c.us"
+
+
+def _send_whatsapp_message(settings, phone: str, message: str) -> dict:
+    """Send a WhatsApp message via the configured provider (Green API or WAHA).
+    Supports both phone numbers and group IDs. Returns a dict containing
+    'idMessage' on success (normalized across providers)."""
+    provider = (settings.provider or "greenapi").lower()
+    chat_id = _chat_id(phone)
+
+    if provider == "waha":
+        base = (settings.api_url or "http://localhost:3000").rstrip("/")
+        session = settings.instance_id or "default"
+        headers = {"X-Api-Key": settings.api_token} if settings.api_token else {}
+        payload = {"session": session, "chatId": chat_id, "text": message}
+        resp = httpx.post(f"{base}/api/sendText", json=payload, headers=headers, timeout=30)
+        try:
+            data = resp.json()
+        except Exception:
+            data = {}
+        if resp.status_code in (200, 201):
+            mid = ""
+            if isinstance(data, dict):
+                raw_id = data.get("id")
+                if isinstance(raw_id, dict):
+                    mid = raw_id.get("_serialized") or raw_id.get("id") or ""
+                elif raw_id:
+                    mid = str(raw_id)
+            return {"idMessage": mid or "sent", "raw": data}
+        return {"error": data or resp.text}
+
+    # Green API (default)
+    base = settings.api_url.rstrip("/") if settings.api_url else "https://api.green-api.com"
+    url = f"{base}/waInstance{settings.instance_id}/sendMessage/{settings.api_token}"
+    payload = {"chatId": chat_id, "message": message}
     resp = httpx.post(url, json=payload, timeout=30)
     return resp.json()
 
@@ -158,13 +195,13 @@ def _send_whatsapp_message(instance_id: str, api_token: str, phone: str, message
 def _send_to_group_if_configured(db: Session, group_field: str, message: str):
     """Send a message to a configured WhatsApp group (global setting). Returns True if sent."""
     settings = db.query(WhatsAppSettings).first()
-    if not settings or not settings.instance_id or not settings.api_token:
+    if not _is_configured(settings):
         return False
     group_id = getattr(settings, group_field, None)
     if not group_id:
         return False
     try:
-        _send_whatsapp_message(settings.instance_id, settings.api_token, group_id, message, settings.api_url or "")
+        _send_whatsapp_message(settings, group_id, message)
         return True
     except Exception:
         return False
@@ -296,12 +333,12 @@ def build_purchase_message(order, supplier, branch, items, lang: str = "en") -> 
 def _send_to_entity_group(db: Session, group_id: str, message: str):
     """Send a message to a specific entity's WhatsApp group (branch or supplier). Returns True if sent."""
     settings = db.query(WhatsAppSettings).first()
-    if not settings or not settings.instance_id or not settings.api_token:
+    if not _is_configured(settings):
         return False
     if not group_id:
         return False
     try:
-        _send_whatsapp_message(settings.instance_id, settings.api_token, group_id, message, settings.api_url or "")
+        _send_whatsapp_message(settings, group_id, message)
         return True
     except Exception:
         return False
@@ -313,12 +350,36 @@ def list_whatsapp_groups(db: Session = Depends(get_db), user: User = Depends(get
     if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     settings = db.query(WhatsAppSettings).first()
-    if not settings or not settings.instance_id or not settings.api_token:
+    if not _is_configured(settings):
         raise HTTPException(400, "WhatsApp not configured")
+    groups = []
+
+    if (settings.provider or "greenapi").lower() == "waha":
+        base = (settings.api_url or "http://localhost:3000").rstrip("/")
+        session = settings.instance_id or "default"
+        headers = {"X-Api-Key": settings.api_token} if settings.api_token else {}
+        try:
+            resp = httpx.get(f"{base}/api/{session}/groups", headers=headers, timeout=30)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, list):
+                    for c in data:
+                        if not isinstance(c, dict):
+                            continue
+                        gid = c.get("id")
+                        if isinstance(gid, dict):
+                            gid = gid.get("_serialized", "")
+                        gid = str(gid or "")
+                        if gid.endswith("@g.us"):
+                            name = c.get("name") or (c.get("groupMetadata", {}) or {}).get("subject", "") or gid
+                            groups.append({"id": gid, "name": name})
+        except Exception:
+            pass
+        return groups
+
     base = (settings.api_url or "https://api.green-api.com").rstrip("/")
     inst = settings.instance_id
     token = settings.api_token
-    groups = []
     # Try getChats first (returns groups with @g.us ids)
     try:
         url = f"{base}/waInstance{inst}/getChats/{token}"
@@ -356,8 +417,8 @@ def send_daily_report(
         raise HTTPException(403, "Not authorized")
 
     settings = db.query(WhatsAppSettings).first()
-    if not settings or not settings.instance_id or not settings.api_token:
-        raise HTTPException(400, "WhatsApp not configured. Go to Settings to set up Green API credentials.")
+    if not _is_configured(settings):
+        raise HTTPException(400, "WhatsApp not configured. Go to Settings to set up your provider credentials.")
 
     target_date = date.fromisoformat(report_date) if report_date else date.today()
     target_phone = phone or settings.default_phone
@@ -365,7 +426,7 @@ def send_daily_report(
         raise HTTPException(400, "No phone number provided")
 
     report = _build_daily_sales_report(db, target_date)
-    result = _send_whatsapp_message(settings.instance_id, settings.api_token, target_phone, report, settings.api_url or "")
+    result = _send_whatsapp_message(settings, target_phone, report)
 
     if "idMessage" in result:
         return {"message": "Report sent successfully", "id": result["idMessage"]}
@@ -393,8 +454,8 @@ def send_purchase_whatsapp(
 ):
     """Send purchase order details to the supplier's WhatsApp group (fallback to number)."""
     settings = db.query(WhatsAppSettings).first()
-    if not settings or not settings.instance_id or not settings.api_token:
-        raise HTTPException(400, "WhatsApp not configured. Go to Settings to set up Green API credentials.")
+    if not _is_configured(settings):
+        raise HTTPException(400, "WhatsApp not configured. Go to Settings to set up your provider credentials.")
 
     order = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
     if not order:
@@ -409,7 +470,7 @@ def send_purchase_whatsapp(
     branch = db.query(Branch).filter(Branch.id == order.branch_id).first()
 
     msg = build_purchase_message(order, supplier, branch, items, lang)
-    result = _send_whatsapp_message(settings.instance_id, settings.api_token, target, msg, settings.api_url or "")
+    result = _send_whatsapp_message(settings, target, msg)
 
     if "idMessage" in result:
         return {"message": "Purchase order sent to supplier", "id": result["idMessage"]}
@@ -425,8 +486,8 @@ def send_expense_whatsapp(
 ):
     """Send expense details to the supplier's WhatsApp number."""
     settings = db.query(WhatsAppSettings).first()
-    if not settings or not settings.instance_id or not settings.api_token:
-        raise HTTPException(400, "WhatsApp not configured. Go to Settings to set up Green API credentials.")
+    if not _is_configured(settings):
+        raise HTTPException(400, "WhatsApp not configured. Go to Settings to set up your provider credentials.")
 
     expense = db.query(Expense).filter(Expense.id == expense_id).first()
     if not expense:
@@ -454,7 +515,7 @@ def send_expense_whatsapp(
         lines.append(f"📝 Notes: {expense.notes}")
 
     msg = "\n".join(lines)
-    result = _send_whatsapp_message(settings.instance_id, settings.api_token, target, msg, settings.api_url or "")
+    result = _send_whatsapp_message(settings, target, msg)
 
     if "idMessage" in result:
         return {"message": "Expense sent to supplier", "id": result["idMessage"]}
@@ -472,8 +533,8 @@ def send_sales_whatsapp(
 ):
     """Send sales report to the branch's configured WhatsApp group (fallback to number)."""
     settings = db.query(WhatsAppSettings).first()
-    if not settings or not settings.instance_id or not settings.api_token:
-        raise HTTPException(400, "WhatsApp not configured. Go to Settings to set up Green API credentials.")
+    if not _is_configured(settings):
+        raise HTTPException(400, "WhatsApp not configured. Go to Settings to set up your provider credentials.")
 
     branch = db.query(Branch).filter(Branch.id == branch_id).first()
     if not branch:
@@ -486,7 +547,7 @@ def send_sales_whatsapp(
     sale = db.query(Sale).filter(Sale.branch_id == branch_id, Sale.date == target_date).first()
 
     msg = build_sales_message(sale, branch, target_date, lang)
-    result = _send_whatsapp_message(settings.instance_id, settings.api_token, target, msg, settings.api_url or "")
+    result = _send_whatsapp_message(settings, target, msg)
 
     if "idMessage" in result:
         return {"message": "Sales report sent", "id": result["idMessage"]}

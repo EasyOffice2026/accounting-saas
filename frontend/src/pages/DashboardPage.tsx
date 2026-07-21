@@ -112,14 +112,15 @@ export default function DashboardPage() {
               <h3 className="font-semibold text-gray-700 mb-3">{t("summary")}</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" outerRadius={100} innerRadius={50}
-                    dataKey="value" label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
-                    labelLine={false}>
+                  <Pie data={pieData} cx="50%" cy="50%" outerRadius={90} innerRadius={50}
+                    dataKey="value" labelLine={false}
+                    label={({ percent }) => ((percent ?? 0) >= 0.05 ? `${((percent ?? 0) * 100).toFixed(0)}%` : "")}>
                     {pieData.map((_, i) => (
                       <Cell key={i} fill={COLORS[i % COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip formatter={(value) => `KD ${Number(value).toLocaleString()}`} />
+                  <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 12 }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>

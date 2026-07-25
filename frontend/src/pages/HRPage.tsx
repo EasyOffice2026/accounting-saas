@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiFetch, apiDownload } from "../contexts/api";
 
@@ -42,7 +42,12 @@ interface Loan {
 interface BenefitDeduction {
   id: number; employee_id: number; category: string;
   amount: number; date: string; month: string | null; notes: string | null;
+  frequency?: string; end_month?: string | null;
   approval_status?: string;
+}
+interface LoanRepayment {
+  id: number; loan_id: number; amount: number;
+  date: string; month: string; notes: string;
 }
 interface ResignationRecord {
   id: number; ref_no: string; employee_id: number;
@@ -136,11 +141,15 @@ export default function HRPage() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [showLoanForm, setShowLoanForm] = useState(false);
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
+  const [payingLoan, setPayingLoan] = useState<Loan | null>(null);
+  const [expandedLoan, setExpandedLoan] = useState<number | null>(null);
+  const [loanRepayments, setLoanRepayments] = useState<LoanRepayment[]>([]);
 
   // Benefits state (incentive, bonus, leave_salary, ticket)
   const [benefits, setBenefits] = useState<BenefitDeduction[]>([]);
   const [showBenefitForm, setShowBenefitForm] = useState(false);
   const [editingBenefit, setEditingBenefit] = useState<BenefitDeduction | null>(null);
+  const [benefitFreq, setBenefitFreq] = useState("one_time");
 
   // Deductions state (fine, penalty)
   const [deductionItems, setDeductionItems] = useState<BenefitDeduction[]>([]);
@@ -741,6 +750,38 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
     if (!confirm(t("confirm_delete"))) return;
     await apiFetch(`/api/hr/loans/${id}`, { method: "DELETE" });
     apiGet("/api/hr/loans").then(setLoans);
+  };
+
+  const loadRepayments = (loanId: number) => {
+    apiGet(`/api/hr/loans/${loanId}/repayments`).then(setLoanRepayments);
+  };
+
+  const toggleRepayments = (loanId: number) => {
+    if (expandedLoan === loanId) {
+      setExpandedLoan(null);
+      setLoanRepayments([]);
+    } else {
+      setExpandedLoan(loanId);
+      loadRepayments(loanId);
+    }
+  };
+
+  const handleRepaymentSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!payingLoan) return;
+    const fd = new FormData(e.currentTarget);
+    await apiPost(`/api/hr/loans/${payingLoan.id}/repayments`, fd);
+    const loanId = payingLoan.id;
+    setPayingLoan(null);
+    apiGet("/api/hr/loans").then(setLoans);
+    if (expandedLoan === loanId) loadRepayments(loanId);
+  };
+
+  const handleDeleteRepayment = async (repId: number, loanId: number) => {
+    if (!confirm(t("confirm_delete"))) return;
+    await apiFetch(`/api/hr/loans/repayments/${repId}`, { method: "DELETE" });
+    apiGet("/api/hr/loans").then(setLoans);
+    loadRepayments(loanId);
   };
 
   // Benefit handlers
@@ -1678,24 +1719,15 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   </div>
                 )}
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t("monthly_deduction")}</label>
-                  <input type="number" step="0.001" name="monthly_deduction" defaultValue={editingLoan?.monthly_deduction || 0} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                </div>
-                <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
                   <input type="date" name="loan_date" required defaultValue={editingLoan?.date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">{t("salary_month")} ({t("for_deduction")})</label>
-                  <input type="month" name="deduction_month" defaultValue={editingLoan?.deduction_month || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  <p className="text-xs text-gray-400 mt-1">{t("no_month_no_deduction")}</p>
                 </div>
                 {editingLoan && (
                   <div>
                     <label className="block text-sm font-medium mb-1">{t("status")}</label>
                     <select name="status" defaultValue={editingLoan.status} className="w-full px-3 py-2 border rounded-lg text-sm">
                       <option value="active">{t("active")}</option>
-                      <option value="paid_off">{t("paid")}</option>
+                      <option value="paid_off">{t("paid_off")}</option>
                     </select>
                   </div>
                 )}
@@ -1719,9 +1751,8 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-4 py-3 text-left">{t("employee")}</th>
                   <th className="px-4 py-3 text-left">{t("loan_type_label")}</th>
                   <th className="px-4 py-3 text-right">{t("amount")}</th>
+                  <th className="px-4 py-3 text-right">{t("paid")}</th>
                   <th className="px-4 py-3 text-right">{t("balance")}</th>
-                  <th className="px-4 py-3 text-right">{t("monthly_deduction")}</th>
-                  <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("date")}</th>
                   <th className="px-4 py-3 text-left">{t("status")}</th>
                   <th className="px-4 py-3 text-left">{t("approval")}</th>
@@ -1730,27 +1761,35 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
               </thead>
               <tbody>
                 {loans.length === 0 ? (
-                  <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : loans.map(l => (
-                  <tr key={l.id} className="border-b hover:bg-gray-50">
+                  <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                ) : loans.map(l => {
+                  const paid = Math.max(0, l.amount - l.balance);
+                  return (
+                  <Fragment key={l.id}>
+                  <tr className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(l.employee_id) || "—"}</td>
                     <td className="px-4 py-3">{empName(l.employee_id)}</td>
                     <td className="px-4 py-3">{t(l.loan_type === "loan" ? "loan_label" : "advance")}</td>
                     <td className="px-4 py-3 text-right font-mono">KD {l.amount.toFixed(3)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-green-700">{paid > 0 ? `KD ${paid.toFixed(3)}` : "—"}</td>
                     <td className="px-4 py-3 text-right font-mono font-bold">{l.balance > 0 ? `KD ${l.balance.toFixed(3)}` : "—"}</td>
-                    <td className="px-4 py-3 text-right font-mono">{l.monthly_deduction > 0 ? `KD ${l.monthly_deduction.toFixed(3)}` : "—"}</td>
-                    <td className="px-4 py-3">{l.deduction_month || "—"}</td>
                     <td className="px-4 py-3">{l.date}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                         l.status === "paid_off" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                      }`}>{l.status === "paid_off" ? t("paid") : t("active")}</span>
+                      }`}>{l.status === "paid_off" ? t("paid_off") : t("active")}</span>
                     </td>
                     <td className="px-4 py-3">
                       <ApprovalBadge status={l.approval_status} type="advance_loan" id={l.id} />
                     </td>
                     {isManager && (
-                      <td className="px-4 py-3 space-x-2">
+                      <td className="px-4 py-3 space-x-2 whitespace-nowrap">
+                        {l.balance > 0 && (
+                          <button onClick={() => setPayingLoan(l)}
+                            className="text-emerald-600 hover:underline text-xs font-medium">{t("record_payment")}</button>
+                        )}
+                        <button onClick={() => toggleRepayments(l.id)}
+                          className="text-gray-600 hover:underline text-xs">{t("history")}</button>
                         <button onClick={() => { setEditingLoan(l); setShowLoanForm(true); }}
                           className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
                         <button onClick={() => handleDeleteLoan(l.id)}
@@ -1758,17 +1797,88 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       </td>
                     )}
                   </tr>
-                ))}
+                  {expandedLoan === l.id && (
+                    <tr className="bg-gray-50">
+                      <td colSpan={10} className="px-6 py-3">
+                        <div className="text-xs font-semibold mb-2">{t("repayment_history")}</div>
+                        {loanRepayments.length === 0 ? (
+                          <div className="text-xs text-gray-400">{t("no_data")}</div>
+                        ) : (
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-gray-500">
+                                <th className="text-left py-1">{t("date")}</th>
+                                <th className="text-right py-1">{t("amount")}</th>
+                                <th className="text-left py-1 pl-4">{t("notes")}</th>
+                                {isManager && <th className="py-1"></th>}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {loanRepayments.map(r => (
+                                <tr key={r.id} className="border-t">
+                                  <td className="py-1">{r.date}</td>
+                                  <td className="py-1 text-right font-mono">KD {r.amount.toFixed(3)}</td>
+                                  <td className="py-1 pl-4">{r.notes || "—"}</td>
+                                  {isManager && (
+                                    <td className="py-1 text-right">
+                                      <button onClick={() => handleDeleteRepayment(r.id, l.id)}
+                                        className="text-red-600 hover:underline">{t("delete")}</button>
+                                    </td>
+                                  )}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+
+          {payingLoan && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+              <form onSubmit={handleRepaymentSubmit} className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md space-y-4">
+                <h3 className="font-semibold">{t("record_payment")} — {empName(payingLoan.employee_id)}</h3>
+                <div className="text-xs text-gray-500">
+                  {t("balance")}: <span className="font-mono font-bold">KD {payingLoan.balance.toFixed(3)}</span>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("amount")}</label>
+                  <input type="number" step="0.001" min="0.001" max={payingLoan.balance} name="amount" required
+                    defaultValue={payingLoan.balance}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("date")}</label>
+                  <input type="date" name="repayment_date" required
+                    defaultValue={new Date().toISOString().slice(0, 10)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("notes")}</label>
+                  <input name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button type="button" onClick={() => setPayingLoan(null)}
+                    className="px-4 py-2 bg-gray-200 rounded-lg text-sm">{t("cancel")}</button>
+                  <button type="submit"
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm">{t("save")}</button>
+                </div>
+              </form>
+            </div>
+          )}
         </div>
       )}
 
       {/* Benefits Tab (Incentive, Bonus, Leave Salary, Ticket) */}
       {tab === "benefits" && (
         <div>
-          <button onClick={() => { setShowBenefitForm(!showBenefitForm); setEditingBenefit(null); }}
+          <button onClick={() => { setShowBenefitForm(!showBenefitForm); setEditingBenefit(null); setBenefitFreq("one_time"); }}
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
             {showBenefitForm ? t("cancel") : (isManager ? t("add_new") : t("request_new"))}
           </button>
@@ -1798,13 +1908,28 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <input type="number" step="0.001" name="amount" required defaultValue={editingBenefit?.amount || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium mb-1">{t("frequency")}</label>
+                  <select name="frequency" value={benefitFreq} onChange={e => setBenefitFreq(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="one_time">{t("one_time")}</option>
+                    <option value="monthly">{t("monthly_recurring")}</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
                   <input type="date" name="bd_date" required defaultValue={editingBenefit?.date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t("salary_month")}</label>
+                  <label className="block text-sm font-medium mb-1">{benefitFreq === "monthly" ? t("start_month") : t("salary_month")}</label>
                   <input type="month" name="month" defaultValue={editingBenefit?.month || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
+                {benefitFreq === "monthly" && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("end_month")} ({t("optional")})</label>
+                    <input type="month" name="end_month" defaultValue={editingBenefit?.end_month || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    <p className="text-xs text-gray-400 mt-1">{t("end_month_hint")}</p>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">{t("notes")}</label>
@@ -1825,7 +1950,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-4 py-3 text-left">{t("employee")}</th>
                   <th className="px-4 py-3 text-left">{t("category")}</th>
                   <th className="px-4 py-3 text-right">{t("amount")}</th>
-                  <th className="px-4 py-3 text-left">{t("date")}</th>
+                  <th className="px-4 py-3 text-left">{t("frequency")}</th>
                   <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("notes")}</th>
                   <th className="px-4 py-3 text-left">{t("approval")}</th>
@@ -1845,15 +1970,23 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right font-mono">KD {b.amount.toFixed(3)}</td>
-                    <td className="px-4 py-3">{b.date}</td>
-                    <td className="px-4 py-3">{b.month || "—"}</td>
+                    <td className="px-4 py-3">
+                      {b.frequency === "monthly" ? (
+                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                          {t("monthly_recurring")}{b.end_month ? ` → ${b.end_month}` : ""}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-500">{t("one_time")}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">{b.month || "—"}{b.frequency === "monthly" && b.month ? "+" : ""}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{b.notes || "—"}</td>
                     <td className="px-4 py-3">
                       <ApprovalBadge status={b.approval_status} type="benefit_deduction" id={b.id} />
                     </td>
                     {isManager && (
                       <td className="px-4 py-3 space-x-2">
-                        <button onClick={() => { setEditingBenefit(b); setShowBenefitForm(true); }}
+                        <button onClick={() => { setEditingBenefit(b); setBenefitFreq(b.frequency || "one_time"); setShowBenefitForm(true); }}
                           className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
                         <button onClick={() => handleDeleteBenefit(b.id)}
                           className="text-red-600 hover:underline text-xs">{t("delete")}</button>

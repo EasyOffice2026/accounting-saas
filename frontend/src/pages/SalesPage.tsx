@@ -63,7 +63,7 @@ export default function SalesPage() {
   const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
 
   // Foodics sync state
-  const [showFoodicsSync, setShowFoodicsSync] = useState(false);
+  const [showFoodicsSync] = useState(false);
   const [syncDate, setSyncDate] = useState(new Date().toISOString().slice(0, 10));
   const [syncEndDate, setSyncEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [syncing, setSyncing] = useState(false);
@@ -72,7 +72,7 @@ export default function SalesPage() {
   const [syncRange, setSyncRange] = useState(false);
 
   // WhatsApp report state
-  const [showReport, setShowReport] = useState(false);
+  const [showReport] = useState(false);
   const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
   const [reportPhone, setReportPhone] = useState("");
   const [reportPreview, setReportPreview] = useState("");

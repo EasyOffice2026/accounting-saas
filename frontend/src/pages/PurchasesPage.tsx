@@ -59,7 +59,6 @@ export default function PurchasesPage() {
   // Ledger state
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [expandedSupplier, setExpandedSupplier] = useState<number | null>(null);
-  const [payOnlineLoading, setPayOnlineLoading] = useState<number | null>(null);
 
   // Category state
   const [categories, setCategories] = useState<PurchaseCategoryI[]>([]);
@@ -347,25 +346,6 @@ export default function PurchasesPage() {
     setPayingInvoice(null);
     apiGet("/api/purchases/invoices").then(setInvoices);
     apiGet("/api/purchases/orders").then(setOrders);
-  };
-
-  const handlePayOnline = async (invoiceId: number) => {
-    setPayOnlineLoading(invoiceId);
-    try {
-      const res = await fetch(`/api/payment/charge/${invoiceId}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
-      const data = await res.json();
-      if (res.ok && data.redirect_url) {
-        window.location.href = data.redirect_url;
-      } else {
-        alert(data.detail || t("payment_error"));
-      }
-    } catch {
-      alert(t("payment_error"));
-    }
-    setPayOnlineLoading(null);
   };
 
   const supplierName = (id: number) => suppliers.find(s => s.id === id)?.name || "";

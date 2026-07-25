@@ -69,6 +69,10 @@ def create_transaction(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # An "opening_balance" category anchors the running balance, so store it
+    # with the special opening_balance txn_type regardless of the chosen type.
+    if category == "opening_balance":
+        txn_type = "opening_balance"
     t = CashTransaction(
         branch_id=branch_id, date=date_cls.fromisoformat(txn_date), txn_type=txn_type,
         category=category, amount=amount, reference=reference,

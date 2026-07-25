@@ -166,6 +166,16 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE advance_loans ADD COLUMN deduction_month TEXT"))
                 conn.commit()
 
+        # Staff benefits/deductions: add frequency + end_month for recurring incentives
+        if "staff_benefits_deductions" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("staff_benefits_deductions")]
+            if "frequency" not in cols:
+                conn.execute(text("ALTER TABLE staff_benefits_deductions ADD COLUMN frequency TEXT DEFAULT 'one_time'"))
+                conn.commit()
+            if "end_month" not in cols:
+                conn.execute(text("ALTER TABLE staff_benefits_deductions ADD COLUMN end_month TEXT"))
+                conn.commit()
+
         # Transfer orders - add source_branch_id for branch-to-branch transfers
         if "transfer_orders" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("transfer_orders")]

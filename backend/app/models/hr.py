@@ -130,6 +130,18 @@ class AdvanceLoan(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class LoanRepayment(Base):
+    __tablename__ = "loan_repayments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    loan_id = Column(Integer, ForeignKey("advance_loans.id"), nullable=False)
+    amount = Column(Float, nullable=False)
+    date = Column(Date, nullable=False)
+    month = Column(String, nullable=True)  # YYYY-MM (optional, for reference)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class StaffBenefitDeduction(Base):
     __tablename__ = "staff_benefits_deductions"
 
@@ -137,8 +149,10 @@ class StaffBenefitDeduction(Base):
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
     category = Column(String, nullable=False)  # incentive, bonus, leave_salary, ticket, fine, penalty, other_benefit, other_deduction
     amount = Column(Float, nullable=False)
+    frequency = Column(String, default="one_time")  # one_time, monthly (recurring until end_month)
     date = Column(Date, nullable=False)
-    month = Column(String, nullable=True)  # YYYY-MM to link to salary period
+    month = Column(String, nullable=True)  # YYYY-MM; for monthly = start month
+    end_month = Column(String, nullable=True)  # YYYY-MM; optional stop month for recurring
     notes = Column(Text, nullable=True)
     approval_status = Column(String, default="pending_approval")  # pending_approval, approved, rejected
     approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)

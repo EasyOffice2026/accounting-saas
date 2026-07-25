@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, Form, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_
 from datetime import date, time
 from typing import Optional
 import calendar
 
 from app.database import get_db
-from app.models.hr import Brand, Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, LeaveRecord, Resignation, Contract, ContractPayment, Employer
+from app.models.hr import Brand, Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, LoanRepayment, StaffBenefitDeduction, LeaveRecord, Resignation, Contract, ContractPayment, Employer
 from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
@@ -548,19 +548,31 @@ def generate_monthly_payroll(
         # Pro-rate salary based on actual period days
         prorated_salary = round(per_day * emp_period_days, 3)
 
-        # Auto-calculate loan deduction from active loans with matching deduction_month
-        active_loans = db.query(AdvanceLoan).filter(
-            AdvanceLoan.employee_id == emp.id,
-            AdvanceLoan.status == "active",
-            AdvanceLoan.deduction_month == month,
-        ).all()
-        loan_ded = sum(l.monthly_deduction for l in active_loans)
+        # Loan repayments are tracked manually (see /loans/{id}/repayments),
+        # so payroll does not auto-deduct loans. Managers may still enter a
+        # loan_deduction manually on the payslip if a repayment was via salary.
+        loan_ded = 0
 
-        # Auto-calculate benefits from StaffBenefitDeduction for this month (approved only)
+        # Auto-calculate benefits from StaffBenefitDeduction for this month (approved only).
+        # One-time records apply only in their own month; monthly recurring records
+        # apply every month from their start month until their optional end month.
         ben_deds = db.query(StaffBenefitDeduction).filter(
             StaffBenefitDeduction.employee_id == emp.id,
-            StaffBenefitDeduction.month == month,
             StaffBenefitDeduction.approval_status == "approved",
+            or_(
+                and_(
+                    func.coalesce(StaffBenefitDeduction.frequency, "one_time") != "monthly",
+                    StaffBenefitDeduction.month == month,
+                ),
+                and_(
+                    StaffBenefitDeduction.frequency == "monthly",
+                    StaffBenefitDeduction.month <= month,
+                    or_(
+                        StaffBenefitDeduction.end_month.is_(None),
+                        StaffBenefitDeduction.end_month >= month,
+                    ),
+                ),
+            ),
         ).all()
         incentive_total = sum(b.amount for b in ben_deds if b.category == "incentive")
         bonus_total = sum(b.amount for b in ben_deds if b.category == "bonus")
@@ -1035,7 +1047,76 @@ def delete_loan(loan_id: int, db: Session = Depends(get_db),
     loan = db.query(AdvanceLoan).filter(AdvanceLoan.id == loan_id).first()
     if not loan:
         raise HTTPException(404, "Loan not found")
+    db.query(LoanRepayment).filter(LoanRepayment.loan_id == loan_id).delete()
     db.delete(loan)
+    db.commit()
+    return {"message": "Deleted"}
+
+
+# --- Loan Repayments (manual repayment tracking) ---
+@router.get("/loans/{loan_id}/repayments")
+def list_loan_repayments(loan_id: int, db: Session = Depends(get_db),
+                         user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    rows = db.query(LoanRepayment).filter(
+        LoanRepayment.loan_id == loan_id
+    ).order_by(LoanRepayment.date.desc()).all()
+    return [
+        {
+            "id": r.id, "loan_id": r.loan_id, "amount": r.amount,
+            "date": str(r.date), "month": r.month or "", "notes": r.notes or "",
+        }
+        for r in rows
+    ]
+
+
+@router.post("/loans/{loan_id}/repayments")
+def create_loan_repayment(
+    loan_id: int,
+    amount: float = Form(...),
+    repayment_date: str = Form(...),
+    month: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner", "manager", "accountant"):
+        raise HTTPException(403, "Not authorized")
+    loan = db.query(AdvanceLoan).filter(AdvanceLoan.id == loan_id).first()
+    if not loan:
+        raise HTTPException(404, "Loan not found")
+    if amount <= 0:
+        raise HTTPException(400, "Amount must be positive")
+    rep = LoanRepayment(
+        loan_id=loan_id,
+        amount=amount,
+        date=date.fromisoformat(repayment_date),
+        month=month or None,
+        notes=notes,
+    )
+    db.add(rep)
+    loan.balance = round(max(0.0, (loan.balance or 0) - amount), 3)
+    loan.status = "paid_off" if loan.balance <= 0 else "active"
+    db.commit()
+    db.refresh(rep)
+    return {"id": rep.id, "balance": loan.balance, "status": loan.status}
+
+
+@router.delete("/loans/repayments/{repayment_id}")
+def delete_loan_repayment(repayment_id: int, db: Session = Depends(get_db),
+                          user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager", "accountant"):
+        raise HTTPException(403, "Not authorized")
+    rep = db.query(LoanRepayment).filter(LoanRepayment.id == repayment_id).first()
+    if not rep:
+        raise HTTPException(404, "Repayment not found")
+    loan = db.query(AdvanceLoan).filter(AdvanceLoan.id == rep.loan_id).first()
+    if loan:
+        loan.balance = round((loan.balance or 0) + rep.amount, 3)
+        if loan.balance > 0:
+            loan.status = "active"
+    db.delete(rep)
     db.commit()
     return {"message": "Deleted"}
 
@@ -1068,6 +1149,8 @@ def create_benefit_deduction(
     amount: float = Form(...),
     bd_date: str = Form(...),
     month: str = Form(""),
+    frequency: str = Form("one_time"),
+    end_month: str = Form(""),
     notes: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -1077,8 +1160,10 @@ def create_benefit_deduction(
         employee_id=employee_id,
         category=category,
         amount=amount,
+        frequency=frequency if frequency in ("one_time", "monthly") else "one_time",
         date=date.fromisoformat(bd_date),
         month=month or None,
+        end_month=end_month or None,
         notes=notes,
         approval_status="approved" if is_mgr else "pending_approval",
         approved_by=user.id if is_mgr else None,
@@ -1097,6 +1182,8 @@ def update_benefit_deduction(
     amount: float = Form(...),
     bd_date: str = Form(...),
     month: str = Form(""),
+    frequency: str = Form("one_time"),
+    end_month: str = Form(""),
     notes: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -1109,8 +1196,10 @@ def update_benefit_deduction(
     bd.employee_id = employee_id
     bd.category = category
     bd.amount = amount
+    bd.frequency = frequency if frequency in ("one_time", "monthly") else "one_time"
     bd.date = date.fromisoformat(bd_date)
     bd.month = month or None
+    bd.end_month = end_month or None
     bd.notes = notes
     db.commit()
     return {"message": "Updated"}

@@ -26,6 +26,12 @@ export default function CashPage() {
   const [transactions, setTransactions] = useState<CashTxn[]>([]);
   const [tab, setTab] = useState<"summary" | "transactions">("summary");
   const [showTxnForm, setShowTxnForm] = useState(false);
+  const [txnType, setTxnType] = useState<"cash_in" | "cash_out">("cash_in");
+
+  const categoriesFor = (type: string) =>
+    type === "cash_in"
+      ? [{ value: "opening_balance", label: t("opening_balance") }, { value: "petty_cash", label: t("petty_cash") }]
+      : [{ value: "deposit", label: t("bank_deposit") }, { value: "withdrawal", label: t("withdrawal") }];
 
   useEffect(() => {
     apiGet("/api/branches/").then((bs: Branch[]) => {
@@ -219,23 +225,19 @@ export default function CashPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">{t("type")}</label>
-                  <select name="txn_type" className="w-full px-3 py-2 border rounded-lg text-sm">
-                    <option value="opening_balance">{t("opening_balance")}</option>
+                  <select name="txn_type" value={txnType}
+                    onChange={e => setTxnType(e.target.value as "cash_in" | "cash_out")}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="cash_in">{t("cash_in")}</option>
                     <option value="cash_out">{t("cash_out")}</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">{t("category")}</label>
-                  <select name="category" className="w-full px-3 py-2 border rounded-lg text-sm">
-                    <option value="opening_balance">{t("opening_balance")}</option>
-                    <option value="petty_cash">{t("petty_cash")}</option>
-                    <option value="deposit">{t("deposit")}</option>
-                    <option value="withdrawal">{t("withdrawal")}</option>
-                    <option value="sales">{t("sales")}</option>
-                    <option value="purchase">{t("purchases")}</option>
-                    <option value="expense">{t("expenses")}</option>
-                    <option value="other">{t("other")}</option>
+                  <select name="category" key={txnType} className="w-full px-3 py-2 border rounded-lg text-sm">
+                    {categoriesFor(txnType).map(c => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -280,14 +282,12 @@ export default function CashPage() {
                     <td className="px-4 py-3">{txn.date}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded text-xs ${
-                        txn.txn_type === "opening_balance" ? "bg-blue-100 text-blue-700" :
-                        txn.txn_type === "cash_in" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                        txn.txn_type === "cash_out" ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
                       }`}>
-                        {txn.txn_type === "opening_balance" ? t("opening_balance") :
-                         txn.txn_type === "cash_in" ? t("cash_in") : t("cash_out")}
+                        {txn.txn_type === "cash_out" ? t("cash_out") : t("cash_in")}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{txn.category}</td>
+                    <td className="px-4 py-3">{txn.category === "deposit" ? t("bank_deposit") : (t(txn.category) || txn.category)}</td>
                     <td className="px-4 py-3 text-right font-medium text-green-600">
                       {(txn.txn_type === "cash_in" || txn.txn_type === "opening_balance") ? `KD ${txn.amount.toFixed(3)}` : "-"}
                     </td>

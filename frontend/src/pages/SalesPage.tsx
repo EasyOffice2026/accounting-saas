@@ -164,18 +164,6 @@ export default function SalesPage() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("sales")}</h2>
         <div className="flex gap-2">
-          {isOwnerManager && (
-            <button onClick={() => setShowFoodicsSync(!showFoodicsSync)}
-              className="px-3 py-1.5 bg-orange-600 text-white rounded text-xs hover:bg-orange-700 flex items-center gap-1">
-              🔄 {t("sync_foodics")}
-            </button>
-          )}
-          {isOwnerManager && (
-            <button onClick={() => { setShowReport(!showReport); if (!showReport) previewReport(); }}
-              className="px-3 py-1.5 bg-green-700 text-white rounded text-xs hover:bg-green-800 flex items-center gap-1">
-              📱 {t("send_daily_report")}
-            </button>
-          )}
           <button onClick={() => exportData("csv")}
             className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
             {t("export_csv")}

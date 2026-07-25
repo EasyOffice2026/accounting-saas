@@ -1058,11 +1058,6 @@ export default function PurchasesPage() {
                           className="px-2 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
                           {t("pay")}
                         </button>
-                        <button onClick={() => handlePayOnline(inv.id)}
-                          disabled={payOnlineLoading === inv.id}
-                          className="px-2 py-1 bg-indigo-500 text-white rounded text-xs hover:bg-indigo-600 disabled:opacity-50">
-                          {payOnlineLoading === inv.id ? "..." : t("pay_online")}
-                        </button>
                       </div>
                     )}
                     {inv.status === "paid" && inv.paid_date && (

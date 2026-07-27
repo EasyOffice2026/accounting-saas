@@ -619,6 +619,7 @@ export default {
   add_payment: "إضافة دفعة",
   all_brands: "جميع العلامات التجارية",
   brand: "العلامة التجارية",
+  from_brand: "من علامة تجارية",
   due_date: "تاريخ الاستحقاق",
   generate_schedule: "إنشاء جدول الدفع",
   no_payments: "لم يتم تسجيل دفعات بعد",

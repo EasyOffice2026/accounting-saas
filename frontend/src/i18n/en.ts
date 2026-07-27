@@ -619,6 +619,7 @@ export default {
   add_payment: "Add Payment",
   all_brands: "All Brands",
   brand: "Brand",
+  from_brand: "From Brand",
   due_date: "Due Date",
   generate_schedule: "Generate Schedule",
   no_payments: "No payments recorded yet",

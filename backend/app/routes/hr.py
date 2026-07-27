@@ -43,13 +43,17 @@ def _staff_emp_ids(db: Session, user) -> Optional[list]:
 @router.get("/brands")
 def list_brands(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Brand)
-    sbid = _staff_branch_id(user)
-    if sbid is not None:
-        branch = db.query(Branch).filter(Branch.id == sbid).first()
-        if branch is not None and branch.brand_id:
-            q = q.filter(Brand.id == branch.brand_id)
-        else:
-            q = q.filter(False)
+    allowed = user.get_allowed_brands()
+    if allowed:
+        q = q.filter(Brand.id.in_(allowed))
+    else:
+        sbid = _staff_branch_id(user)
+        if sbid is not None:
+            branch = db.query(Branch).filter(Branch.id == sbid).first()
+            if branch is not None and branch.brand_id:
+                q = q.filter(Brand.id == branch.brand_id)
+            else:
+                q = q.filter(False)
     rows = q.order_by(Brand.id).all()
     return [{"id": b.id, "name_en": b.name_en, "name_ar": b.name_ar or "",
              "status": b.status or "active"} for b in rows]

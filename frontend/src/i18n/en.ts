@@ -1,6 +1,11 @@
 export default {
   app_name: "Mudawwarah",
   app_subtitle: "Restaurant Management System",
+  invalid_credentials: "Invalid credentials",
+  select_brand_to_login: "Select your brand to log in",
+  change_brand: "Change brand",
+  brand_access: "Brand Access",
+  brand_access_hint: "Select which brands this user can access. Leave empty to use the default (all brands for owner/manager/accountant, or the user's own branch brand for staff).",
   login: "Login",
   logout: "Logout",
   username: "Username",

@@ -294,6 +294,9 @@ def _migrate_columns():
             if "allowed_tabs" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN allowed_tabs TEXT"))
                 conn.commit()
+            if "allowed_brands" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN allowed_brands TEXT"))
+                conn.commit()
 
         # Suppliers: add category_id
         if "suppliers" in insp.get_table_names():

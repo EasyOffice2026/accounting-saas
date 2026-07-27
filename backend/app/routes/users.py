@@ -10,6 +10,21 @@ from app.utils.auth import get_current_user, hash_password
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 
+def _parse_brands(raw: Optional[str]) -> Optional[list[int]]:
+    """Parse a comma-separated brand id string. Empty/None -> None (all/derive)."""
+    if raw is None:
+        return None
+    raw = raw.strip()
+    if not raw:
+        return None
+    ids = []
+    for part in raw.split(","):
+        part = part.strip()
+        if part.isdigit():
+            ids.append(int(part))
+    return ids or None
+
+
 @router.get("/")
 def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if user.role not in ("owner", "manager", "accountant"):
@@ -24,6 +39,7 @@ def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_u
             "branch_id": u.branch_id,
             "is_active": u.is_active,
             "allowed_tabs": u.get_allowed_tabs(),
+            "allowed_brands": u.get_allowed_brands(),
         }
         for u in users
     ]
@@ -36,6 +52,7 @@ def create_user(
     full_name: str = Form(...),
     role: str = Form("staff"),
     branch_id: Optional[int] = Form(None),
+    allowed_brands: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -52,6 +69,7 @@ def create_user(
         branch_id=branch_id if role == "staff" else None,
         is_active=True,
     )
+    new_user.set_allowed_brands(_parse_brands(allowed_brands))
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -66,6 +84,7 @@ def update_user(
     full_name: str = Form(None),
     role: str = Form(None),
     branch_id: Optional[str] = Form(None),
+    allowed_brands: Optional[str] = Form(None),
     is_active: str = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -92,6 +111,8 @@ def update_user(
         target.branch_id = int(branch_id) if branch_id and branch_id != "null" else None
     if is_active is not None:
         target.is_active = is_active.lower() in ("true", "1", "yes")
+    if allowed_brands is not None:
+        target.set_allowed_brands(_parse_brands(allowed_brands))
     db.commit()
     return {"message": "User updated"}
 

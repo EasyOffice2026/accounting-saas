@@ -77,6 +77,7 @@ interface UserItem {
   branch_id: number | null;
   is_active: boolean;
   allowed_tabs: string[] | null;
+  allowed_brands: number[] | null;
 }
 
 interface BranchItem {
@@ -168,6 +169,7 @@ export default function SettingsPage() {
   const [uFullName, setUFullName] = useState("");
   const [uRole, setURole] = useState("staff");
   const [uBranchId, setUBranchId] = useState<string>("");
+  const [uAllowedBrands, setUAllowedBrands] = useState<number[]>([]);
   const [uMsg, setUMsg] = useState("");
   const [uMsgType, setUMsgType] = useState<"success" | "error">("success");
 
@@ -306,6 +308,7 @@ export default function SettingsPage() {
     setUFullName("");
     setURole("staff");
     setUBranchId("");
+    setUAllowedBrands([]);
     setEditingUser(null);
     setShowUserForm(false);
   };
@@ -316,6 +319,7 @@ export default function SettingsPage() {
     setUFullName(u.full_name);
     setURole(u.role);
     setUBranchId(u.branch_id ? String(u.branch_id) : "");
+    setUAllowedBrands(u.allowed_brands || []);
     setUPassword("");
     setShowUserForm(true);
   };
@@ -328,6 +332,7 @@ export default function SettingsPage() {
     fd.append("role", uRole);
     if (uPassword) fd.append("password", uPassword);
     fd.append("branch_id", uRole === "staff" ? (uBranchId || "") : "");
+    fd.append("allowed_brands", uAllowedBrands.join(","));
 
     try {
       if (editingUser) {
@@ -696,6 +701,22 @@ export default function SettingsPage() {
                   </select>
                 </div>
               )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">{t("brand_access")}</label>
+              <p className="text-xs text-gray-500 mb-2">{t("brand_access_hint")}</p>
+              <div className="flex flex-wrap gap-3">
+                {brandsList.map(b => (
+                  <label key={b.id} className="inline-flex items-center gap-2 text-sm bg-white border rounded-lg px-3 py-1.5 cursor-pointer">
+                    <input type="checkbox"
+                      checked={uAllowedBrands.includes(b.id)}
+                      onChange={e => setUAllowedBrands(prev =>
+                        e.target.checked ? [...prev, b.id] : prev.filter(x => x !== b.id))}
+                    />
+                    {i18n.language === "ar" && b.name_ar ? b.name_ar : b.name_en}
+                  </label>
+                ))}
+              </div>
             </div>
             <div className="flex gap-2">
               <button type="submit"

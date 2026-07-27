@@ -8,18 +8,19 @@ interface UserInfo {
   role: string;
   branch_id: number | null;
   allowed_tabs: string[] | null;
+  allowed_brands: number[] | null;
 }
 
 interface AuthCtx {
   user: UserInfo | null;
   token: string | null;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<UserInfo>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthCtx>({
   user: null, token: null,
-  login: async () => {},
+  login: async () => { throw new Error("not ready"); },
   logout: () => {},
 });
 
@@ -49,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
     localStorage.setItem("token", data.access_token);
     localStorage.setItem("user", JSON.stringify(data.user));
+    return data.user as UserInfo;
   };
 
   const logout = () => {

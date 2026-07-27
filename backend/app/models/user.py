@@ -16,6 +16,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     allowed_tabs = Column(Text, nullable=True)  # JSON array of allowed tab keys, null = all
+    allowed_brands = Column(Text, nullable=True)  # JSON array of brand ids, null = all/derive from branch
 
     def get_allowed_tabs(self) -> list[str] | None:
         if self.allowed_tabs is None:
@@ -24,3 +25,11 @@ class User(Base):
 
     def set_allowed_tabs(self, tabs: list[str] | None):
         self.allowed_tabs = json.dumps(tabs) if tabs is not None else None
+
+    def get_allowed_brands(self) -> list[int] | None:
+        if self.allowed_brands is None:
+            return None
+        return json.loads(self.allowed_brands)
+
+    def set_allowed_brands(self, brands: list[int] | None):
+        self.allowed_brands = json.dumps(brands) if brands is not None else None

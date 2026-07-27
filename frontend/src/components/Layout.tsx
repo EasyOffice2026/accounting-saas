@@ -54,7 +54,7 @@ export default function Layout() {
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
       `}>
         <div className="p-4 pb-2">
-          <h1 className="text-xl font-bold">{t("app_name")}</h1>
+          <h1 className="text-xl font-bold">{selectedBrand ? brandLabel : t("app_name")}</h1>
           <p className="text-emerald-200 text-xs mt-0.5">{t("app_subtitle")}</p>
         </div>
 
@@ -148,7 +148,7 @@ export default function Layout() {
           <button onClick={() => setSidebarOpen(!sidebarOpen)}>
             {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
-          <h1 className="text-lg font-semibold mx-auto">{t("app_name")}</h1>
+          <h1 className="text-lg font-semibold mx-auto">{selectedBrand ? brandLabel : t("app_name")}</h1>
         </header>
 
         {/* Group view banner */}

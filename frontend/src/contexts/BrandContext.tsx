@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import type { ReactNode } from "react";
 import { apiGet } from "./api";
+import { useAuth } from "./AuthContext";
 
 export interface BrandInfo {
   id: number;
@@ -30,6 +31,7 @@ const BrandContext = createContext<BrandCtx>({
 export const useBrand = () => useContext(BrandContext);
 
 export function BrandProvider({ children }: { children: ReactNode }) {
+  const { token } = useAuth();
   const [brands, setBrands] = useState<BrandInfo[]>([]);
   const [selectedBrand, setSelectedBrand] = useState<BrandInfo | null>(null);
   const [isGroupView, setGroupView] = useState(false);
@@ -44,34 +46,40 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Re-fetch brands whenever the auth token changes (login/logout/re-login).
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-    refreshBrands().then(() => {
-      const saved = localStorage.getItem("selectedBrandId");
-      if (saved) {
-        // will be resolved after brands load
-      }
-    });
-  }, [refreshBrands]);
+    if (!token) {
+      setBrands([]);
+      setSelectedBrand(null);
+      setGroupView(false);
+      return;
+    }
+    refreshBrands();
+  }, [token, refreshBrands]);
 
-  // Resolve saved brand after brands load
+  // Resolve saved brand after brands load. If the saved brand is not among the
+  // brands this user may access, drop it so the correct brand is chosen.
   useEffect(() => {
     if (brands.length === 0) return;
     const saved = localStorage.getItem("selectedBrandId");
     if (saved === "group") {
       setGroupView(true);
       setSelectedBrand(null);
-    } else if (saved) {
-      const found = brands.find((b) => b.id === Number(saved));
-      if (found) {
-        setSelectedBrand(found);
-        setGroupView(false);
-      }
+      return;
+    }
+    const found = saved ? brands.find((b) => b.id === Number(saved)) : undefined;
+    if (found) {
+      setSelectedBrand(found);
+      setGroupView(false);
     } else if (brands.length === 1) {
       // Auto-select the only brand
       setSelectedBrand(brands[0]);
+      setGroupView(false);
       localStorage.setItem("selectedBrandId", String(brands[0].id));
+    } else {
+      // Saved brand not accessible to this user: clear it.
+      setSelectedBrand(null);
+      localStorage.removeItem("selectedBrandId");
     }
   }, [brands]);
 

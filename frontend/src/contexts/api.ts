@@ -2,6 +2,7 @@ function _injectBrandId(path: string): string {
   // Auto-inject brand_id query param from localStorage
   const saved = localStorage.getItem("selectedBrandId");
   if (!saved || saved === "group") return path; // group = no filter
+  if (path.includes("all_brands=1")) return path; // explicit cross-brand request
   if (path.includes("brand_id=")) return path; // already specified
   const sep = path.includes("?") ? "&" : "?";
   return `${path}${sep}brand_id=${saved}`;

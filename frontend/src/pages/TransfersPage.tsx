@@ -73,7 +73,7 @@ export default function TransfersPage() {
   useEffect(() => {
     apiGet("/api/transfers/items").then(setItems);
     apiGet("/api/transfers/orders").then(setOrders);
-    apiGet("/api/branches/").then(setBranches);
+    apiGet("/api/branches/?all_brands=1").then(setBranches);
   }, []);
 
   const reload = () => {

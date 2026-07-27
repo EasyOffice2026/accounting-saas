@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiDownload, apiFetch } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
+import { useBrand } from "../contexts/BrandContext";
 
 interface Branch { id: number; name: string; name_ar?: string; is_central_kitchen: boolean; brand_id?: number | null; }
 interface TItem { id: number; name: string; name_ar: string; unit: string; unit_price: number; opening_stock: number; category: string; }
@@ -27,6 +28,8 @@ type Tab = "items" | "requests" | "history" | "consumption";
 export default function TransfersPage() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
+  const { brands, selectedBrand } = useBrand();
+  const [formBrandId, setFormBrandId] = useState<number | "">("");
   const [tab, setTab] = useState<Tab>("requests");
   const [items, setItems] = useState<TItem[]>([]);
   const [orders, setOrders] = useState<TOrder[]>([]);
@@ -62,6 +65,8 @@ export default function TransfersPage() {
 
   const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   const isCentralKitchen = branches.find(b => b.id === user?.branch_id)?.is_central_kitchen || false;
+  // Branches available for the selected brand (branches with no brand, e.g. Central Kitchen, are always shown)
+  const brandBranches = branches.filter(b => !formBrandId || b.brand_id === Number(formBrandId) || b.brand_id == null);
 
   useEffect(() => {
     apiGet("/api/transfers/items").then(setItems);
@@ -154,6 +159,9 @@ export default function TransfersPage() {
 
   const openEditOrder = (order: TOrder) => {
     setEditingOrder(order);
+    const srcBrand = branches.find(b => b.id === order.source_branch_id)?.brand_id
+      ?? branches.find(b => b.id === order.requesting_branch_id)?.brand_id;
+    setFormBrandId(srcBrand ?? "");
     const checked: Record<number, string> = {};
     order.lines.forEach(l => { checked[l.item_id] = String(l.requested_qty); });
     setCheckedItems(checked);
@@ -208,7 +216,7 @@ export default function TransfersPage() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("internal_transfer")}</h2>
         {tab === "requests" && (
-          <button onClick={() => { setShowForm(!showForm); if (showForm) { setCheckedItems({}); setEditingOrder(null); } }}
+          <button onClick={() => { const opening = !showForm; setShowForm(!showForm); if (showForm) { setCheckedItems({}); setEditingOrder(null); } else if (opening) { setFormBrandId(selectedBrand?.id ?? ""); } }}
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
             {showForm ? t("cancel") : t("new_request")}
           </button>
@@ -351,14 +359,27 @@ export default function TransfersPage() {
           {showForm && (
             <form key={editingOrder?.id ?? "new"} onSubmit={handleRequestSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-4 space-y-4">
               <h3 className="font-semibold">{editingOrder ? `${t("edit")} #${editingOrder.id}` : t("new_request")}</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("brand")}</label>
+                  <select value={formBrandId}
+                    onChange={e => setFormBrandId(e.target.value ? Number(e.target.value) : "")}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">{t("all_brands")}</option>
+                    {brands.map(br =>
+                      <option key={br.id} value={br.id}>
+                        {i18n.language === "ar" && br.name_ar ? br.name_ar : br.name_en}
+                      </option>
+                    )}
+                  </select>
+                </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("source_branch")}</label>
-                  <select name="source_branch_id" required
-                    defaultValue={editingOrder ? (editingOrder.source_branch_id ?? "") : (branches.find(b => b.is_central_kitchen)?.id || "")}
+                  <select key={`src-${formBrandId}`} name="source_branch_id" required
+                    defaultValue={editingOrder ? (editingOrder.source_branch_id ?? "") : (brandBranches.find(b => b.is_central_kitchen)?.id || "")}
                     className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select")}</option>
-                    {branches.map(b =>
+                    {brandBranches.map(b =>
                       <option key={b.id} value={b.id}>
                         {(i18n.language === "ar" && b.name_ar ? b.name_ar : b.name)}{b.is_central_kitchen ? ` (${t("central_kitchen")})` : ""}
                       </option>
@@ -370,11 +391,11 @@ export default function TransfersPage() {
                 ) : (
                   <div>
                     <label className="block text-sm font-medium mb-1">{t("destination_branch")}</label>
-                    <select name="requesting_branch_id" required
+                    <select key={`dst-${formBrandId}`} name="requesting_branch_id" required
                       defaultValue={editingOrder ? editingOrder.requesting_branch_id : ""}
                       className="w-full px-3 py-2 border rounded-lg text-sm">
                       <option value="">{t("select")}</option>
-                      {branches.map(b =>
+                      {brandBranches.map(b =>
                         <option key={b.id} value={b.id}>
                           {(i18n.language === "ar" && b.name_ar ? b.name_ar : b.name)}{b.is_central_kitchen ? ` (${t("central_kitchen")})` : ""}
                         </option>

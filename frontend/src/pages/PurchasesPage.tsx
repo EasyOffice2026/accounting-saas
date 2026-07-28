@@ -567,7 +567,13 @@ export default function PurchasesPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("delivery_location")}</label>
-                  <input name="delivery_location" placeholder={t("delivery_location")} className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.delivery_location || ""} />
+                  <select name="delivery_location" className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.delivery_location || ""}>
+                    <option value="">{t("select_branch")}</option>
+                    {branches.map(b => {
+                      const label = i18n.language === "ar" ? (b.name_ar || b.name) : b.name;
+                      return <option key={b.id} value={label}>{label}</option>;
+                    })}
+                  </select>
                 </div>
               </div>
 

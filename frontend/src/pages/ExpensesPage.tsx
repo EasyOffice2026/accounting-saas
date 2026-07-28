@@ -9,6 +9,7 @@ interface Supplier { id: number; name: string; whatsapp?: string; whatsapp_group
 interface Expense {
   id: number; branch_id: number; category_id: number; date: string;
   description: string; amount: number; payment_method: string; supplier_id?: number;
+  attachment_path?: string | null;
 }
 interface LedgerExpense {
   id: number; date: string; description: string; amount: number;
@@ -266,6 +267,10 @@ export default function ExpensesPage() {
                         )}
                         <button onClick={() => handleWhatsApp(exp)}
                           className="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">WhatsApp</button>
+                        {exp.attachment_path && (
+                          <a href={`/uploads/${exp.attachment_path}`} target="_blank" rel="noopener noreferrer"
+                            className="px-2 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">{t("attachment")}</a>
+                        )}
                       </div>
                     </td>
                   </tr>

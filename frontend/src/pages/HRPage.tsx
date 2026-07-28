@@ -1,4 +1,4 @@
-import { useEffect, useState, Fragment } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiFetch, apiDownload } from "../contexts/api";
 
@@ -45,9 +45,17 @@ interface BenefitDeduction {
   frequency?: string; end_month?: string | null;
   approval_status?: string;
 }
-interface LoanRepayment {
-  id: number; loan_id: number; amount: number;
-  date: string; month: string; notes: string;
+interface LoanTxn {
+  id: number;
+  kind: "disbursement" | "repayment";
+  type: string; loan_id: number; date: string;
+  amount: number; notes: string; status: string;
+  running_balance: number;
+}
+interface LoanStatement {
+  employee: { id: number; name: string; name_ar: string; staff_no: string };
+  totals: { total_taken: number; total_repaid: number; outstanding: number; loan_count: number };
+  transactions: LoanTxn[];
 }
 interface ResignationRecord {
   id: number; ref_no: string; employee_id: number;
@@ -142,8 +150,8 @@ export default function HRPage() {
   const [showLoanForm, setShowLoanForm] = useState(false);
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
   const [payingLoan, setPayingLoan] = useState<Loan | null>(null);
-  const [expandedLoan, setExpandedLoan] = useState<number | null>(null);
-  const [loanRepayments, setLoanRepayments] = useState<LoanRepayment[]>([]);
+  const [statementEmpId, setStatementEmpId] = useState<string>("");
+  const [statement, setStatement] = useState<LoanStatement | null>(null);
 
   // Benefits state (incentive, bonus, leave_salary, ticket)
   const [benefits, setBenefits] = useState<BenefitDeduction[]>([]);
@@ -743,27 +751,23 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       await apiPost("/api/hr/loans", fd);
     }
     setShowLoanForm(false);
+    refreshLoans();
+  };
+
+  const loadStatement = (empId: string) => {
+    if (!empId) { setStatement(null); return; }
+    apiGet(`/api/hr/loans/statement?employee_id=${empId}`).then(setStatement);
+  };
+
+  const refreshLoans = () => {
     apiGet("/api/hr/loans").then(setLoans);
+    if (statementEmpId) loadStatement(statementEmpId);
   };
 
   const handleDeleteLoan = async (id: number) => {
     if (!confirm(t("confirm_delete"))) return;
     await apiFetch(`/api/hr/loans/${id}`, { method: "DELETE" });
-    apiGet("/api/hr/loans").then(setLoans);
-  };
-
-  const loadRepayments = (loanId: number) => {
-    apiGet(`/api/hr/loans/${loanId}/repayments`).then(setLoanRepayments);
-  };
-
-  const toggleRepayments = (loanId: number) => {
-    if (expandedLoan === loanId) {
-      setExpandedLoan(null);
-      setLoanRepayments([]);
-    } else {
-      setExpandedLoan(loanId);
-      loadRepayments(loanId);
-    }
+    refreshLoans();
   };
 
   const handleRepaymentSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -771,17 +775,14 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
     if (!payingLoan) return;
     const fd = new FormData(e.currentTarget);
     await apiPost(`/api/hr/loans/${payingLoan.id}/repayments`, fd);
-    const loanId = payingLoan.id;
     setPayingLoan(null);
-    apiGet("/api/hr/loans").then(setLoans);
-    if (expandedLoan === loanId) loadRepayments(loanId);
+    refreshLoans();
   };
 
-  const handleDeleteRepayment = async (repId: number, loanId: number) => {
+  const handleDeleteRepayment = async (repId: number) => {
     if (!confirm(t("confirm_delete"))) return;
     await apiFetch(`/api/hr/loans/repayments/${repId}`, { method: "DELETE" });
-    apiGet("/api/hr/loans").then(setLoans);
-    loadRepayments(loanId);
+    refreshLoans();
   };
 
   // Benefit handlers
@@ -1765,8 +1766,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 ) : loans.map(l => {
                   const paid = Math.max(0, l.amount - l.balance);
                   return (
-                  <Fragment key={l.id}>
-                  <tr className="border-b hover:bg-gray-50">
+                  <tr key={l.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(l.employee_id) || "—"}</td>
                     <td className="px-4 py-3">{empName(l.employee_id)}</td>
                     <td className="px-4 py-3">{t(l.loan_type === "loan" ? "loan_label" : "advance")}</td>
@@ -1788,8 +1788,6 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                           <button onClick={() => setPayingLoan(l)}
                             className="text-emerald-600 hover:underline text-xs font-medium">{t("record_payment")}</button>
                         )}
-                        <button onClick={() => toggleRepayments(l.id)}
-                          className="text-gray-600 hover:underline text-xs">{t("history")}</button>
                         <button onClick={() => { setEditingLoan(l); setShowLoanForm(true); }}
                           className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
                         <button onClick={() => handleDeleteLoan(l.id)}
@@ -1797,47 +1795,94 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       </td>
                     )}
                   </tr>
-                  {expandedLoan === l.id && (
-                    <tr className="bg-gray-50">
-                      <td colSpan={10} className="px-6 py-3">
-                        <div className="text-xs font-semibold mb-2">{t("repayment_history")}</div>
-                        {loanRepayments.length === 0 ? (
-                          <div className="text-xs text-gray-400">{t("no_data")}</div>
-                        ) : (
-                          <table className="w-full text-xs">
-                            <thead>
-                              <tr className="text-gray-500">
-                                <th className="text-left py-1">{t("date")}</th>
-                                <th className="text-right py-1">{t("amount")}</th>
-                                <th className="text-left py-1 pl-4">{t("notes")}</th>
-                                {isManager && <th className="py-1"></th>}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {loanRepayments.map(r => (
-                                <tr key={r.id} className="border-t">
-                                  <td className="py-1">{r.date}</td>
-                                  <td className="py-1 text-right font-mono">KD {r.amount.toFixed(3)}</td>
-                                  <td className="py-1 pl-4">{r.notes || "—"}</td>
-                                  {isManager && (
-                                    <td className="py-1 text-right">
-                                      <button onClick={() => handleDeleteRepayment(r.id, l.id)}
-                                        className="text-red-600 hover:underline">{t("delete")}</button>
-                                    </td>
-                                  )}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                  </Fragment>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Transaction statement — pick any staff with advances/loans */}
+          <div className="bg-white rounded-xl shadow-sm border mt-6 p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+              <label className="text-sm font-semibold">{t("loan_statement")}</label>
+              <select value={statementEmpId}
+                onChange={e => { setStatementEmpId(e.target.value); loadStatement(e.target.value); }}
+                className="px-3 py-2 border rounded-lg text-sm sm:w-80">
+                <option value="">{t("select_employee")}</option>
+                {Array.from(new Set(loans.map(l => l.employee_id))).map(eid => (
+                  <option key={eid} value={eid}>{empStaffNo(eid) ? `${empStaffNo(eid)} — ` : ""}{empName(eid)}</option>
+                ))}
+              </select>
+            </div>
+
+            {statement && (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">{t("total_taken")}</div>
+                    <div className="font-mono font-bold">KD {statement.totals.total_taken.toFixed(3)}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">{t("total_repaid")}</div>
+                    <div className="font-mono font-bold text-green-700">KD {statement.totals.total_repaid.toFixed(3)}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">{t("outstanding")}</div>
+                    <div className="font-mono font-bold text-amber-700">KD {statement.totals.outstanding.toFixed(3)}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">{t("advance_loan")}</div>
+                    <div className="font-mono font-bold">{statement.totals.loan_count}</div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-3 py-2 text-left">{t("date")}</th>
+                        <th className="px-3 py-2 text-left">{t("type")}</th>
+                        <th className="px-3 py-2 text-right">{t("amount")}</th>
+                        <th className="px-3 py-2 text-right">{t("balance")}</th>
+                        <th className="px-3 py-2 text-left">{t("notes")}</th>
+                        {isManager && <th className="px-3 py-2"></th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statement.transactions.length === 0 ? (
+                        <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">{t("no_data")}</td></tr>
+                      ) : statement.transactions.map((tx, i) => (
+                        <tr key={i} className="border-b">
+                          <td className="px-3 py-2">{tx.date}</td>
+                          <td className="px-3 py-2">
+                            {tx.kind === "repayment" ? (
+                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">{t("repayment")}</span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                                {t(tx.type === "loan" ? "loan_label" : "advance")}
+                              </span>
+                            )}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-mono ${tx.kind === "repayment" ? "text-green-700" : "text-blue-700"}`}>
+                            {tx.kind === "repayment" ? "-" : "+"}KD {tx.amount.toFixed(3)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-bold">KD {tx.running_balance.toFixed(3)}</td>
+                          <td className="px-3 py-2 text-gray-600">{tx.notes || "—"}</td>
+                          {isManager && (
+                            <td className="px-3 py-2 text-right">
+                              {tx.kind === "repayment" && (
+                                <button onClick={() => handleDeleteRepayment(tx.id)}
+                                  className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
 
           {payingLoan && (

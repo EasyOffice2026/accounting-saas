@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from typing import Optional
 import os, uuid
 
-from app.database import get_db
+from app.database import get_db, UPLOAD_DIR
 from app.models.sale import Sale, SaleReturn
 from app.models.branch import Branch
 from app.models.user import User
@@ -13,7 +13,6 @@ from app.utils.auth import get_current_user
 from app.routes.hr import _brand_branch_ids
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
 
 
 @router.get("/")

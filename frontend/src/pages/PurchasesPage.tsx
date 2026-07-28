@@ -10,6 +10,7 @@ interface OrderItem { item_name: string; quantity: number; unit: string; unit_pr
 interface PurchaseOrder {
   id: number; branch_id: number; supplier_id: number; category_id: number | null; date: string;
   payment_type: string; total_amount: number; status: string; delivery_location: string | null;
+  attachment_path?: string | null;
 }
 interface Branch { id: number; name: string; name_ar?: string; }
 interface InvoiceI {
@@ -746,6 +747,12 @@ export default function PurchasesPage() {
                           className="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">
                           {t("whatsapp")}
                         </button>
+                        {o.attachment_path && (
+                          <a href={`/uploads/${o.attachment_path}`} target="_blank" rel="noopener noreferrer"
+                            className="px-2 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">
+                            {t("attachment")}
+                          </a>
+                        )}
                       </div>
                     </td>
                   </tr>

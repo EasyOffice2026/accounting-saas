@@ -64,7 +64,35 @@ function AppRoutes() {
   );
 }
 
+// Prevents duplicate submissions from double-clicking any form's save button.
+function useGlobalSubmitGuard() {
+  useEffect(() => {
+    const onSubmit = (e: Event) => {
+      const form = e.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      if (form.dataset.submitting === "1") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
+      form.dataset.submitting = "1";
+      const btns = Array.from(
+        form.querySelectorAll('button:not([type="button"]):not([type="reset"])')
+      ) as HTMLButtonElement[];
+      const justDisabled = btns.filter(b => !b.disabled);
+      justDisabled.forEach(b => { b.disabled = true; });
+      window.setTimeout(() => {
+        form.dataset.submitting = "";
+        justDisabled.forEach(b => { b.disabled = false; });
+      }, 2500);
+    };
+    document.addEventListener("submit", onSubmit, true);
+    return () => document.removeEventListener("submit", onSubmit, true);
+  }, []);
+}
+
 export default function App() {
+  useGlobalSubmitGuard();
   return (
     <BrowserRouter>
       <AuthProvider>

@@ -1075,6 +1075,73 @@ def list_loan_repayments(loan_id: int, db: Session = Depends(get_db),
     ]
 
 
+@router.get("/loans/statement")
+def loan_statement(employee_id: int, db: Session = Depends(get_db),
+                   user: User = Depends(get_current_user)):
+    """Unified transaction ledger for one employee: every advance/loan taken
+    plus every repayment/return, chronological, with a running balance."""
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    staff_emp_ids = _staff_emp_ids(db, user)
+    if staff_emp_ids is not None and employee_id not in staff_emp_ids:
+        raise HTTPException(403, "Not authorized")
+
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+
+    loans = db.query(AdvanceLoan).filter(AdvanceLoan.employee_id == employee_id).all()
+    loan_ids = [l.id for l in loans]
+    reps = []
+    if loan_ids:
+        reps = db.query(LoanRepayment).filter(LoanRepayment.loan_id.in_(loan_ids)).all()
+
+    txns = []
+    for l in loans:
+        txns.append({
+            "id": l.id,
+            "kind": "disbursement",
+            "type": l.loan_type,  # advance | loan
+            "loan_id": l.id,
+            "date": str(l.date),
+            "amount": round(l.amount or 0, 3),
+            "notes": l.notes or "",
+            "status": l.status,
+        })
+    for r in reps:
+        txns.append({
+            "id": r.id,
+            "kind": "repayment",
+            "type": "repayment",
+            "loan_id": r.loan_id,
+            "date": str(r.date),
+            "amount": round(r.amount or 0, 3),
+            "notes": r.notes or "",
+            "status": "",
+        })
+
+    txns.sort(key=lambda x: (x["date"], 0 if x["kind"] == "disbursement" else 1))
+    running = 0.0
+    for tx in txns:
+        running += tx["amount"] if tx["kind"] == "disbursement" else -tx["amount"]
+        tx["running_balance"] = round(running, 3)
+
+    total_taken = round(sum(l.amount or 0 for l in loans), 3)
+    total_repaid = round(sum(r.amount or 0 for r in reps), 3)
+    outstanding = round(sum(l.balance or 0 for l in loans), 3)
+    return {
+        "employee": {"id": emp.id, "name": emp.name, "name_ar": emp.name_ar or "",
+                     "staff_no": emp.staff_no or ""},
+        "totals": {
+            "total_taken": total_taken,
+            "total_repaid": total_repaid,
+            "outstanding": outstanding,
+            "loan_count": len(loans),
+        },
+        "transactions": txns,
+    }
+
+
 @router.post("/loans/{loan_id}/repayments")
 def create_loan_repayment(
     loan_id: int,

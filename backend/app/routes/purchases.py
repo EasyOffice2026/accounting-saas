@@ -4,7 +4,7 @@ from datetime import date
 from typing import Optional
 import os, uuid, json
 
-from app.database import get_db
+from app.database import get_db, UPLOAD_DIR
 from app.models.purchase import (
     PurchaseCategory, Supplier, PurchaseOrder, PurchaseItem, SupplierItem,
     ReceivingOrder, ReceivingItem, Invoice, DeliveryOrder,
@@ -15,7 +15,6 @@ from app.utils.auth import get_current_user
 from app.routes.hr import _brand_branch_ids
 
 router = APIRouter(prefix="/api/purchases", tags=["purchases"])
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
 
 
 # --- Purchase Categories ---

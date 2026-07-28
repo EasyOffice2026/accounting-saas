@@ -4,7 +4,7 @@ from datetime import date
 from typing import Optional
 import os, uuid
 
-from app.database import get_db
+from app.database import get_db, UPLOAD_DIR
 from app.models.expense import ExpenseCategory, Expense
 from app.models.purchase import Supplier
 from app.models.branch import Branch
@@ -13,7 +13,6 @@ from app.utils.auth import get_current_user
 from app.routes.hr import _brand_branch_ids
 
 router = APIRouter(prefix="/api/expenses", tags=["expenses"])
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
 
 
 @router.get("/categories")

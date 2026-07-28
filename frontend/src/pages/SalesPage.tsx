@@ -513,6 +513,12 @@ export default function SalesPage() {
                       className="px-2 py-1 bg-green-500 text-white rounded text-[10px] hover:bg-green-600" title="Send to WhatsApp">
                       📱
                     </button>
+                    {s.attachment_path && (
+                      <a href={`/uploads/${s.attachment_path}`} target="_blank" rel="noopener noreferrer"
+                        className="ml-1 px-2 py-1 bg-gray-600 text-white rounded text-[10px] hover:bg-gray-700" title={t("attachment")}>
+                        📎
+                      </a>
+                    )}
                   </td>
                 </tr>
               );

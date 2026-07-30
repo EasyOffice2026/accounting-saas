@@ -58,12 +58,16 @@ FRONTEND_DIST = os.path.abspath(FRONTEND_DIST)
 if os.path.isdir(FRONTEND_DIST):
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="frontend-assets")
 
+    NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
+
     @app.get("/{full_path:path}")
     async def serve_spa(request: Request, full_path: str):
         file_path = os.path.join(FRONTEND_DIST, full_path)
-        if os.path.isfile(file_path):
+        # Hashed asset files are safe to cache; index.html must never be cached
+        # so clients always fetch the current asset hashes after a deploy.
+        if os.path.isfile(file_path) and not file_path.endswith("index.html"):
             return FileResponse(file_path)
-        return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+        return FileResponse(os.path.join(FRONTEND_DIST, "index.html"), headers=NO_CACHE)
 
 
 @app.on_event("startup")

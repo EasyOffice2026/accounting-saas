@@ -83,7 +83,7 @@ export default function AttendancePage() {
       )}
 
       <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-        <table data-resp className="w-full text-sm">
+        <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="px-4 py-3 text-left">{t("date")}</th>

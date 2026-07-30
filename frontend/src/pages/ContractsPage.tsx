@@ -146,7 +146,7 @@ export default function ContractsPage() {
         </div>
       )}
 
-      <table data-resp className="w-full text-xs bg-white rounded border">
+      <table className="w-full text-xs bg-white rounded border">
         <thead className="bg-gray-100">
           <tr>
             <th className="px-3 py-2 text-left">{t("due_date")}</th>
@@ -384,7 +384,7 @@ export default function ContractsPage() {
 
       {/* Contracts Table */}
       <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-        <table data-resp className="w-full text-sm">
+        <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="px-3 py-3 text-left">{t("contract_name")}</th>

@@ -582,7 +582,7 @@ export default function PurchasesPage() {
                 <>
                   <h3 className="font-semibold">{t("select_products")} <span className="text-sm text-gray-400 font-normal">({selectedCatalogIds.size} {t("selected")})</span></h3>
                   <div className="bg-gray-50 rounded-lg border max-h-96 overflow-y-auto">
-                    <table data-resp className="w-full text-sm">
+                    <table className="w-full text-sm">
                       <thead className="bg-gray-100 border-b sticky top-0">
                         <tr>
                           <th className="px-3 py-2 text-center w-10"></th>
@@ -692,7 +692,7 @@ export default function PurchasesPage() {
           )}
 
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-            <table data-resp className="w-full text-sm">
+            <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left">#</th>
@@ -768,7 +768,7 @@ export default function PurchasesPage() {
         <div>
           {/* Suppliers List with Edit/Delete */}
           <div className="bg-white rounded-xl shadow-sm border mb-4 overflow-x-auto">
-            <table data-resp className="w-full text-sm">
+            <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left">#</th>
@@ -870,7 +870,7 @@ export default function PurchasesPage() {
                 </form>
               )}
               <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-                <table data-resp className="w-full text-sm">
+                <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b">
                     <tr>
                       <th className="px-4 py-3 text-left">#</th>
@@ -957,7 +957,7 @@ export default function PurchasesPage() {
           )}
 
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-            <table data-resp className="w-full text-sm">
+            <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left">#</th>
@@ -1009,7 +1009,7 @@ export default function PurchasesPage() {
             </select>
           </div>
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-          <table data-resp className="w-full text-sm">
+          <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="px-4 py-3 text-left">#</th>
@@ -1091,7 +1091,7 @@ export default function PurchasesPage() {
               </div>
               {expandedSupplier === entry.supplier_id && entry.invoices.length > 0 && (
                 <div className="border-t overflow-x-auto">
-                  <table data-resp className="w-full text-sm">
+                  <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-4 py-2 text-left">{t("invoice")} #</th>

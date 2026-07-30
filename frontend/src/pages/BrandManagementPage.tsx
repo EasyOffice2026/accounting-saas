@@ -78,7 +78,7 @@ export default function BrandManagementPage() {
       </div>
 
       <div className="bg-white rounded-xl shadow">
-        <table data-resp className="w-full">
+        <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">#</th>

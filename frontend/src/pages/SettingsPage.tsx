@@ -601,7 +601,7 @@ export default function SettingsPage() {
           )}
 
           <div className="overflow-x-auto">
-            <table data-resp className="w-full text-sm">
+            <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 py-2 text-left">{t("branch_name_en")}</th>
@@ -732,7 +732,7 @@ export default function SettingsPage() {
         )}
 
         <div className="overflow-x-auto">
-          <table data-resp className="w-full text-sm">
+          <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-3 py-2 text-left">{t("username")}</th>
@@ -790,7 +790,7 @@ export default function SettingsPage() {
           )}
 
           <div className="overflow-x-auto">
-            <table data-resp className="w-full text-sm">
+            <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 py-2 text-left">{t("username")}</th>

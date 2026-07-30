@@ -159,7 +159,7 @@ export default function ExpensesPage() {
                   <label className="block text-sm font-medium mb-1">{t("category")}</label>
                   <select name="category_id" defaultValue={editingExpense?.category_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">--</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {categories.map(c => <option key={c.id} value={c.id}>{i18n.language === "ar" ? (c.name_ar || c.name) : c.name}</option>)}
                   </select>
                 </div>
                 <div>

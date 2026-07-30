@@ -438,7 +438,7 @@ export default function PurchasesPage() {
             </select>
             <select name="category_id" defaultValue={editingSupplier?.category_id || ""} className="px-3 py-2 border rounded-lg text-sm">
               <option value="">{t("select_category")}</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {categories.map(c => <option key={c.id} value={c.id}>{i18n.language === "ar" ? (c.name_ar || c.name) : c.name}</option>)}
             </select>
           </div>
           <div className="flex gap-2">

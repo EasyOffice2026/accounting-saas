@@ -994,7 +994,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-            <table className="w-full text-sm">
+            <table data-resp className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-3 py-3 text-left">{t("staff_no")}</th>
@@ -1407,7 +1407,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
 
           {/* Salary Summary Table */}
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-            <table className="w-full text-xs">
+            <table data-resp className="w-full text-xs">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-3 py-3 text-left">{t("staff_no")}</th>
@@ -1633,7 +1633,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
           )}
 
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-            <table className="w-full text-sm">
+            <table data-resp className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left">{t("staff_no")}</th>
@@ -1745,7 +1745,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
           )}
 
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-            <table className="w-full text-sm">
+            <table data-resp className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left">{t("staff_no")}</th>
@@ -1837,7 +1837,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table data-resp className="w-full text-sm">
                     <thead className="bg-gray-50 border-b">
                       <tr>
                         <th className="px-3 py-2 text-left">{t("date")}</th>
@@ -1988,7 +1988,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
           )}
 
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-            <table className="w-full text-sm">
+            <table data-resp className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left">{t("staff_no")}</th>
@@ -2131,7 +2131,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
           })()}
 
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-            <table className="w-full text-sm">
+            <table data-resp className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left">{t("staff_no")}</th>
@@ -2248,7 +2248,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
           )}
 
           <div className="bg-white rounded-xl shadow overflow-x-auto">
-            <table className="min-w-full text-sm">
+            <table data-resp className="min-w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left">{t("staff_no")}</th>
@@ -2497,7 +2497,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 {/* Section 3: Final Settlement */}
                 <div className="section border rounded-lg p-4 mb-4">
                   <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("finance_settlement")}</h3>
-                  <table className="w-full border-collapse text-sm">
+                  <table data-resp className="w-full border-collapse text-sm">
                     <tbody>
                       <tr className="bg-gray-50"><td colSpan={2} className="py-1 px-2 font-bold text-xs text-gray-600">{t("earnings")}</td></tr>
                       {[
@@ -2773,7 +2773,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
           {/* Resignations List */}
           {!editingResignation && (
             <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-              <table className="w-full text-sm">
+              <table data-resp className="w-full text-sm">
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="px-4 py-3 text-left">{t("ref_no")}</th>

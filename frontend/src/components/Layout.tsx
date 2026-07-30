@@ -50,7 +50,7 @@ export default function Layout() {
       {/* Sidebar */}
       <aside className={`
         fixed inset-y-0 z-30 w-64 bg-gradient-to-b from-emerald-700 to-emerald-900
-        text-white transform transition-transform md:relative md:translate-x-0
+        text-white transform transition-transform lg:relative lg:translate-x-0
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
       `}>
         <div className="p-4 pb-2">
@@ -138,13 +138,13 @@ export default function Layout() {
 
       {/* Overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/30 z-20 md:hidden"
+        <div className="fixed inset-0 bg-black/30 z-20 lg:hidden"
           onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white shadow-sm border-b px-4 py-3 flex items-center md:hidden">
+        <header className="bg-white shadow-sm border-b px-4 py-3 flex items-center lg:hidden">
           <button onClick={() => setSidebarOpen(!sidebarOpen)}>
             {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>

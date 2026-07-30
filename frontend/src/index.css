@@ -9,3 +9,78 @@ body {
   direction: rtl;
   text-align: right;
 }
+
+/* ---- Responsive data tables: stack into cards on iPad (both orientations) & phones ---- */
+@media (max-width: 1279px) {
+  table[data-resp] {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  table[data-resp] thead {
+    display: none;
+  }
+  table[data-resp] tbody {
+    display: block;
+  }
+  table[data-resp] tr {
+    display: block;
+    margin: 0.5rem;
+    padding: 0.25rem 0;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background: #fff;
+  }
+  table[data-resp] td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    padding: 0.45rem 0.8rem !important;
+    border: none !important;
+    border-bottom: 1px solid #f3f4f6 !important;
+    position: static !important;
+    white-space: normal !important;
+    text-align: right;
+    direction: ltr !important; /* keep label at the left even for dir="rtl" cells */
+  }
+  [dir="rtl"] table[data-resp] td {
+    text-align: left;
+    direction: rtl !important;
+  }
+  table[data-resp] tr td:last-child {
+    border-bottom: none !important;
+  }
+  table[data-resp] td::before {
+    content: attr(data-label);
+    flex: 0 0 42%;
+    font-weight: 600;
+    color: #6b7280;
+    text-align: left;
+    white-space: normal;
+  }
+  [dir="rtl"] table[data-resp] td::before {
+    text-align: right;
+  }
+  /* Cells with no label (e.g. action button groups) span full width */
+  table[data-resp] td[data-label=""]::before,
+  table[data-resp] td:not([data-label])::before {
+    display: none;
+  }
+  table[data-resp] td[data-label=""],
+  table[data-resp] td.resp-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  /* "No data" / colspan rows render as plain centered text */
+  table[data-resp] td[colspan] {
+    justify-content: center;
+    text-align: center;
+  }
+  table[data-resp] td[colspan]::before {
+    display: none;
+  }
+}

@@ -262,7 +262,7 @@ export default function CashPage() {
           )}
 
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-            <table className="w-full text-sm min-w-[700px]">
+            <table data-resp className="w-full text-sm min-w-[700px]">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left">{t("date")}</th>

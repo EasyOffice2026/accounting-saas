@@ -91,8 +91,55 @@ function useGlobalSubmitGuard() {
   }, []);
 }
 
+// On phones / iPad-portrait the data tables collapse into stacked cards (see
+// index.css). This injects each cell's column header as a `data-label` so the
+// stacked cards stay readable. Runs on any DOM change (new rows, tab switch).
+function useResponsiveTableLabels() {
+  useEffect(() => {
+    const labelTable = (table: HTMLTableElement) => {
+      const headRows = Array.from(table.querySelectorAll("thead tr"));
+      if (!headRows.length) return;
+      // Use the header row with the most cells (handles grouped headers).
+      let leaf = headRows[0];
+      let max = -1;
+      for (const r of headRows) {
+        const n = r.querySelectorAll("th").length;
+        if (n > max) { max = n; leaf = r; }
+      }
+      const labels = Array.from(leaf.querySelectorAll("th")).map(
+        th => (th.textContent || "").trim()
+      );
+      table.querySelectorAll("tbody tr").forEach(tr => {
+        const tds = Array.from(tr.children).filter(
+          c => c.tagName === "TD"
+        ) as HTMLTableCellElement[];
+        if (tds.some(td => (td.colSpan || 1) > 1)) return; // skip "no data" / spanning rows
+        tds.forEach((td, i) => {
+          if (!td.hasAttribute("data-label")) {
+            td.setAttribute("data-label", labels[i] ?? "");
+          }
+        });
+      });
+    };
+    const run = () =>
+      document
+        .querySelectorAll<HTMLTableElement>("table[data-resp]")
+        .forEach(labelTable);
+    run();
+    let queued = false;
+    const obs = new MutationObserver(() => {
+      if (queued) return;
+      queued = true;
+      window.requestAnimationFrame(() => { queued = false; run(); });
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, []);
+}
+
 export default function App() {
   useGlobalSubmitGuard();
+  useResponsiveTableLabels();
   return (
     <BrowserRouter>
       <AuthProvider>

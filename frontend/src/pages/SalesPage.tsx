@@ -348,7 +348,7 @@ export default function SalesPage() {
 
           {/* Table-style data entry: rows = channels, cols = POS, Physical, Cancelled, Final */}
           <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
+            <table data-resp className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-gray-100">
                   <th className="border px-3 py-2 text-left w-28"></th>
@@ -438,7 +438,7 @@ export default function SalesPage() {
 
       {/* Spreadsheet-style table */}
       <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-        <table className="text-xs min-w-[900px] w-full">
+        <table data-resp className="text-xs min-w-[900px] w-full">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th rowSpan={2} className="px-2 py-2 text-left border-r sticky left-0 bg-gray-50 z-10">{t("date")}</th>
@@ -472,28 +472,28 @@ export default function SalesPage() {
               const diff = physical - foodics;
               return (
                 <tr key={s.id} className="border-b hover:bg-gray-50">
-                  <td className="px-2 py-2 sticky left-0 bg-white border-r font-medium">{s.date}</td>
-                  <td className="px-2 py-2 border-r">{branchName(s.branch_id)}</td>
+                  <td data-label={t("date")} className="px-2 py-2 sticky left-0 bg-white border-r font-medium">{s.date}</td>
+                  <td data-label={t("branch")} className="px-2 py-2 border-r">{branchName(s.branch_id)}</td>
                   {displayChannels.map(ch => (
-                    <td key={`f_${ch}`} className="px-1.5 py-2 text-right font-mono">
+                    <td key={`f_${ch}`} data-label={`${t("pos_data")} · ${t(ch)}`} className="px-1.5 py-2 text-right font-mono">
                       {((s as unknown as Record<string, number>)[`foodics_${ch}`] || 0).toFixed(3)}
                     </td>
                   ))}
-                  <td className="px-1.5 py-2 text-right font-mono font-bold bg-emerald-50 border-r">
+                  <td data-label={`${t("pos_data")} · ${t("total")}`} className="px-1.5 py-2 text-right font-mono font-bold bg-emerald-50 border-r">
                     {foodics.toFixed(3)}
                   </td>
                   {displayChannels.map(ch => (
-                    <td key={`p_${ch}`} className="px-1.5 py-2 text-right font-mono">
+                    <td key={`p_${ch}`} data-label={`${t("physical_data")} · ${t(ch)}`} className="px-1.5 py-2 text-right font-mono">
                       {((s as unknown as Record<string, number>)[`physical_${ch}`] || 0).toFixed(3)}
                     </td>
                   ))}
-                  <td className="px-1.5 py-2 text-right font-mono font-bold bg-blue-50 border-r">
+                  <td data-label={`${t("physical_data")} · ${t("total")}`} className="px-1.5 py-2 text-right font-mono font-bold bg-blue-50 border-r">
                     {physical.toFixed(3)}
                   </td>
-                  <td className={`px-2 py-2 text-right font-mono font-bold ${diff !== 0 ? "text-red-600" : "text-green-600"}`}>
+                  <td data-label={t("difference")} className={`px-2 py-2 text-right font-mono font-bold ${diff !== 0 ? "text-red-600" : "text-green-600"}`}>
                     {diff.toFixed(3)}
                   </td>
-                  <td className="px-2 py-2 text-center">
+                  <td data-label="" className="resp-actions px-2 py-2 text-center">
                     <button onClick={async () => {
                       const br = branches.find(b => b.id === s.branch_id);
                       if (!br?.whatsapp_group && !br?.whatsapp_number) { alert(t("no_whatsapp") || "No WhatsApp group or number configured for this branch"); return; }

@@ -319,7 +319,7 @@ export default function TransfersPage() {
             </form>
           )}
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-            <table className="w-full text-sm">
+            <table data-resp className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left">{t("item_name")}</th>
@@ -564,7 +564,7 @@ export default function TransfersPage() {
                     )}
                   </div>
                 </div>
-                <table className="w-full text-sm">
+                <table data-resp className="w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-2 text-left">{t("item_name")}</th>
@@ -643,7 +643,7 @@ export default function TransfersPage() {
                 </div>
               </div>
               {expandedOrders[order.id] && (
-              <table className="w-full text-sm">
+              <table data-resp className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-2 text-left">{t("item_name")}</th>
@@ -791,7 +791,7 @@ export default function TransfersPage() {
                     <span className="text-sm font-bold text-emerald-700">{t("grand_total")}: {card.total_amount.toFixed(3)}</span>
                   </div>
                   {isOpen && (
-                  <table className="w-full text-sm">
+                  <table data-resp className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-4 py-2 text-left">{t("item_name")}</th>

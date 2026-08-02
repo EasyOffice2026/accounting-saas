@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet, apiPost, apiDownload } from "../contexts/api";
+import { apiGet, apiPost, apiPut, apiDelete, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Branch { id: number; name: string; name_ar: string; whatsapp_number?: string; whatsapp_group?: string; }
@@ -28,6 +28,7 @@ export default function SalesPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
   const [branchFilter, setBranchFilter] = useState<string>("");
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -119,21 +120,53 @@ export default function SalesPage() {
     loadSales(bid);
   };
 
+  const resetForm = () => {
+    setShowForm(false);
+    setEditingSaleId(null);
+    setFormData({});
+    setFormDate("");
+    setFormDateLocked(false);
+    setFormBranch(null);
+  };
+
+  const startEdit = (s: Sale) => {
+    const data: Record<string, number> = {};
+    allChannels.forEach(ch => {
+      data[`foodics_${ch}`] = (s as unknown as Record<string, number>)[`foodics_${ch}`] || 0;
+      data[`physical_${ch}`] = (s as unknown as Record<string, number>)[`physical_${ch}`] || 0;
+      data[`cancelled_${ch}`] = (s as unknown as Record<string, number>)[`cancelled_${ch}`] || 0;
+    });
+    setFormData(data);
+    setFormBranch(s.branch_id);
+    setFormDate(s.date);
+    setFormDateLocked(false);
+    setEditingSaleId(s.id);
+    setShowForm(true);
+    setError("");
+  };
+
+  const handleDelete = async (s: Sale) => {
+    if (!window.confirm(`${t("confirm_delete") || "Delete this record?"} (${s.date})`)) return;
+    try {
+      const res = await apiDelete(`/api/sales/${s.id}`);
+      if (res.detail) { alert(res.detail); return; }
+      loadSales(branchFilter);
+    } catch { alert("Failed to delete"); }
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     const fd = new FormData(e.currentTarget);
     try {
-      const res = await apiPost("/api/sales/", fd);
+      const res = editingSaleId
+        ? await apiPut(`/api/sales/${editingSaleId}`, fd)
+        : await apiPost("/api/sales/", fd);
       if (res.detail) {
         setError(t("duplicate_date_error"));
         return;
       }
-      setShowForm(false);
-      setFormData({});
-      setFormDate("");
-      setFormDateLocked(false);
-      setFormBranch(null);
+      resetForm();
       loadSales(branchFilter);
     } catch {
       setError(t("duplicate_date_error"));
@@ -142,11 +175,11 @@ export default function SalesPage() {
 
   // Auto-fetch next date when form opens for staff users
   useEffect(() => {
-    if (showForm && user?.branch_id) {
+    if (showForm && !editingSaleId && user?.branch_id) {
       setFormBranch(user.branch_id);
       fetchNextDate(user.branch_id);
     }
-  }, [showForm, user?.branch_id]);
+  }, [showForm, editingSaleId, user?.branch_id]);
 
   const branchName = (id: number) => {
     const b = branches.find(br => br.id === id);
@@ -176,7 +209,7 @@ export default function SalesPage() {
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
             {t("export_pdf")}
           </button>
-          <button onClick={() => setShowForm(!showForm)}
+          <button onClick={() => { if (showForm) { resetForm(); } else { setEditingSaleId(null); setFormData({}); setShowForm(true); } }}
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
             {showForm ? t("cancel") : t("add_new")}
           </button>
@@ -312,6 +345,7 @@ export default function SalesPage() {
 
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
+          <h3 className="font-semibold">{editingSaleId ? t("edit") : t("add_new")}</h3>
           {/* Branch & Date row */}
           <div className="grid grid-cols-2 gap-4">
             {user?.branch_id ? (
@@ -493,7 +527,15 @@ export default function SalesPage() {
                   <td className={`px-2 py-2 text-right font-mono font-bold ${diff !== 0 ? "text-red-600" : "text-green-600"}`}>
                     {diff.toFixed(3)}
                   </td>
-                  <td className="px-2 py-2 text-center">
+                  <td className="px-2 py-2 text-center whitespace-nowrap">
+                    <button onClick={() => startEdit(s)}
+                      className="px-2 py-1 bg-blue-500 text-white rounded text-[10px] hover:bg-blue-600" title={t("edit")}>
+                      ✏️
+                    </button>
+                    <button onClick={() => handleDelete(s)}
+                      className="ml-1 px-2 py-1 bg-red-500 text-white rounded text-[10px] hover:bg-red-600" title={t("delete")}>
+                      🗑️
+                    </button>
                     <button onClick={async () => {
                       const br = branches.find(b => b.id === s.branch_id);
                       if (!br?.whatsapp_group && !br?.whatsapp_number) { alert(t("no_whatsapp") || "No WhatsApp group or number configured for this branch"); return; }
@@ -510,7 +552,7 @@ export default function SalesPage() {
                         alert(t("whatsapp_sent") || "Sent!");
                       } catch { alert("Failed to send"); }
                     }}
-                      className="px-2 py-1 bg-green-500 text-white rounded text-[10px] hover:bg-green-600" title="Send to WhatsApp">
+                      className="ml-1 px-2 py-1 bg-green-500 text-white rounded text-[10px] hover:bg-green-600" title="Send to WhatsApp">
                       📱
                     </button>
                     {s.attachment_path && (

@@ -255,6 +255,7 @@ export default {
   submitting: "Submitting...",
   confirm_submit_request: "Submit this transfer request? Please confirm to avoid duplicate requests.",
   confirm_transaction: "Are you sure you want to save this transaction?",
+  manage_categories: "Manage Categories",
   outgoing: "Outgoing",
   incoming: "Incoming",
   pending_dispatch: "Pending Dispatch",

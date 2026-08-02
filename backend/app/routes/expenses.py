@@ -30,6 +30,19 @@ def create_category(name: str = Form(...), name_ar: str = Form(""),
     return cat
 
 
+@router.delete("/categories/{category_id}")
+def delete_category(category_id: int, db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager", "accountant"):
+        raise HTTPException(403, "Only owner/manager can manage categories")
+    cat = db.query(ExpenseCategory).filter(ExpenseCategory.id == category_id).first()
+    if not cat:
+        raise HTTPException(404, "Category not found")
+    cat.is_active = False
+    db.commit()
+    return {"status": "deleted"}
+
+
 @router.get("/")
 def list_expenses(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
                   db: Session = Depends(get_db),

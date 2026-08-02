@@ -255,6 +255,7 @@ export default {
   submitting: "جارٍ الإرسال...",
   confirm_submit_request: "هل تريد إرسال طلب التحويل هذا؟ يرجى التأكيد لتجنب الطلبات المكررة.",
   confirm_transaction: "هل أنت متأكد أنك تريد حفظ هذه المعاملة؟",
+  manage_categories: "إدارة الفئات",
   outgoing: "صادر",
   incoming: "وارد",
   pending_dispatch: "بانتظار الإرسال",

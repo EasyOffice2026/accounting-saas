@@ -156,6 +156,7 @@ export default function SalesPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     setError("");
     const fd = new FormData(e.currentTarget);
     try {

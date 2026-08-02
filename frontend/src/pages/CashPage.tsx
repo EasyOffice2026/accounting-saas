@@ -56,6 +56,7 @@ export default function CashPage() {
 
   const handleAddTxn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     const params = new URLSearchParams({
       branch_id: branchId,

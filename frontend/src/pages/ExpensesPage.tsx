@@ -52,6 +52,7 @@ export default function ExpensesPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     if (editingExpense) {
       await apiFetch(`/api/expenses/${editingExpense.id}`, { method: "PUT", body: fd });

@@ -192,6 +192,7 @@ export default function PurchasesPage() {
 
   const handleOrderSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     fd.set("items", JSON.stringify(items));
     if (user?.branch_id) fd.set("branch_id", String(user.branch_id));
@@ -319,6 +320,7 @@ export default function PurchasesPage() {
   const handleReceiveSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!receivingOrder) return;
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     fd.set("items", JSON.stringify(recvItems));
     await fetch(`/api/purchases/orders/${receivingOrder.id}/receive`, {
@@ -339,6 +341,7 @@ export default function PurchasesPage() {
   const handlePaySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!payingInvoice) return;
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     await fetch(`/api/purchases/invoices/${payingInvoice.id}/pay`, {
       method: "POST", body: fd,

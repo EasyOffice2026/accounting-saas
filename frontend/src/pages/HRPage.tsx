@@ -276,6 +276,7 @@ export default function HRPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     try {
       if (editingEmp) {
@@ -317,6 +318,7 @@ export default function HRPage() {
   };
 
   const handleGeneratePayroll = async () => {
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new URLSearchParams();
     fd.append("month", salaryMonth);
     try {
@@ -381,6 +383,7 @@ export default function HRPage() {
 
   const handleSaveSalary = async () => {
     if (!editingRecord) return;
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new URLSearchParams();
     fd.append("basic_salary", editBasicSalary);
     fd.append("total_days", editTotalDays);
@@ -729,6 +732,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
   // Transfer handlers
   const handleTransferSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     await apiPost("/api/hr/transfers", fd);
     setShowTransferForm(false);
@@ -743,6 +747,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
   // Loan handlers
   const handleLoanSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     if (editingLoan) {
       await apiFetch(`/api/hr/loans/${editingLoan.id}`, { method: "PUT", body: fd });
@@ -773,6 +778,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
   const handleRepaymentSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!payingLoan) return;
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     await apiPost(`/api/hr/loans/${payingLoan.id}/repayments`, fd);
     setPayingLoan(null);
@@ -794,6 +800,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
 
   const handleBenefitSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     if (editingBenefit) {
       await apiFetch(`/api/hr/benefits-deductions/${editingBenefit.id}`, { method: "PUT", body: fd });
@@ -820,6 +827,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
 
   const handleDeductionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     if (editingDeduction) {
       await apiFetch(`/api/hr/benefits-deductions/${editingDeduction.id}`, { method: "PUT", body: fd });
@@ -2192,6 +2200,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
             <form className="bg-white rounded-xl shadow p-4 mb-4 grid grid-cols-2 md:grid-cols-3 gap-3"
               onSubmit={async (e) => {
                 e.preventDefault();
+                if (!window.confirm(t("confirm_transaction"))) return;
                 const fd = new FormData(e.currentTarget);
                 if (editingLeave) {
                   await apiFetch(`/api/hr/leaves/${editingLeave.id}`, { method: "PUT", body: fd });
@@ -2340,6 +2349,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 <button onClick={async () => {
                   const emp = employees.find(e => e.id === resEmpId);
                   if (!emp) return;
+                  if (!window.confirm(t("confirm_transaction"))) return;
                   const fd = new FormData();
                   fd.append("employee_id", String(emp.id));
                   fd.append("name_en", emp.name);

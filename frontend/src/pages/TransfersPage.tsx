@@ -193,6 +193,7 @@ export default function TransfersPage() {
   const handleActionSubmit = async () => {
     if (!actionOrder) return;
     if (submitting) return;
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData();
     const lines = actionQtys.map(a => ({
       line_id: a.line_id,

@@ -202,7 +202,7 @@ export default function HRPage() {
       .then(r => r.json()).then((b: any[]) => setAllBranches(b));
     apiGet("/api/hr/employees").then(setEmployees);
     loadEmployers();
-    apiGet("/api/hr/brands").then(setBrands);
+    apiGet("/api/hr/brands?all=1").then(setBrands);
   }, []);
 
   useEffect(() => {
@@ -306,7 +306,7 @@ export default function HRPage() {
     } catch (err: unknown) { alert((err as Error).message); }
   };
 
-  const branchName = (id: number) => { const b = branches.find(x => x.id === id); return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : ""; };
+  const branchName = (id: number) => { const b = allBranches.find(x => x.id === id) || branches.find(x => x.id === id); return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : ""; };
   const empName = (id: number) => { const e = employees.find(x => x.id === id); return e ? (e.name_ar || e.name) : "-"; };
   const empStaffNo = (id: number) => employees.find(e => e.id === id)?.staff_no || "";
 
@@ -1595,7 +1595,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("from_branch")}</label>
                   <select name="from_branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
-                    {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
+                    {allBranches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
                   </select>
                 </div>
                 <div>

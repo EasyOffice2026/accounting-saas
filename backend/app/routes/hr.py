@@ -41,9 +41,15 @@ def _staff_emp_ids(db: Session, user) -> Optional[list]:
 
 # --- Brands ---
 @router.get("/brands")
-def list_brands(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def list_brands(all: bool = False, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Brand)
     allowed = user.get_allowed_brands()
+    if all:
+        # Cross-brand transfers need every brand as a possible source/destination,
+        # regardless of which brands the user is scoped to.
+        rows = q.filter(Brand.status == "active").order_by(Brand.id).all()
+        return [{"id": b.id, "name_en": b.name_en, "name_ar": b.name_ar or "",
+                 "status": b.status or "active"} for b in rows]
     if allowed:
         q = q.filter(Brand.id.in_(allowed))
     else:

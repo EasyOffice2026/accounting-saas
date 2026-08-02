@@ -27,8 +27,6 @@ def create_transfer_item(
     category: str = Form("food"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
-        raise HTTPException(403, "Only owner/manager can manage transfer items")
     item = TransferItem(name=name, name_ar=name_ar or None, unit=unit, unit_price=unit_price, opening_stock=opening_stock, category=category)
     db.add(item)
     db.commit()
@@ -44,8 +42,6 @@ def update_transfer_item(
     category: str = Form("food"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
-        raise HTTPException(403, "Only owner/manager can manage transfer items")
     item = db.query(TransferItem).filter(TransferItem.id == item_id).first()
     if not item:
         raise HTTPException(404, "Item not found")
@@ -303,7 +299,13 @@ def branch_transfer_summary(brand_id: Optional[int] = None,
         if branch and not branch.is_central_kitchen:
             q = q.filter(TransferOrder.requesting_branch_id == user.branch_id)
     elif bb_ids is not None:
-        q = q.filter(TransferOrder.requesting_branch_id.in_(bb_ids))
+        # Include both consumption by this brand's branches AND orders that other
+        # brands sourced FROM this brand (e.g. Khubuz Maraei ordering from Mudawwarah's
+        # Central Kitchen shows up in Mudawwarah's consumption view).
+        q = q.filter(
+            (TransferOrder.requesting_branch_id.in_(bb_ids))
+            | (TransferOrder.source_branch_id.in_(bb_ids))
+        )
     q = q.group_by(
         TransferOrder.requesting_branch_id,
         TransferOrderLine.item_name,

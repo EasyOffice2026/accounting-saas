@@ -28,7 +28,10 @@ type Tab = "items" | "requests" | "history" | "consumption";
 export default function TransfersPage() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
-  const { brands, selectedBrand } = useBrand();
+  const { selectedBrand } = useBrand();
+  // All brands (not just the ones this user is scoped to) so a branch can transfer
+  // to/from another brand's Central Kitchen (cross-brand transfers).
+  const [allBrands, setAllBrands] = useState<{ id: number; name_en: string; name_ar: string }[]>([]);
   const [fromBrandId, setFromBrandId] = useState<number | "">("");
   const [toBrandId, setToBrandId] = useState<number | "">("");
   const [tab, setTab] = useState<Tab>("requests");
@@ -65,6 +68,7 @@ export default function TransfersPage() {
 
 
   const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
+  const canManageItems = !!user; // any logged-in user (incl. branch staff) can add/edit shared items
   const isCentralKitchen = branches.find(b => b.id === user?.branch_id)?.is_central_kitchen || false;
   // Branches for each brand selector (branches with no brand, e.g. Central Kitchen, are always shown)
   const fromBranches = branches.filter(b => !fromBrandId || b.brand_id === Number(fromBrandId) || b.brand_id == null);
@@ -74,6 +78,7 @@ export default function TransfersPage() {
     apiGet("/api/transfers/items").then(setItems);
     apiGet("/api/transfers/orders").then(setOrders);
     apiGet("/api/branches/?all_brands=1").then(setBranches);
+    apiGet("/api/hr/brands?all=1").then(setAllBrands);
   }, []);
 
   const reload = () => {
@@ -232,7 +237,7 @@ export default function TransfersPage() {
               className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
               {t("export_pdf")}
             </button>
-            {isOwnerManager && (
+            {canManageItems && (
               <button onClick={() => { setShowItemForm(!showItemForm); setEditItem(null); }}
                 className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
                 {showItemForm ? t("cancel") : t("add_item")}
@@ -326,7 +331,7 @@ export default function TransfersPage() {
                   <th className="px-4 py-3 text-left">{t("item_name_ar")}</th>
                   <th className="px-4 py-3 text-left">{t("unit")}</th>
                   <th className="px-4 py-3 text-right">{t("unit_price")}</th>
-                  {isOwnerManager && <th className="px-4 py-3 text-center">{t("actions")}</th>}
+                  {canManageItems && <th className="px-4 py-3 text-center">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -338,12 +343,14 @@ export default function TransfersPage() {
                     <td className="px-4 py-3" dir="rtl">{item.name_ar || "—"}</td>
                     <td className="px-4 py-3">{item.unit}</td>
                     <td className="px-4 py-3 text-right font-mono">{(item.unit_price || 0).toFixed(3)}</td>
-                    {isOwnerManager && (
+                    {canManageItems && (
                       <td className="px-4 py-3 text-center">
                         <button onClick={() => { setEditItem(item); setShowItemForm(true); }}
                           className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 mr-1">{t("edit")}</button>
-                        <button onClick={() => handleDeleteItem(item.id)}
-                          className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">{t("delete")}</button>
+                        {isOwnerManager && (
+                          <button onClick={() => handleDeleteItem(item.id)}
+                            className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">{t("delete")}</button>
+                        )}
                       </td>
                     )}
                   </tr>
@@ -367,7 +374,7 @@ export default function TransfersPage() {
                     onChange={e => setFromBrandId(e.target.value ? Number(e.target.value) : "")}
                     className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("all_brands")}</option>
-                    {brands.map(br =>
+                    {allBrands.map(br =>
                       <option key={br.id} value={br.id}>
                         {i18n.language === "ar" && br.name_ar ? br.name_ar : br.name_en}
                       </option>
@@ -404,7 +411,7 @@ export default function TransfersPage() {
                       onChange={e => setToBrandId(e.target.value ? Number(e.target.value) : "")}
                       className="w-full px-3 py-2 border rounded-lg text-sm">
                       <option value="">{t("all_brands")}</option>
-                      {brands.map(br =>
+                      {allBrands.map(br =>
                         <option key={br.id} value={br.id}>
                           {i18n.language === "ar" && br.name_ar ? br.name_ar : br.name_en}
                         </option>

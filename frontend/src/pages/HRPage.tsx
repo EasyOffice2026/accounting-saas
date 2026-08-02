@@ -1050,8 +1050,8 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
 
       {/* Employer Manager Modal */}
       {showEmployerMgr && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowEmployerMgr(false)}>
-          <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/40 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto" onClick={() => setShowEmployerMgr(false)}>
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6 max-h-[90vh] overflow-y-auto my-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-lg">{t("employer_label")}</h3>
               <button onClick={() => setShowEmployerMgr(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
@@ -1495,8 +1495,8 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
 
           {/* Pay Slip Modal */}
           {showPayslip && payslipData && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+              <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 my-auto">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold">{t("pay_slip")} — {payslipData.employee?.name}</h3>
                   <div className="flex gap-2">
@@ -1886,8 +1886,8 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
           </div>
 
           {payingLoan && (
-            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-              <form onSubmit={handleRepaymentSubmit} className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md space-y-4">
+            <div className="fixed inset-0 bg-black/40 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+              <form onSubmit={handleRepaymentSubmit} className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto my-auto">
                 <h3 className="font-semibold">{t("record_payment")} — {empName(payingLoan.employee_id)}</h3>
                 <div className="text-xs text-gray-500">
                   {t("balance")}: <span className="font-mono font-bold">KD {payingLoan.balance.toFixed(3)}</span>

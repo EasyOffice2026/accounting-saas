@@ -134,9 +134,9 @@ export default function BrandSelectPage({ onSelect }: { onSelect: () => void }) 
 
         {/* Add/Edit modal */}
         {showAdd && (
-          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto"
             onClick={() => setShowAdd(false)}>
-            <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto my-auto" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-lg font-semibold mb-4">
                 {editBrand ? t("edit_brand") : t("add_brand")}
               </h3>

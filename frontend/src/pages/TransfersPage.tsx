@@ -838,8 +838,8 @@ export default function TransfersPage() {
 
       {/* ========== DISPATCH / RECEIVE MODAL ========== */}
       {actionOrder && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-lg w-full space-y-4">
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full space-y-4 max-h-[90vh] overflow-y-auto my-auto">
             <h3 className="text-lg font-bold">
               {actionType === "dispatch" ? t("dispatch_order") : t("confirm_receive")} #{actionOrder.id}
             </h3>

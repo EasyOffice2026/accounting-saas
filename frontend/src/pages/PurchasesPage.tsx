@@ -451,8 +451,8 @@ export default function PurchasesPage() {
 
       {/* ========== Receiving Modal ========== */}
       {receivingOrder && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <form onSubmit={handleReceiveSubmit} className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-4">
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+          <form onSubmit={handleReceiveSubmit} className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-4 my-auto">
             <h3 className="text-lg font-bold">{t("receive_order")} #{receivingOrder.id}</h3>
             <p className="text-sm text-gray-500">{t("supplier")}: {supplierName(receivingOrder.supplier_id)} | {t("date")}: {receivingOrder.date}</p>
             <div>
@@ -502,8 +502,8 @@ export default function PurchasesPage() {
 
       {/* ========== Pay Invoice Modal ========== */}
       {payingInvoice && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <form onSubmit={handlePaySubmit} className="bg-white rounded-xl p-6 max-w-md w-full space-y-4">
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+          <form onSubmit={handlePaySubmit} className="bg-white rounded-xl p-6 max-w-md w-full space-y-4 max-h-[90vh] overflow-y-auto my-auto">
             <h3 className="text-lg font-bold">{t("pay_invoice")} #{payingInvoice.id}</h3>
             <p className="text-sm text-gray-500">
               {payingInvoice.supplier_name} | PO #{payingInvoice.purchase_order_id} | KD {payingInvoice.total_amount.toFixed(3)}

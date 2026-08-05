@@ -245,7 +245,8 @@ def _sales_data(db, user, branch_id, brand_id=None):
             row.append(total)
         f_total = sum(getattr(r, f"foodics_{ch}", 0) or 0 for ch in channels)
         p_total = sum(getattr(r, f"physical_{ch}", 0) or 0 for ch in channels)
-        row.append(p_total - f_total)
+        c_total = sum(getattr(r, f"cancelled_{ch}", 0) or 0 for ch in channels)
+        row.append(p_total - (f_total - c_total))
         data.append(row)
     return header, data
 

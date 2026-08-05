@@ -93,6 +93,7 @@ def _build_daily_sales_report(db: Session, report_date: date) -> str:
 
     grand_foodics = 0
     grand_physical = 0
+    grand_cancelled = 0
 
     for br in branches:
         sale = sales_by_branch.get(br.id)
@@ -109,9 +110,15 @@ def _build_daily_sales_report(db: Session, report_date: date) -> str:
             p_wamd = sale.physical_wamd or 0
             physical_total = p_cash + p_knet + p_link + p_wamd
 
-            diff = physical_total - foodics_total
+            c_cash = sale.cancelled_cash or 0
+            c_knet = sale.cancelled_knet or 0
+            c_link = sale.cancelled_link or 0
+            cancelled_total = c_cash + c_knet + c_link
+
+            diff = physical_total - (foodics_total - cancelled_total)
             grand_foodics += foodics_total
             grand_physical += physical_total
+            grand_cancelled += cancelled_total
 
             lines.append(f"🏪 *{br.name}*")
             lines.append(f"  Foodics: KD {foodics_total:,.3f}")
@@ -125,7 +132,7 @@ def _build_daily_sales_report(db: Session, report_date: date) -> str:
             lines.append(f"  ⚠️ No sales data entered")
         lines.append("")
 
-    grand_diff = grand_physical - grand_foodics
+    grand_diff = grand_physical - (grand_foodics - grand_cancelled)
     diff_sign = "+" if grand_diff >= 0 else ""
     lines.append("━━━━━━━━━━━━━━━━━")
     lines.append(f"*TOTAL (All Branches)*")
@@ -252,14 +259,15 @@ def build_sales_message(sale: Optional[Sale], branch: Branch, target_date: date,
         diff_label = "Difference"
 
     rows = []
-    t_pos = t_phys = 0.0
+    t_pos = t_phys = t_canc = 0.0
     for key, en_label, ar_label in SALES_CHANNELS:
         pos = getattr(sale, f"foodics_{key}", 0) or 0
         phys = getattr(sale, f"physical_{key}", 0) or 0
-        t_pos += pos; t_phys += phys
+        canc = getattr(sale, f"cancelled_{key}", 0) or 0
+        t_pos += pos; t_phys += phys; t_canc += canc
         label = ar_label if ar else en_label
         rows.append([label, f"{pos:.3f}", f"{phys:.3f}"])
-    diff = t_pos - t_phys
+    diff = t_phys - (t_pos - t_canc)
     rows.append([total_label, f"{t_pos:.3f}", f"{t_phys:.3f}"])
     rows.append([diff_label, f"{diff:.3f}", ""])
 

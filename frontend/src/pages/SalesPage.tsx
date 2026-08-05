@@ -504,7 +504,8 @@ export default function SalesPage() {
             ) : sales.map(s => {
               const foodics = sumRow(s, "foodics");
               const physical = sumRow(s, "physical");
-              const diff = physical - foodics;
+              const cancelled = sumRow(s, "cancelled");
+              const diff = physical - (foodics - cancelled);
               return (
                 <tr key={s.id} className="border-b hover:bg-gray-50">
                   <td className="px-2 py-2 sticky left-0 bg-white border-r font-medium">{s.date}</td>

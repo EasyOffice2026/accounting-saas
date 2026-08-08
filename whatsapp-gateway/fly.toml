@@ -18,6 +18,20 @@ primary_region = "cdg"
   auto_start_machines = true
   min_machines_running = 1
 
+# /health reports 503 once a linked session has been offline for 5 minutes,
+# which lets Fly recycle a machine the in-process watchdog could not recover.
+[checks.health]
+  type = "http"
+  port = 3000
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "60s"
+  method = "GET"
+  path = "/health"
+
+[[restart]]
+  policy = "always"
+
 [[vm]]
   size = "shared-cpu-1x"
   memory = "512mb"

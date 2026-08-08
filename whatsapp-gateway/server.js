@@ -17,17 +17,31 @@ const SESSION = "default";
 
 const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 
+// A session is only expected to be online once the number has been linked.
+// Before that it legitimately sits in SCAN_QR_CODE waiting for the user.
+const UNHEALTHY_AFTER_MS = 5 * 60 * 1000;
+const WATCHDOG_INTERVAL_MS = 60 * 1000;
+
 let sock = null;
 let latestQr = null;
 let status = "STOPPED";
 let me = null;
 let starting = false;
+let linked = false;
+let offlineSince = null;
 
 function setStatus(next) {
   if (status !== next) {
     status = next;
     logger.info({ status }, "session status changed");
   }
+  offlineSince = next === "WORKING" ? null : offlineSince ?? Date.now();
+}
+
+/** Unhealthy only if the number is linked but has been offline too long. */
+function offlineTooLong() {
+  if (!linked || status === "WORKING" || !offlineSince) return false;
+  return Date.now() - offlineSince > UNHEALTHY_AFTER_MS;
 }
 
 async function startSocket() {
@@ -37,9 +51,10 @@ async function startSocket() {
     mkdirSync(AUTH_DIR, { recursive: true });
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
-    logger.info({ version }, "starting socket");
+    linked = Boolean(state.creds.registered);
+    logger.info({ version, linked }, "starting socket");
 
-    setStatus(state.creds.registered ? "STARTING" : "SCAN_QR_CODE");
+    setStatus(linked ? "STARTING" : "SCAN_QR_CODE");
 
     sock = makeWASocket({
       version,
@@ -62,6 +77,7 @@ async function startSocket() {
 
       if (connection === "open") {
         latestQr = null;
+        linked = true;
         me = sock?.user || null;
         setStatus("WORKING");
       }
@@ -75,6 +91,7 @@ async function startSocket() {
         if (loggedOut) {
           // Credentials are dead; wipe them so a fresh QR/pairing can be issued.
           rmSync(AUTH_DIR, { recursive: true, force: true });
+          linked = false;
           setStatus("SCAN_QR_CODE");
         } else {
           setStatus("STARTING");
@@ -130,7 +147,15 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get("/health", (_req, res) => res.json({ status: "ok", session: status }));
+app.get("/health", (_req, res) => {
+  const unhealthy = offlineTooLong();
+  res.status(unhealthy ? 503 : 200).json({
+    status: unhealthy ? "unhealthy" : "ok",
+    session: status,
+    linked,
+    offlineSince,
+  });
+});
 
 app.get("/api/sessions", (_req, res) => res.json([sessionInfo()]));
 app.get(`/api/sessions/${SESSION}`, (_req, res) => res.json(sessionInfo()));
@@ -220,7 +245,19 @@ app.post("/api/sendText", async (req, res) => {
   }
 });
 
+/** Re-drives a linked-but-stalled session instead of waiting for a redeploy. */
+function watchdog() {
+  if (!linked || status === "WORKING" || starting) return;
+  const downFor = offlineSince ? Date.now() - offlineSince : 0;
+  if (downFor < WATCHDOG_INTERVAL_MS) return;
+  logger.warn({ status, downFor }, "watchdog restarting stalled session");
+  stopSocket()
+    .then(() => startSocket())
+    .catch((e) => logger.error(e));
+}
+
 app.listen(PORT, "0.0.0.0", () => {
   logger.info({ port: PORT, authDir: AUTH_DIR, existing: existsSync(AUTH_DIR) }, "gateway listening");
   startSocket().catch((e) => logger.error(e));
+  setInterval(watchdog, WATCHDOG_INTERVAL_MS);
 });

@@ -2,18 +2,19 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
-import { DollarSign, ShoppingCart, Receipt, Users, Banknote } from "lucide-react";
+import { DollarSign, ShoppingCart, Receipt, Users, Banknote, ArrowLeftRight } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 interface BranchData {
   branch_id: number; branch_name: string;
-  sales: number; purchases: number; expenses: number;
+  sales: number; purchases: number; expenses: number; transfers: number;
 }
 
 interface DashboardData {
   total_sales: number;
   total_purchases: number;
   total_expenses: number;
+  total_transfers: number;
   employee_count: number;
   sales_count: number;
   branch_data: BranchData[];
@@ -44,6 +45,7 @@ export default function DashboardPage() {
     { label: t("total_sales"), value: `KD ${data.total_sales.toLocaleString()}`, icon: DollarSign, color: "bg-emerald-500" },
     { label: t("total_purchases"), value: `KD ${data.total_purchases.toLocaleString()}`, icon: ShoppingCart, color: "bg-blue-500" },
     { label: t("total_expenses"), value: `KD ${data.total_expenses.toLocaleString()}`, icon: Receipt, color: "bg-orange-500" },
+    { label: t("total_transfers"), value: `KD ${data.total_transfers.toLocaleString()}`, icon: ArrowLeftRight, color: "bg-violet-500" },
     { label: t("employee_count"), value: data.employee_count.toString(), icon: Users, color: "bg-purple-500" },
     { label: t("sales_count"), value: data.sales_count.toString(), icon: Banknote, color: "bg-teal-500" },
   ] : [];
@@ -52,6 +54,7 @@ export default function DashboardPage() {
     { name: t("total_sales"), value: data.total_sales },
     { name: t("total_purchases"), value: data.total_purchases },
     { name: t("total_expenses"), value: data.total_expenses },
+    { name: t("total_transfers"), value: data.total_transfers },
   ].filter(d => d.value > 0) : [];
 
   return (
@@ -72,7 +75,7 @@ export default function DashboardPage() {
         <div className="text-center py-8 text-gray-400">Loading...</div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
             {cards.map(({ label, value, icon: Icon, color }) => (
               <div key={label} className="bg-white rounded-lg shadow-sm border p-3">
                 <div className="flex items-center justify-between">
@@ -103,6 +106,7 @@ export default function DashboardPage() {
                   <Bar dataKey="sales" name={t("sales")} fill="#10b981" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="purchases" name={t("purchases")} fill="#3b82f6" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="expenses" name={t("expenses")} fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="transfers" name={t("total_transfers")} fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -135,12 +139,13 @@ export default function DashboardPage() {
                   <th className="px-4 py-3 text-right">{t("total_sales")}</th>
                   <th className="px-4 py-3 text-right">{t("total_purchases")}</th>
                   <th className="px-4 py-3 text-right">{t("total_expenses")}</th>
+                  <th className="px-4 py-3 text-right">{t("total_transfers")}</th>
                   <th className="px-4 py-3 text-right">{t("difference")}</th>
                 </tr>
               </thead>
               <tbody>
                 {data.branch_data.map((b, i) => {
-                  const net = b.sales - b.purchases - b.expenses;
+                  const net = b.sales - b.purchases - b.expenses - b.transfers;
                   return (
                     <tr key={b.branch_id} className="border-b hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium">
@@ -150,6 +155,7 @@ export default function DashboardPage() {
                       <td className="px-4 py-3 text-right font-mono text-emerald-600">KD {b.sales.toFixed(3)}</td>
                       <td className="px-4 py-3 text-right font-mono text-blue-600">KD {b.purchases.toFixed(3)}</td>
                       <td className="px-4 py-3 text-right font-mono text-orange-600">KD {b.expenses.toFixed(3)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-violet-600">KD {b.transfers.toFixed(3)}</td>
                       <td className={`px-4 py-3 text-right font-mono font-bold ${net >= 0 ? "text-green-600" : "text-red-600"}`}>
                         KD {net.toFixed(3)}
                       </td>
@@ -161,8 +167,9 @@ export default function DashboardPage() {
                   <td className="px-4 py-3 text-right font-mono text-emerald-700">KD {data.total_sales.toFixed(3)}</td>
                   <td className="px-4 py-3 text-right font-mono text-blue-700">KD {data.total_purchases.toFixed(3)}</td>
                   <td className="px-4 py-3 text-right font-mono text-orange-700">KD {data.total_expenses.toFixed(3)}</td>
-                  <td className={`px-4 py-3 text-right font-mono ${(data.total_sales - data.total_purchases - data.total_expenses) >= 0 ? "text-green-700" : "text-red-700"}`}>
-                    KD {(data.total_sales - data.total_purchases - data.total_expenses).toFixed(3)}
+                  <td className="px-4 py-3 text-right font-mono text-violet-700">KD {data.total_transfers.toFixed(3)}</td>
+                  <td className={`px-4 py-3 text-right font-mono ${(data.total_sales - data.total_purchases - data.total_expenses - data.total_transfers) >= 0 ? "text-green-700" : "text-red-700"}`}>
+                    KD {(data.total_sales - data.total_purchases - data.total_expenses - data.total_transfers).toFixed(3)}
                   </td>
                 </tr>
               </tbody>

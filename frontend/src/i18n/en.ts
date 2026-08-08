@@ -22,6 +22,7 @@ export default {
   total_sales: "Total Sales",
   total_purchases: "Total Purchases",
   total_expenses: "Total Expenses",
+  total_transfers: "Internal Transfers",
   employee_count: "Total Employees",
   branch: "Branch",
   date: "Date",

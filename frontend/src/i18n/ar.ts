@@ -22,6 +22,7 @@ export default {
   total_sales: "إجمالي المبيعات",
   total_purchases: "إجمالي المشتريات",
   total_expenses: "إجمالي المصروفات",
+  total_transfers: "التحويلات الداخلية",
   employee_count: "عدد الموظفين",
   branch: "الفرع",
   date: "التاريخ",

@@ -71,9 +71,15 @@ def delete_transfer_item(item_id: int, db: Session = Depends(get_db),
 
 # --- Transfer Orders ---
 @router.get("/orders")
-def list_transfer_orders(brand_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def list_transfer_orders(brand_id: Optional[int] = None, branch_id: Optional[int] = None,
+                         db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(TransferOrder)
     bb_ids = _brand_branch_ids(db, brand_id)
+    if branch_id:
+        q = q.filter(
+            (TransferOrder.requesting_branch_id == branch_id)
+            | (TransferOrder.source_branch_id == branch_id)
+        )
     # Staff sees only orders involving their branch (as source or destination);
     # Central Kitchen staff sees all
     if user.role == "staff" and user.branch_id:

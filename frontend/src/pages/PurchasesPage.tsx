@@ -68,12 +68,18 @@ export default function PurchasesPage() {
   const [catMsg, setCatMsg] = useState("");
   const [catMsgType, setCatMsgType] = useState<"success" | "error">("success");
 
+  const [branchFilter, setBranchFilter] = useState<string>("");
+
   const isManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
+  const isStaff = user?.role === "staff";
+
+  const loadOrders = (bid: string = branchFilter) =>
+    apiGet(bid ? `/api/purchases/orders?branch_id=${bid}` : "/api/purchases/orders").then(setOrders);
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);
     apiGet("/api/purchases/suppliers").then(setSuppliers);
-    apiGet("/api/purchases/orders").then(setOrders);
+    loadOrders("");
     apiGet("/api/purchases/categories").then(setCategories);
   }, []);
 
@@ -216,7 +222,7 @@ export default function PurchasesPage() {
     setOrderCatalogItems([]);
     setSelectedCatalogIds(new Set());
     setCatalogQuantities({});
-    apiGet("/api/purchases/orders").then(setOrders);
+    loadOrders();
   };
 
   const startEditOrder = async (order: PurchaseOrder) => {
@@ -254,7 +260,7 @@ export default function PurchasesPage() {
       method: "DELETE",
       headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
     });
-    apiGet("/api/purchases/orders").then(setOrders);
+    loadOrders();
   };
 
   const handleSupplierSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -328,7 +334,7 @@ export default function PurchasesPage() {
       headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
     });
     setReceivingOrder(null);
-    apiGet("/api/purchases/orders").then(setOrders);
+    loadOrders();
   };
 
   const updateRecvItem = (i: number, field: string, val: string) => {
@@ -349,7 +355,7 @@ export default function PurchasesPage() {
     });
     setPayingInvoice(null);
     apiGet("/api/purchases/invoices").then(setInvoices);
-    apiGet("/api/purchases/orders").then(setOrders);
+    loadOrders();
   };
 
   const supplierName = (id: number) => suppliers.find(s => s.id === id)?.name || "";
@@ -387,20 +393,26 @@ export default function PurchasesPage() {
     return "bg-yellow-100 text-yellow-700";
   };
 
+  const exportData = (fmt: string) => {
+    const params = branchFilter ? `?branch_id=${branchFilter}` : "";
+    const ext = fmt === "excel" ? "xlsx" : fmt;
+    apiDownload(`/api/export/purchases/${fmt}${params}`, `purchases.${ext}`);
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("purchases")}</h2>
         <div className="flex gap-2">
-          <button onClick={() => apiDownload("/api/export/purchases/csv", "purchases.csv")}
+          <button onClick={() => exportData("csv")}
             className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
             {t("export_csv")}
           </button>
-          <button onClick={() => apiDownload("/api/export/purchases/excel", "purchases.xlsx")}
+          <button onClick={() => exportData("excel")}
             className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
             {t("export_excel")}
           </button>
-          <button onClick={() => apiDownload("/api/export/purchases/pdf", "purchases.pdf")}
+          <button onClick={() => exportData("pdf")}
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
             {t("export_pdf")}
           </button>
@@ -532,6 +544,21 @@ export default function PurchasesPage() {
       )}
 
       {/* ========== ORDERS TAB ========== */}
+      {tab === "orders" && !isStaff && (
+        <div className="mb-4">
+          <select value={branchFilter}
+            onChange={e => { setBranchFilter(e.target.value); loadOrders(e.target.value); }}
+            className="px-3 py-2 border rounded-lg text-sm">
+            <option value="">{t("all_branches")}</option>
+            {branches.map(b => (
+              <option key={b.id} value={b.id}>
+                {i18n.language === "ar" ? (b.name_ar || b.name) : b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {tab === "orders" && (
         <>
           {showOrderForm && (

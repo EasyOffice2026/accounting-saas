@@ -191,6 +191,8 @@ export default function HRPage() {
   const [transferToBrandId, setTransferToBrandId] = useState<number | null>(null);
   const [allBranches, setAllBranches] = useState<(Branch & { brand_id?: number })[]>([]);
 
+  const [branchFilter, setBranchFilter] = useState<string>("");
+
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager = currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant";
   const canViewSalary = ["owner", "manager", "accountant"].includes(currentUser.role);
@@ -310,6 +312,17 @@ export default function HRPage() {
   const branchName = (id: number) => { const b = allBranches.find(x => x.id === id) || branches.find(x => x.id === id); return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : ""; };
   const empName = (id: number) => { const e = employees.find(x => x.id === id); return e ? (e.name_ar || e.name) : "-"; };
   const empStaffNo = (id: number) => employees.find(e => e.id === id)?.staff_no || "";
+
+  const inBranchFilter = (emp: { branch_id: number }) =>
+    !branchFilter || emp.branch_id === Number(branchFilter);
+  const inEmpBranchFilter = (rec: { employee_id: number }) =>
+    !branchFilter || employees.find(e => e.id === rec.employee_id)?.branch_id === Number(branchFilter);
+
+  const exportData = (fmt: string) => {
+    const params = branchFilter ? `?branch_id=${branchFilter}` : "";
+    const ext = fmt === "excel" ? "xlsx" : fmt;
+    apiDownload(`/api/export/hr/${fmt}${params}`, `employees.${ext}`);
+  };
 
   const showSalaryMsg = (text: string, type: "success" | "error") => {
     setSalaryMsg(text);
@@ -850,15 +863,15 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("hr")}</h2>
         <div className="flex gap-2">
-          <button onClick={() => apiDownload("/api/export/hr/csv", "employees.csv")}
+          <button onClick={() => exportData("csv")}
             className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
             {t("export_csv")}
           </button>
-          <button onClick={() => apiDownload("/api/export/hr/excel", "employees.xlsx")}
+          <button onClick={() => exportData("excel")}
             className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
             {t("export_excel")}
           </button>
-          <button onClick={() => apiDownload("/api/export/hr/pdf", "employees.pdf")}
+          <button onClick={() => exportData("pdf")}
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
             {t("export_pdf")}
           </button>
@@ -870,6 +883,20 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
           )}
         </div>
       </div>
+
+      {isManager && (
+        <div className="mb-4">
+          <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
+            className="px-3 py-2 border rounded-lg text-sm">
+            <option value="">{t("all_branches")}</option>
+            {branches.map(b => (
+              <option key={b.id} value={b.id}>
+                {i18n.language === "ar" ? (b.name_ar || b.name) : b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
@@ -1020,7 +1047,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
               <tbody>
                 {employees.length === 0 ? (
                   <tr><td colSpan={isManager ? 10 : 7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : employees.filter(emp => {
+                ) : employees.filter(inBranchFilter).filter(emp => {
                   if (!empSearch) return true;
                   const q = empSearch.toLowerCase();
                   return (emp.name_ar || "").includes(q) || (emp.name || "").toLowerCase().includes(q) || (emp.staff_no || "").includes(q) || (emp.civil_id || "").includes(q);
@@ -1436,7 +1463,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <tr><td colSpan={isManager ? 11 : 10} className="px-4 py-8 text-center text-gray-400">
                     {t("no_data")} — {t("generate_payroll")}
                   </td></tr>
-                ) : salaryRecords.filter(r => {
+                ) : salaryRecords.filter(inEmpBranchFilter).filter(r => {
                   if (!salarySearch) return true;
                   const q = salarySearch.toLowerCase();
                   const name = r.name_ar || r.name || empName(r.employee_id);
@@ -1656,7 +1683,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
               <tbody>
                 {transfers.length === 0 ? (
                   <tr><td colSpan={isManager ? 7 : 6} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : transfers.map(tr => (
+                ) : transfers.filter(inEmpBranchFilter).map(tr => (
                   <tr key={tr.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(tr.employee_id) || "—"}</td>
                     <td className="px-4 py-3">{empName(tr.employee_id)}</td>
@@ -1771,7 +1798,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
               <tbody>
                 {loans.length === 0 ? (
                   <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : loans.map(l => {
+                ) : loans.filter(inEmpBranchFilter).map(l => {
                   const paid = Math.max(0, l.amount - l.balance);
                   return (
                   <tr key={l.id} className="border-b hover:bg-gray-50">
@@ -2013,7 +2040,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
               <tbody>
                 {benefits.length === 0 ? (
                   <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : benefits.map(b => (
+                ) : benefits.filter(inEmpBranchFilter).map(b => (
                   <tr key={b.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(b.employee_id) || "—"}</td>
                     <td className="px-4 py-3">{empName(b.employee_id)}</td>
@@ -2156,7 +2183,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
               <tbody>
                 {deductionItems.length === 0 ? (
                   <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : deductionItems.map(d => (
+                ) : deductionItems.filter(inEmpBranchFilter).map(d => (
                   <tr key={d.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(d.employee_id) || "—"}</td>
                     <td className="px-4 py-3">{empName(d.employee_id)}</td>
@@ -2274,7 +2301,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 </tr>
               </thead>
               <tbody>
-                {leaveRecords.map(lr => {
+                {leaveRecords.filter(inEmpBranchFilter).map(lr => {
                   const empStaff = employees.find(e => e.id === lr.employee_id);
                   const leaveLabel = lr.leave_type === "annual_leave" ? t("annual_leave")
                     : lr.leave_type === "sick_leave" ? t("sick_leave") : t("absent");
@@ -2799,7 +2826,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 <tbody>
                   {resignations.length === 0 ? (
                     <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                  ) : resignations.map(r => (
+                  ) : resignations.filter(inEmpBranchFilter).map(r => (
                     <tr key={r.id} className="border-b hover:bg-gray-50">
                       <td className="px-4 py-3 font-mono">HR-RES-{r.id.toString().padStart(4, "0")}</td>
                       <td className="px-4 py-3">{r.name_ar || r.name_en || empName(r.employee_id)}</td>

@@ -64,25 +64,30 @@ export default function TransfersPage() {
   const [conBranchFilter, setConBranchFilter] = useState<string>("all");
   const [conGroupView, setConGroupView] = useState(false);
   const [conExpanded, setConExpanded] = useState<Record<string, boolean>>({});
+  const [branchFilter, setBranchFilter] = useState<string>("");
 
 
 
   const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
+  const isStaff = user?.role === "staff";
   const canManageItems = !!user; // any logged-in user (incl. branch staff) can add/edit shared items
   const isCentralKitchen = branches.find(b => b.id === user?.branch_id)?.is_central_kitchen || false;
   // Branches for each brand selector (branches with no brand, e.g. Central Kitchen, are always shown)
   const fromBranches = branches.filter(b => !fromBrandId || b.brand_id === Number(fromBrandId) || b.brand_id == null);
   const toBranches = branches.filter(b => !toBrandId || b.brand_id === Number(toBrandId) || b.brand_id == null);
 
+  const loadOrders = (bid: string = branchFilter) =>
+    apiGet(bid ? `/api/transfers/orders?branch_id=${bid}` : "/api/transfers/orders").then(setOrders);
+
   useEffect(() => {
     apiGet("/api/transfers/items").then(setItems);
-    apiGet("/api/transfers/orders").then(setOrders);
+    loadOrders("");
     apiGet("/api/branches/?all_brands=1").then(setBranches);
     apiGet("/api/hr/brands?all=1").then(setAllBrands);
   }, []);
 
   const reload = () => {
-    apiGet("/api/transfers/orders").then(setOrders);
+    loadOrders();
     apiGet("/api/transfers/items").then(setItems);
   };
 
@@ -363,6 +368,21 @@ export default function TransfersPage() {
       )}
 
       {/* ========== REQUESTS TAB ========== */}
+      {(tab === "requests" || tab === "history") && !isStaff && (
+        <div className="mb-4">
+          <select value={branchFilter}
+            onChange={e => { setBranchFilter(e.target.value); loadOrders(e.target.value); }}
+            className="px-3 py-2 border rounded-lg text-sm">
+            <option value="">{t("all_branches")}</option>
+            {branches.map(b => (
+              <option key={b.id} value={b.id}>
+                {i18n.language === "ar" ? (b.name_ar || b.name) : b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {tab === "requests" && (
         <>
           {showForm && (

@@ -39,15 +39,20 @@ export default function ExpensesPage() {
   const [showCatMgr, setShowCatMgr] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [newCatNameAr, setNewCatNameAr] = useState("");
+  const [branchFilter, setBranchFilter] = useState<string>("");
 
   const isManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
+  const isStaff = user?.role === "staff";
 
   const loadCategories = () => apiGet("/api/expenses/categories").then(setCategories);
+
+  const loadExpenses = (bid: string = branchFilter) =>
+    apiGet(bid ? `/api/expenses/?branch_id=${bid}` : "/api/expenses/").then(setExpenses);
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);
     loadCategories();
-    apiGet("/api/expenses/").then(setExpenses);
+    loadExpenses("");
     apiGet("/api/purchases/suppliers").then(setSuppliers);
   }, []);
 
@@ -66,13 +71,13 @@ export default function ExpensesPage() {
       await apiPost("/api/expenses/", fd);
     }
     setShowForm(false);
-    apiGet("/api/expenses/").then(setExpenses);
+    loadExpenses();
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm(t("confirm_delete"))) return;
     await apiFetch(`/api/expenses/${id}`, { method: "DELETE" });
-    apiGet("/api/expenses/").then(setExpenses);
+    loadExpenses();
   };
 
   const handlePrint = (exp: Expense) => {
@@ -118,6 +123,12 @@ export default function ExpensesPage() {
     loadCategories();
   };
 
+  const exportData = (fmt: string) => {
+    const params = branchFilter ? `?branch_id=${branchFilter}` : "";
+    const ext = fmt === "excel" ? "xlsx" : fmt;
+    apiDownload(`/api/export/expenses/${fmt}${params}`, `expenses.${ext}`);
+  };
+
   const deleteCategory = async (id: number) => {
     if (!confirm(t("confirm_delete"))) return;
     const res = await apiFetch(`/api/expenses/categories/${id}`, { method: "DELETE" });
@@ -131,15 +142,15 @@ export default function ExpensesPage() {
         <h2 className="text-2xl font-bold text-gray-800">{t("expenses")}</h2>
         {tab === "expenses" && (
           <div className="flex gap-2">
-            <button onClick={() => apiDownload("/api/export/expenses/csv", "expenses.csv")}
+            <button onClick={() => exportData("csv")}
               className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
               {t("export_csv")}
             </button>
-            <button onClick={() => apiDownload("/api/export/expenses/excel", "expenses.xlsx")}
+            <button onClick={() => exportData("excel")}
               className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
               {t("export_excel")}
             </button>
-            <button onClick={() => apiDownload("/api/export/expenses/pdf", "expenses.pdf")}
+            <button onClick={() => exportData("pdf")}
               className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
               {t("export_pdf")}
             </button>
@@ -162,6 +173,21 @@ export default function ExpensesPage() {
           </button>
         ))}
       </div>
+
+      {tab === "expenses" && !isStaff && (
+        <div className="mb-4">
+          <select value={branchFilter}
+            onChange={e => { setBranchFilter(e.target.value); loadExpenses(e.target.value); }}
+            className="px-3 py-2 border rounded-lg text-sm">
+            <option value="">{t("all_branches")}</option>
+            {branches.map(b => (
+              <option key={b.id} value={b.id}>
+                {i18n.language === "ar" ? (b.name_ar || b.name) : b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {tab === "expenses" && (
         <>

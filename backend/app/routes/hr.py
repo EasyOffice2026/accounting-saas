@@ -211,8 +211,13 @@ def create_employee(
     last_working_date: str = Form(""),
     residency_expiry: str = Form(""),
     health_card_expiry: str = Form(""),
-    db: Session = Depends(get_db), _=Depends(get_current_user),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        salary = work_permit_salary = actual_salary = 0
+        iban = bank_name = ""
+        if user.branch_id:
+            branch_id = user.branch_id
     # Duplicate Civil ID check
     if civil_id and civil_id.strip():
         existing = db.query(Employee).filter(Employee.civil_id == civil_id.strip()).first()
@@ -265,29 +270,33 @@ def update_employee(
     health_card_expiry: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    if user.role not in SALARY_VISIBLE_ROLES:
+    can_edit_salary = user.role in SALARY_VISIBLE_ROLES
+    if not can_edit_salary and not (user.role == "staff" and user.branch_id):
         raise HTTPException(403, "Not authorized")
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(404, "Employee not found")
+    if not can_edit_salary and emp.branch_id != user.branch_id:
+        raise HTTPException(403, "Not authorized")
     # Duplicate Civil ID check (exclude self)
     if civil_id and civil_id.strip():
         existing = db.query(Employee).filter(Employee.civil_id == civil_id.strip(), Employee.id != emp_id).first()
         if existing:
             raise HTTPException(400, f"Employee with Civil ID {civil_id} already exists")
-    emp.branch_id = branch_id
+    if can_edit_salary:
+        emp.branch_id = branch_id
+        emp.salary = salary
+        emp.work_permit_salary = work_permit_salary
+        emp.actual_salary = actual_salary
+        emp.iban = iban or None
+        emp.bank_name = bank_name or None
+        emp.salary_transfer_method = salary_transfer_method
     emp.name = name
     emp.staff_no = staff_no or emp.staff_no
     emp.name_ar = name_ar
     emp.civil_id = civil_id
     emp.position = position
     emp.phone = phone
-    emp.salary = salary
-    emp.work_permit_salary = work_permit_salary
-    emp.actual_salary = actual_salary
-    emp.iban = iban or None
-    emp.bank_name = bank_name or None
-    emp.salary_transfer_method = salary_transfer_method
     emp.employer = employer or None
     emp.join_date = date.fromisoformat(join_date) if join_date else None
     emp.termination_date = date.fromisoformat(termination_date) if termination_date else None

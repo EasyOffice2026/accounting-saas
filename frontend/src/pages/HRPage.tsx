@@ -933,12 +933,16 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <input name="staff_no" readOnly value={editingEmp?.staff_no || ""} className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-100" />
                 </div>
                 )}
+                {isManager ? (
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("branch")}</label>
                   <select name="branch_id" required defaultValue={editingEmp?.branch_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                     {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
                   </select>
                 </div>
+                ) : (
+                  <input type="hidden" name="branch_id" value={currentUser.branch_id || editingEmp?.branch_id || ""} />
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("name")} (EN)</label>
                   <input name="name" required defaultValue={editingEmp?.name || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
@@ -961,6 +965,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <input name="phone" pattern="\d{8}" maxLength={8} title={t("phone_validation")}
                     placeholder="8 digits" defaultValue={editingEmp?.phone || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
+                {canViewSalary && (<>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("work_permit_salary")}</label>
                   <input type="number" step="0.001" name="work_permit_salary" defaultValue={editingEmp?.work_permit_salary || 0} className="w-full px-3 py-2 border rounded-lg text-sm" />
@@ -984,11 +989,14 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <option value="bank">{t("bank_transfer")}</option>
                   </select>
                 </div>
+                </>)}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-sm font-medium">{t("employer_label")}</label>
+                    {canViewSalary && (
                     <button type="button" onClick={() => setShowEmployerMgr(true)}
                       className="text-emerald-600 hover:underline text-xs">{t("manage")}</button>
+                    )}
                   </div>
                   <select name="employer" defaultValue={editingEmp?.employer || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select")}</option>
@@ -1041,12 +1049,12 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-3 py-3 text-left">{t("employer_label")}</th>
                   <th className="px-3 py-3 text-left">{t("residency_expiry")}</th>
                   <th className="px-3 py-3 text-left">{t("health_card_expiry")}</th>
-                  {isManager && <th className="px-3 py-3 text-center">{t("actions")}</th>}
+                  <th className="px-3 py-3 text-center">{t("actions")}</th>
                 </tr>
               </thead>
               <tbody>
                 {employees.length === 0 ? (
-                  <tr><td colSpan={isManager ? 10 : 7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={isManager ? 10 : 8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : employees.filter(inBranchFilter).filter(emp => {
                   if (!empSearch) return true;
                   const q = empSearch.toLowerCase();
@@ -1066,15 +1074,15 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     })()}</td>
                     <td className="px-3 py-3">{emp.residency_expiry || "—"}</td>
                     <td className="px-3 py-3">{emp.health_card_expiry || "—"}</td>
-                    {isManager && (
-                      <td className="px-3 py-3 text-center">
-                        <div className="flex gap-2 justify-center">
-                          <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
-                          <button onClick={() => printEmployeeForm(emp)} className="text-purple-600 hover:underline text-xs">PDF</button>
+                    <td className="px-3 py-3 text-center">
+                      <div className="flex gap-2 justify-center">
+                        <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
+                        <button onClick={() => printEmployeeForm(emp)} className="text-purple-600 hover:underline text-xs">PDF</button>
+                        {isManager && (
                           <button onClick={() => handleDeleteEmp(emp)} className="text-red-600 hover:underline text-xs">{t("delete")}</button>
-                        </div>
-                      </td>
-                    )}
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

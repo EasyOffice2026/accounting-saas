@@ -141,7 +141,7 @@ def list_employees(branch_id: Optional[int] = None, brand_id: Optional[int] = No
             "civil_id": emp.civil_id or "", "position": emp.position or "",
             "phone": emp.phone or "",
             "salary": 0 if hide_salary else emp.salary,
-            "work_permit_salary": 0 if hide_salary else (emp.work_permit_salary or 0),
+            "work_permit_salary": emp.work_permit_salary or 0,
             "actual_salary": 0 if hide_salary else (emp.actual_salary or 0),
             "iban": emp.iban or "", "bank_name": emp.bank_name or "",
             "salary_transfer_method": emp.salary_transfer_method or "cash",
@@ -214,8 +214,7 @@ def create_employee(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if user.role not in SALARY_VISIBLE_ROLES:
-        salary = work_permit_salary = actual_salary = 0
-        iban = bank_name = ""
+        salary = actual_salary = 0
         if user.branch_id:
             branch_id = user.branch_id
     # Duplicate Civil ID check
@@ -286,11 +285,11 @@ def update_employee(
     if can_edit_salary:
         emp.branch_id = branch_id
         emp.salary = salary
-        emp.work_permit_salary = work_permit_salary
         emp.actual_salary = actual_salary
-        emp.iban = iban or None
-        emp.bank_name = bank_name or None
-        emp.salary_transfer_method = salary_transfer_method
+    emp.work_permit_salary = work_permit_salary
+    emp.iban = iban or None
+    emp.bank_name = bank_name or None
+    emp.salary_transfer_method = salary_transfer_method
     emp.name = name
     emp.staff_no = staff_no or emp.staff_no
     emp.name_ar = name_ar

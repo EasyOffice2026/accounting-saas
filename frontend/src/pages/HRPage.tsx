@@ -965,15 +965,16 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <input name="phone" pattern="\d{8}" maxLength={8} title={t("phone_validation")}
                     placeholder="8 digits" defaultValue={editingEmp?.phone || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
-                {canViewSalary && (<>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("work_permit_salary")}</label>
                   <input type="number" step="0.001" name="work_permit_salary" defaultValue={editingEmp?.work_permit_salary || 0} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
+                {canViewSalary && (
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("actual_salary")}</label>
                   <input type="number" step="0.001" name="actual_salary" defaultValue={editingEmp?.actual_salary || 0} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("iban_no")}</label>
                   <input name="iban" defaultValue={editingEmp?.iban || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
@@ -989,7 +990,6 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <option value="bank">{t("bank_transfer")}</option>
                   </select>
                 </div>
-                </>)}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-sm font-medium">{t("employer_label")}</label>

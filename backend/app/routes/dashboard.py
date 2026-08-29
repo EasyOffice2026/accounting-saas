@@ -12,7 +12,7 @@ from app.models.branch import Branch
 from app.models.transfer import TransferOrder, TransferOrderLine
 from app.models.user import User
 from app.utils.auth import get_current_user
-from app.routes.hr import _brand_branch_ids
+from app.routes.hr import _brand_branch_ids, _exclude_left_employees
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -72,7 +72,7 @@ def dashboard(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
     transfers_by_branch = _transfers_by_branch(db)
 
     employee_count = apply_branch(
-        db.query(func.count(Employee.id)).filter(Employee.is_active == True),
+        _exclude_left_employees(db.query(func.count(Employee.id))),
         Employee,
     ).scalar() or 0
 

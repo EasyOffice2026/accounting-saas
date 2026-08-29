@@ -13,7 +13,7 @@ from app.models.cash import CashBalance
 from app.models.branch import Branch
 from app.utils.auth import get_current_user
 from app.models.user import User
-from app.routes.hr import SALARY_VISIBLE_ROLES, _brand_branch_ids
+from app.routes.hr import SALARY_VISIBLE_ROLES, _brand_branch_ids, _exclude_left_employees
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
@@ -287,7 +287,7 @@ def _expenses_data(db, user, branch_id, brand_id=None):
 
 def _hr_data(db, user, branch_id, brand_id=None):
     bmap = _branch_map(db)
-    q = db.query(Employee)
+    q = _exclude_left_employees(db.query(Employee))
     bb_ids = _brand_branch_ids(db, brand_id)
     if branch_id:
         q = q.filter(Employee.branch_id == branch_id)

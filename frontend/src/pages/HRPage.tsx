@@ -185,6 +185,7 @@ export default function HRPage() {
   const [newEmployerNameAr, setNewEmployerNameAr] = useState("");
 
   const loadEmployers = () => apiGet("/api/hr/employers").then(setEmployers);
+  const loadEmployees = () => apiGet(`/api/hr/employees${showLeft ? "?include_left=true" : ""}`).then(setEmployees);
 
   // Brands for cross-brand transfers
   const [brands, setBrands] = useState<BrandItem[]>([]);
@@ -192,6 +193,7 @@ export default function HRPage() {
   const [allBranches, setAllBranches] = useState<(Branch & { brand_id?: number })[]>([]);
 
   const [branchFilter, setBranchFilter] = useState<string>("");
+  const [showLeft, setShowLeft] = useState(false);
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager = currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant";
@@ -202,10 +204,11 @@ export default function HRPage() {
     // Fetch ALL branches (no brand filter) for cross-brand transfers
     fetch("/api/branches/", { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } })
       .then(r => r.json()).then((b: any[]) => setAllBranches(b));
-    apiGet("/api/hr/employees").then(setEmployees);
     loadEmployers();
     apiGet("/api/hr/brands?all=1").then(setBrands);
   }, []);
+
+  useEffect(() => { loadEmployees(); }, [showLeft]);
 
   useEffect(() => {
     if (tab === "salary") loadSalary();
@@ -290,7 +293,7 @@ export default function HRPage() {
       }
       setShowForm(false);
       setEditingEmp(null);
-      apiGet("/api/hr/employees").then(setEmployees);
+      loadEmployees();
       loadEmployers();
     } catch (err: unknown) { alert((err as Error).message); }
   };
@@ -305,7 +308,7 @@ export default function HRPage() {
     try {
       const res = await apiFetch(`/api/hr/employees/${emp.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Error");
-      apiGet("/api/hr/employees").then(setEmployees);
+      loadEmployees();
     } catch (err: unknown) { alert((err as Error).message); }
   };
 
@@ -754,7 +757,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
   const handleTransferAction = async (id: number, action: "approve" | "reject") => {
     await apiFetch(`/api/hr/transfers/${id}/${action}`, { method: "POST" });
     apiGet("/api/hr/transfers").then(setTransfers);
-    apiGet("/api/hr/employees").then(setEmployees);
+    loadEmployees();
   };
 
   // Loan handlers
@@ -896,6 +899,13 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
             ))}
           </select>
         </div>
+      )}
+
+      {isManager && tab === "employees" && (
+        <label className="flex items-center gap-2 mb-4 text-sm text-gray-700 w-fit">
+          <input type="checkbox" checked={showLeft} onChange={e => setShowLeft(e.target.checked)} />
+          {t("show_left_staff")}
+        </label>
       )}
 
       {/* Tabs */}

@@ -24,6 +24,15 @@ def _brand_branch_ids(db: Session, brand_id: Optional[int]) -> Optional[list]:
     return ids
 
 
+def _exclude_left_employees(q):
+    """Hide employees whose last working / termination date has already passed."""
+    left_on = func.coalesce(Employee.last_working_date, Employee.termination_date)
+    return q.filter(
+        Employee.is_active == True,
+        or_(left_on == None, left_on >= date.today()),
+    )
+
+
 def _staff_branch_id(user) -> Optional[int]:
     """Branch id a user is restricted to (branch staff only), else None."""
     if user is not None and user.role == "staff" and user.branch_id:
@@ -121,9 +130,12 @@ def delete_brand(brand_id: int, db: Session = Depends(get_db),
 # --- Employees ---
 @router.get("/employees")
 def list_employees(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
+                   include_left: bool = False,
                    db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
     q = db.query(Employee)
+    if not include_left:
+        q = _exclude_left_employees(q)
     bb_ids = _brand_branch_ids(db, brand_id)
     if user.role == "staff" and user.branch_id:
         q = q.filter(Employee.branch_id == user.branch_id)

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiDownload, apiFetch } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
+import DateRangeFilter, { type DateRange, dateRangeParams } from "../components/DateRangeFilter";
 
 interface Branch { id: number; name: string; name_ar?: string; }
 interface Category { id: number; name: string; name_ar: string; }
@@ -40,19 +41,26 @@ export default function ExpensesPage() {
   const [newCatName, setNewCatName] = useState("");
   const [newCatNameAr, setNewCatNameAr] = useState("");
   const [branchFilter, setBranchFilter] = useState<string>("");
+  const [range, setRange] = useState<DateRange>({ from: "", to: "" });
 
   const isManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   const isStaff = user?.role === "staff";
 
   const loadCategories = () => apiGet("/api/expenses/categories").then(setCategories);
 
+  const listParams = (bid: string) => {
+    const parts = [...(bid ? [`branch_id=${bid}`] : []), ...dateRangeParams(range)];
+    return parts.length ? `?${parts.join("&")}` : "";
+  };
+
   const loadExpenses = (bid: string = branchFilter) =>
-    apiGet(bid ? `/api/expenses/?branch_id=${bid}` : "/api/expenses/").then(setExpenses);
+    apiGet(`/api/expenses/${listParams(bid)}`).then(setExpenses);
+
+  useEffect(() => { loadExpenses(); }, [range]);
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);
     loadCategories();
-    loadExpenses("");
     apiGet("/api/purchases/suppliers").then(setSuppliers);
   }, []);
 
@@ -124,9 +132,8 @@ export default function ExpensesPage() {
   };
 
   const exportData = (fmt: string) => {
-    const params = branchFilter ? `?branch_id=${branchFilter}` : "";
     const ext = fmt === "excel" ? "xlsx" : fmt;
-    apiDownload(`/api/export/expenses/${fmt}${params}`, `expenses.${ext}`);
+    apiDownload(`/api/export/expenses/${fmt}${listParams(branchFilter)}`, `expenses.${ext}`);
   };
 
   const deleteCategory = async (id: number) => {
@@ -174,18 +181,21 @@ export default function ExpensesPage() {
         ))}
       </div>
 
-      {tab === "expenses" && !isStaff && (
-        <div className="mb-4">
-          <select value={branchFilter}
-            onChange={e => { setBranchFilter(e.target.value); loadExpenses(e.target.value); }}
-            className="px-3 py-2 border rounded-lg text-sm">
-            <option value="">{t("all_branches")}</option>
-            {branches.map(b => (
-              <option key={b.id} value={b.id}>
-                {i18n.language === "ar" ? (b.name_ar || b.name) : b.name}
-              </option>
-            ))}
-          </select>
+      {tab === "expenses" && (
+        <div className="mb-4 flex items-center gap-4 flex-wrap">
+          {!isStaff && (
+            <select value={branchFilter}
+              onChange={e => { setBranchFilter(e.target.value); loadExpenses(e.target.value); }}
+              className="px-3 py-2 border rounded-lg text-sm">
+              <option value="">{t("all_branches")}</option>
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>
+                  {i18n.language === "ar" ? (b.name_ar || b.name) : b.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <DateRangeFilter value={range} onChange={setRange} />
         </div>
       )}
 

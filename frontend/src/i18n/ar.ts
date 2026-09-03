@@ -39,6 +39,8 @@ export default {
   update: "تحديث",
   all_branches: "جميع الفروع",
   show_left_staff: "إظهار الموظفين المستقيلين / السابقين",
+  from_date: "من",
+  to_date: "إلى",
   foodics_data: "بيانات فودكس",
   pos_data: "بيانات نقاط البيع",
   snoonu: "سنونو",

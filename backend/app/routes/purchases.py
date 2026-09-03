@@ -13,6 +13,7 @@ from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
 from app.routes.hr import _brand_branch_ids
+from app.utils.dates import apply_date_range
 
 router = APIRouter(prefix="/api/purchases", tags=["purchases"])
 
@@ -278,6 +279,7 @@ def delete_supplier_item(item_id: int, db: Session = Depends(get_db), _=Depends(
 # --- Purchase Orders ---
 @router.get("/orders")
 def list_orders(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
+                date_from: Optional[str] = None, date_to: Optional[str] = None,
                 db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
     q = db.query(PurchaseOrder)
@@ -289,6 +291,7 @@ def list_orders(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
         q = q.filter(PurchaseOrder.branch_id == branch_id)
     elif bb_ids is not None:
         q = q.filter(PurchaseOrder.branch_id.in_(bb_ids))
+    q = apply_date_range(q, PurchaseOrder.date, date_from, date_to)
     return q.order_by(PurchaseOrder.date.desc()).all()
 
 

@@ -39,6 +39,8 @@ export default {
   update: "Update",
   all_branches: "All Branches",
   show_left_staff: "Show resigned / ex-staff",
+  from_date: "From",
+  to_date: "To",
   foodics_data: "Foodics Data",
   pos_data: "POS Data",
   snoonu: "Snoonu",

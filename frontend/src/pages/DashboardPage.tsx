@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
+import DateRangeFilter, { type DateRange, dateRangeParams } from "../components/DateRangeFilter";
 import { DollarSign, ShoppingCart, Receipt, Users, Banknote, ArrowLeftRight } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
@@ -27,9 +28,14 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [paymentMsg, setPaymentMsg] = useState("");
+  const [range, setRange] = useState<DateRange>({ from: "", to: "" });
 
   useEffect(() => {
-    apiGet("/api/dashboard/").then(setData);
+    const qs = dateRangeParams(range).join("&");
+    apiGet(`/api/dashboard/${qs ? `?${qs}` : ""}`).then(setData);
+  }, [range]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payment = params.get("payment");
     if (payment === "success") {
@@ -61,6 +67,7 @@ export default function DashboardPage() {
     <div>
       <h2 className="text-xl font-bold text-gray-800 mb-0.5">{t("dashboard")}</h2>
       <p className="text-gray-500 text-sm mb-3">{t("welcome_back")}, {user?.full_name}</p>
+      <div className="mb-4"><DateRangeFilter value={range} onChange={setRange} /></div>
 
       {paymentMsg && (
         <div className={`p-3 rounded-lg mb-4 text-sm flex justify-between items-center ${

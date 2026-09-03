@@ -14,6 +14,7 @@ from app.models.branch import Branch
 from app.utils.auth import get_current_user
 from app.models.user import User
 from app.routes.hr import SALARY_VISIBLE_ROLES, _brand_branch_ids, _exclude_left_employees
+from app.utils.dates import apply_date_range
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
@@ -214,7 +215,7 @@ def _respond(fmt: str, header: List[str], data: List[list], filename: str, title
 
 # ── Data extraction helpers ─────────────────────────────────────────
 
-def _sales_data(db, user, branch_id, brand_id=None):
+def _sales_data(db, user, branch_id, brand_id=None, date_from=None, date_to=None):
     bmap = _branch_map(db)
     q = db.query(Sale)
     bb_ids = _brand_branch_ids(db, brand_id)
@@ -224,6 +225,7 @@ def _sales_data(db, user, branch_id, brand_id=None):
         q = q.filter(Sale.branch_id.in_(bb_ids))
     elif user.role == "staff" and user.branch_id:
         q = q.filter(Sale.branch_id == user.branch_id)
+    q = apply_date_range(q, Sale.date, date_from, date_to)
     rows = q.order_by(Sale.date.desc()).all()
 
     header = ["Date", "Branch"]
@@ -251,7 +253,7 @@ def _sales_data(db, user, branch_id, brand_id=None):
     return header, data
 
 
-def _purchases_data(db, user, branch_id, brand_id=None):
+def _purchases_data(db, user, branch_id, brand_id=None, date_from=None, date_to=None):
     bmap = _branch_map(db)
     q = db.query(PurchaseOrder)
     bb_ids = _brand_branch_ids(db, brand_id)
@@ -261,6 +263,7 @@ def _purchases_data(db, user, branch_id, brand_id=None):
         q = q.filter(PurchaseOrder.branch_id.in_(bb_ids))
     elif user.role == "staff" and user.branch_id:
         q = q.filter(PurchaseOrder.branch_id == user.branch_id)
+    q = apply_date_range(q, PurchaseOrder.date, date_from, date_to)
     rows = q.order_by(PurchaseOrder.date.desc()).all()
     header = ["Date", "Branch", "Supplier ID", "Payment Type", "Total Amount", "Status", "Notes"]
     data = [[str(r.date), bmap.get(r.branch_id, ""), r.supplier_id,
@@ -268,7 +271,7 @@ def _purchases_data(db, user, branch_id, brand_id=None):
     return header, data
 
 
-def _expenses_data(db, user, branch_id, brand_id=None):
+def _expenses_data(db, user, branch_id, brand_id=None, date_from=None, date_to=None):
     bmap = _branch_map(db)
     q = db.query(Expense)
     bb_ids = _brand_branch_ids(db, brand_id)
@@ -278,6 +281,7 @@ def _expenses_data(db, user, branch_id, brand_id=None):
         q = q.filter(Expense.branch_id.in_(bb_ids))
     elif user.role == "staff" and user.branch_id:
         q = q.filter(Expense.branch_id == user.branch_id)
+    q = apply_date_range(q, Expense.date, date_from, date_to)
     rows = q.order_by(Expense.date.desc()).all()
     header = ["Date", "Branch", "Description", "Amount", "Payment Method", "Notes"]
     data = [[str(r.date), bmap.get(r.branch_id, ""), r.description,
@@ -444,22 +448,25 @@ def _salary_data(db, user, month, lang: str = "en", brand_id=None):
 
 @router.get("/sales/{fmt}")
 def export_sales(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[int] = None,
+                 date_from: Optional[str] = None, date_to: Optional[str] = None,
                  db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    header, data = _sales_data(db, user, branch_id, brand_id=brand_id)
+    header, data = _sales_data(db, user, branch_id, brand_id=brand_id, date_from=date_from, date_to=date_to)
     return _respond(fmt, header, data, "sales", "Sales Report")
 
 
 @router.get("/purchases/{fmt}")
 def export_purchases(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[int] = None,
+                     date_from: Optional[str] = None, date_to: Optional[str] = None,
                      db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    header, data = _purchases_data(db, user, branch_id, brand_id=brand_id)
+    header, data = _purchases_data(db, user, branch_id, brand_id=brand_id, date_from=date_from, date_to=date_to)
     return _respond(fmt, header, data, "purchases", "Purchases Report")
 
 
 @router.get("/expenses/{fmt}")
 def export_expenses(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[int] = None,
+                    date_from: Optional[str] = None, date_to: Optional[str] = None,
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    header, data = _expenses_data(db, user, branch_id, brand_id=brand_id)
+    header, data = _expenses_data(db, user, branch_id, brand_id=brand_id, date_from=date_from, date_to=date_to)
     return _respond(fmt, header, data, "expenses", "Expenses Report")
 
 

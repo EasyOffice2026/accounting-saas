@@ -13,6 +13,7 @@ from app.models.transfer import TransferOrder, TransferOrderLine
 from app.models.user import User
 from app.utils.auth import get_current_user
 from app.routes.hr import _brand_branch_ids, _exclude_left_employees
+from app.utils.dates import apply_date_range
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -26,7 +27,7 @@ def _sum_sales(rows):
     )
 
 
-def _transfers_by_branch(db: Session) -> dict[int, float]:
+def _transfers_by_branch(db: Session, date_from=None, date_to=None) -> dict[int, float]:
     """Value of goods dispatched to each branch, keyed by receiving branch."""
     rows = db.query(
         TransferOrder.requesting_branch_id,
@@ -38,12 +39,15 @@ def _transfers_by_branch(db: Session) -> dict[int, float]:
     ).filter(
         TransferOrder.status.in_(["dispatched", "received"]),
         TransferOrderLine.dispatched_qty != None,
-    ).group_by(TransferOrder.requesting_branch_id).all()
+    )
+    rows = apply_date_range(rows, TransferOrder.date, date_from, date_to)
+    rows = rows.group_by(TransferOrder.requesting_branch_id).all()
     return {bid: float(total or 0) for bid, total in rows}
 
 
 @router.get("/")
 def dashboard(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
+              date_from: Optional[str] = None, date_to: Optional[str] = None,
               db: Session = Depends(get_db),
               user: User = Depends(get_current_user)):
     bb_ids = _brand_branch_ids(db, brand_id)
@@ -56,20 +60,23 @@ def dashboard(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
             q = q.filter(model.branch_id.in_(bb_ids))
         return q
 
-    sales = apply_branch(db.query(Sale), Sale).all()
+    def dated(q, model):
+        return apply_date_range(q, model.date, date_from, date_to)
+
+    sales = dated(apply_branch(db.query(Sale), Sale), Sale).all()
     total_sales = _sum_sales(sales)
 
-    total_purchases = apply_branch(
+    total_purchases = dated(apply_branch(
         db.query(func.coalesce(func.sum(PurchaseOrder.total_amount), 0)),
         PurchaseOrder,
-    ).scalar() or 0
+    ), PurchaseOrder).scalar() or 0
 
-    total_expenses = apply_branch(
+    total_expenses = dated(apply_branch(
         db.query(func.coalesce(func.sum(Expense.amount), 0)),
         Expense,
-    ).scalar() or 0
+    ), Expense).scalar() or 0
 
-    transfers_by_branch = _transfers_by_branch(db)
+    transfers_by_branch = _transfers_by_branch(db, date_from, date_to)
 
     employee_count = apply_branch(
         _exclude_left_employees(db.query(func.count(Employee.id))),
@@ -86,13 +93,13 @@ def dashboard(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
         branches = db.query(Branch).all()
     branch_data = []
     for b in branches:
-        b_sales = db.query(Sale).filter(Sale.branch_id == b.id).all()
-        b_purchases = db.query(func.coalesce(func.sum(PurchaseOrder.total_amount), 0)).filter(
+        b_sales = dated(db.query(Sale).filter(Sale.branch_id == b.id), Sale).all()
+        b_purchases = dated(db.query(func.coalesce(func.sum(PurchaseOrder.total_amount), 0)).filter(
             PurchaseOrder.branch_id == b.id
-        ).scalar() or 0
-        b_expenses = db.query(func.coalesce(func.sum(Expense.amount), 0)).filter(
+        ), PurchaseOrder).scalar() or 0
+        b_expenses = dated(db.query(func.coalesce(func.sum(Expense.amount), 0)).filter(
             Expense.branch_id == b.id
-        ).scalar() or 0
+        ), Expense).scalar() or 0
         branch_data.append({
             "branch_id": b.id,
             "branch_name": b.name,

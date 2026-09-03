@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
+import DateRangeFilter, { type DateRange, dateRangeParams } from "../components/DateRangeFilter";
 
 interface PurchaseCategoryI { id: number; name: string; name_ar: string | null; is_active: boolean; }
 interface Supplier { id: number; name: string; email: string; whatsapp: string; whatsapp_group?: string; payment_type: string; category_id?: number | null; }
@@ -69,17 +70,24 @@ export default function PurchasesPage() {
   const [catMsgType, setCatMsgType] = useState<"success" | "error">("success");
 
   const [branchFilter, setBranchFilter] = useState<string>("");
+  const [range, setRange] = useState<DateRange>({ from: "", to: "" });
 
   const isManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   const isStaff = user?.role === "staff";
 
+  const listParams = (bid: string) => {
+    const parts = [...(bid ? [`branch_id=${bid}`] : []), ...dateRangeParams(range)];
+    return parts.length ? `?${parts.join("&")}` : "";
+  };
+
   const loadOrders = (bid: string = branchFilter) =>
-    apiGet(bid ? `/api/purchases/orders?branch_id=${bid}` : "/api/purchases/orders").then(setOrders);
+    apiGet(`/api/purchases/orders${listParams(bid)}`).then(setOrders);
+
+  useEffect(() => { loadOrders(); }, [range]);
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);
     apiGet("/api/purchases/suppliers").then(setSuppliers);
-    loadOrders("");
     apiGet("/api/purchases/categories").then(setCategories);
   }, []);
 
@@ -394,9 +402,8 @@ export default function PurchasesPage() {
   };
 
   const exportData = (fmt: string) => {
-    const params = branchFilter ? `?branch_id=${branchFilter}` : "";
     const ext = fmt === "excel" ? "xlsx" : fmt;
-    apiDownload(`/api/export/purchases/${fmt}${params}`, `purchases.${ext}`);
+    apiDownload(`/api/export/purchases/${fmt}${listParams(branchFilter)}`, `purchases.${ext}`);
   };
 
   return (
@@ -544,18 +551,21 @@ export default function PurchasesPage() {
       )}
 
       {/* ========== ORDERS TAB ========== */}
-      {tab === "orders" && !isStaff && (
-        <div className="mb-4">
-          <select value={branchFilter}
-            onChange={e => { setBranchFilter(e.target.value); loadOrders(e.target.value); }}
-            className="px-3 py-2 border rounded-lg text-sm">
-            <option value="">{t("all_branches")}</option>
-            {branches.map(b => (
-              <option key={b.id} value={b.id}>
-                {i18n.language === "ar" ? (b.name_ar || b.name) : b.name}
-              </option>
-            ))}
-          </select>
+      {tab === "orders" && (
+        <div className="mb-4 flex items-center gap-4 flex-wrap">
+          {!isStaff && (
+            <select value={branchFilter}
+              onChange={e => { setBranchFilter(e.target.value); loadOrders(e.target.value); }}
+              className="px-3 py-2 border rounded-lg text-sm">
+              <option value="">{t("all_branches")}</option>
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>
+                  {i18n.language === "ar" ? (b.name_ar || b.name) : b.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <DateRangeFilter value={range} onChange={setRange} />
         </div>
       )}
 

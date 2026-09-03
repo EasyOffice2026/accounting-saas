@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiPut, apiDelete, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
+import DateRangeFilter, { type DateRange, dateRangeParams } from "../components/DateRangeFilter";
 
 interface Branch { id: number; name: string; name_ar: string; whatsapp_number?: string; whatsapp_group?: string; }
 interface Sale {
@@ -30,6 +31,7 @@ export default function SalesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
   const [branchFilter, setBranchFilter] = useState<string>("");
+  const [range, setRange] = useState<DateRange>({ from: "", to: "" });
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -107,12 +109,13 @@ export default function SalesPage() {
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);
-    loadSales();
   }, []);
 
+  useEffect(() => { loadSales(branchFilter); }, [range]);
+
   const loadSales = (bid?: string) => {
-    const url = bid ? `/api/sales/?branch_id=${bid}` : "/api/sales/";
-    apiGet(url).then(setSales);
+    const parts = [...(bid ? [`branch_id=${bid}`] : []), ...dateRangeParams(range)];
+    apiGet(`/api/sales/${parts.length ? `?${parts.join("&")}` : ""}`).then(setSales);
   };
 
   const handleFilter = (bid: string) => {
@@ -188,7 +191,8 @@ export default function SalesPage() {
   };
 
   const exportData = (fmt: string) => {
-    const params = branchFilter ? `?branch_id=${branchFilter}` : "";
+    const parts = [...(branchFilter ? [`branch_id=${branchFilter}`] : []), ...dateRangeParams(range)];
+    const params = parts.length ? `?${parts.join("&")}` : "";
     const ext = fmt === "excel" ? "xlsx" : fmt;
     apiDownload(`/api/export/sales/${fmt}${params}`, `sales.${ext}`);
   };
@@ -330,15 +334,16 @@ export default function SalesPage() {
         </div>
       )}
 
-      {!isStaff && (
-        <div className="mb-4">
+      <div className="mb-4 flex items-center gap-4 flex-wrap">
+        {!isStaff && (
           <select value={branchFilter} onChange={e => handleFilter(e.target.value)}
             className="px-3 py-2 border rounded-lg text-sm">
             <option value="">{t("all_branches")}</option>
             {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
           </select>
-        </div>
-      )}
+        )}
+        <DateRangeFilter value={range} onChange={setRange} />
+      </div>
 
       {error && (
         <div className="bg-red-50 border border-red-300 text-red-700 px-4 py-2 rounded mb-4 text-sm">{error}</div>

@@ -39,6 +39,8 @@ export default {
   update: "تحديث",
   all_branches: "جميع الفروع",
   show_left_staff: "إظهار الموظفين المستقيلين / السابقين",
+  cheque: "شيك",
+  contract_branch_required: "حدد الفرع لهذا العقد حتى تُسجَّل الدفعات المدفوعة كمصروفات.",
   from_date: "من",
   to_date: "إلى",
   foodics_data: "بيانات فودكس",

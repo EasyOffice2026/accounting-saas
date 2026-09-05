@@ -130,6 +130,9 @@ def update_expense(
     if not exp:
         from fastapi import HTTPException
         raise HTTPException(404, "Expense not found")
+    if exp.contract_payment_id:
+        from fastapi import HTTPException
+        raise HTTPException(400, "This expense is managed from Contracts & Subscriptions")
     exp.branch_id = branch_id
     exp.category_id = category_id
     exp.supplier_id = supplier_id if supplier_id else None
@@ -153,6 +156,9 @@ def delete_expense(expense_id: int, db: Session = Depends(get_db),
     if not exp:
         from fastapi import HTTPException
         raise HTTPException(404, "Expense not found")
+    if exp.contract_payment_id:
+        from fastapi import HTTPException
+        raise HTTPException(400, "This expense is managed from Contracts & Subscriptions")
     db.delete(exp)
     db.commit()
     return {"ok": True}

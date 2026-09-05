@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
 
-from app.database import Base, engine, UPLOAD_DIR
+from app.database import Base, engine, UPLOAD_DIR, SessionLocal
 from app.models import *  # noqa: F401,F403 — register all models
 from app.utils.auth import hash_password
 from app.routes import auth, branches, sales, purchases, expenses, hr, dashboard
@@ -75,6 +75,23 @@ def startup():
     Base.metadata.create_all(bind=engine)
     _migrate_columns()
     _seed_data()
+    _sync_contract_expenses()
+
+
+def _sync_contract_expenses():
+    """Backfill: every paid contract payment is mirrored as an Expense."""
+    from app.models.hr import Contract, ContractPayment
+    from app.routes.hr import _sync_payment_expense
+    db = SessionLocal()
+    try:
+        contracts = {c.id: c for c in db.query(Contract).all()}
+        for p in db.query(ContractPayment).filter(ContractPayment.status == "paid").all():
+            c = contracts.get(p.contract_id)
+            if c:
+                _sync_payment_expense(db, p, c)
+        db.commit()
+    finally:
+        db.close()
 
 
 def _migrate_columns():
@@ -240,6 +257,7 @@ def _migrate_columns():
                 CREATE TABLE contracts (
                     id SERIAL PRIMARY KEY,
                     brand_id INTEGER REFERENCES brands(id),
+                    branch_id INTEGER REFERENCES branches(id),
                     name TEXT NOT NULL,
                     kind TEXT,
                     place TEXT,
@@ -262,6 +280,22 @@ def _migrate_columns():
                 conn.commit()
             if "period" not in cols:
                 conn.execute(text("ALTER TABLE contracts ADD COLUMN period TEXT"))
+                conn.commit()
+            if "branch_id" not in cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN branch_id INTEGER REFERENCES branches(id)"))
+                # Default each contract to its brand's administrative/first branch
+                conn.execute(text("""
+                    UPDATE contracts SET branch_id = (
+                        SELECT b.id FROM branches b WHERE b.brand_id = contracts.brand_id
+                        ORDER BY CASE WHEN b.name = 'Administration' THEN 0 ELSE 1 END, b.id LIMIT 1
+                    ) WHERE branch_id IS NULL AND brand_id IS NOT NULL
+                """))
+                conn.commit()
+
+        if "expenses" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("expenses")]
+            if "contract_payment_id" not in cols:
+                conn.execute(text("ALTER TABLE expenses ADD COLUMN contract_payment_id INTEGER REFERENCES contract_payments(id)"))
                 conn.commit()
 
         # Transfer order lines: add item_name_ar

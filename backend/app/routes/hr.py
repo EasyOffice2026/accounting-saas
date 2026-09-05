@@ -8,6 +8,7 @@ import calendar
 from app.database import get_db
 from app.models.hr import Brand, Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, LoanRepayment, StaffBenefitDeduction, LeaveRecord, Resignation, Contract, ContractPayment, Employer
 from app.models.branch import Branch
+from app.models.expense import Expense, ExpenseCategory
 from app.models.user import User
 from app.utils.auth import get_current_user
 
@@ -1618,9 +1619,58 @@ def delete_resignation(res_id: int, db: Session = Depends(get_db),
 
 
 # --- Contracts & Subscriptions ---
+CONTRACT_KIND_AR = {
+    "Rent Contract": "عقد إيجار", "Legal Contract": "عقد قانوني",
+    "Internet Contract": "عقد إنترنت", "Subscription": "اشتراك",
+    "Maintenance Contract": "عقد صيانة", "Consultancy Contract": "عقد استشاري",
+    "Insurance Contract": "عقد تأمين", "Service Contract": "عقد خدمات",
+}
+DEFAULT_CONTRACT_CATEGORY = ("Contracts & Subscriptions", "العقود والاشتراكات")
+
+
+def _contract_expense_category(db: Session, kind: Optional[str]) -> ExpenseCategory:
+    """Expense category named after the contract type (created on demand)."""
+    name = (kind or "").strip() or DEFAULT_CONTRACT_CATEGORY[0]
+    cat = db.query(ExpenseCategory).filter(func.lower(ExpenseCategory.name) == name.lower()).first()
+    if not cat:
+        name_ar = CONTRACT_KIND_AR.get(name) or (DEFAULT_CONTRACT_CATEGORY[1] if name == DEFAULT_CONTRACT_CATEGORY[0] else None)
+        cat = ExpenseCategory(name=name, name_ar=name_ar, is_active=True)
+        db.add(cat)
+        db.flush()
+    elif not cat.is_active:
+        cat.is_active = True
+    return cat
+
+
+def _sync_payment_expense(db: Session, p: ContractPayment, c: Contract):
+    """Mirror a paid contract payment as an Expense so it reports in Expenses/Dashboard."""
+    exp = db.query(Expense).filter(Expense.contract_payment_id == p.id).first()
+    if p.status != "paid" or not c.branch_id:
+        if exp:
+            db.delete(exp)
+        return
+    cat = _contract_expense_category(db, c.kind)
+    if not exp:
+        exp = Expense(contract_payment_id=p.id)
+        db.add(exp)
+    exp.branch_id = c.branch_id
+    exp.category_id = cat.id
+    exp.date = p.paid_date or p.due_date
+    exp.description = f"{c.name} — {p.due_date:%b %Y}"
+    exp.amount = p.amount
+    exp.payment_method = p.payment_method or "cash"
+    exp.notes = " | ".join(x for x in [p.reference, p.notes] if x) or None
+
+
+def _sync_contract_expenses(db: Session, c: Contract):
+    for p in db.query(ContractPayment).filter(ContractPayment.contract_id == c.id).all():
+        _sync_payment_expense(db, p, c)
+
+
 def _contract_to_dict(c):
     return {
-        "id": c.id, "brand_id": c.brand_id, "name": c.name or "", "kind": c.kind or "",
+        "id": c.id, "brand_id": c.brand_id, "branch_id": c.branch_id,
+        "name": c.name or "", "kind": c.kind or "",
         "place": c.place or "", "period": c.period or "", "value": c.value or 0,
         "start_date": str(c.start_date) if c.start_date else "",
         "end_date": str(c.end_date) if c.end_date else "",
@@ -1652,6 +1702,7 @@ def create_contract(
     payment_day: int = Form(1), notes: str = Form(""),
     status: str = Form("active"),
     brand_id: Optional[int] = Form(None),
+    branch_id: Optional[int] = Form(None),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if user.role not in SALARY_VISIBLE_ROLES:
@@ -1661,7 +1712,7 @@ def create_contract(
         period=period or None,
         value=value, monthly_payment=monthly_payment,
         payment_day=payment_day, notes=notes or None, status=status,
-        brand_id=brand_id,
+        brand_id=brand_id, branch_id=branch_id,
         start_date=date.fromisoformat(start_date) if start_date else None,
         end_date=date.fromisoformat(end_date) if end_date else None,
     )
@@ -1681,6 +1732,7 @@ def update_contract(
     end_date: str = Form(""), monthly_payment: float = Form(0),
     payment_day: int = Form(1), notes: str = Form(""),
     status: str = Form("active"),
+    branch_id: Optional[int] = Form(None),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if user.role not in SALARY_VISIBLE_ROLES:
@@ -1689,6 +1741,7 @@ def update_contract(
     if not c:
         raise HTTPException(404, "Contract not found")
     c.name = name
+    c.branch_id = branch_id
     c.kind = kind or None
     c.place = place or None
     c.period = period or None
@@ -1699,6 +1752,7 @@ def update_contract(
     c.status = status
     c.start_date = date.fromisoformat(start_date) if start_date else None
     c.end_date = date.fromisoformat(end_date) if end_date else None
+    _sync_contract_expenses(db, c)
     db.commit()
     db.refresh(c)
     return _contract_to_dict(c)
@@ -1712,6 +1766,9 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db),
     c = db.query(Contract).filter(Contract.id == contract_id).first()
     if not c:
         raise HTTPException(404, "Contract not found")
+    for p in db.query(ContractPayment).filter(ContractPayment.contract_id == c.id).all():
+        db.query(Expense).filter(Expense.contract_payment_id == p.id).delete()
+        db.delete(p)
     db.delete(c)
     db.commit()
     return {"ok": True}
@@ -1747,6 +1804,8 @@ def create_contract_payment(
     c = db.query(Contract).filter(Contract.id == contract_id).first()
     if not c:
         raise HTTPException(404, "Contract not found")
+    if status == "paid" and not payment_method:
+        raise HTTPException(400, "Payment method is required for paid payments")
     p = ContractPayment(
         contract_id=contract_id,
         due_date=date.fromisoformat(due_date),
@@ -1757,6 +1816,8 @@ def create_contract_payment(
         notes=notes or None,
     )
     db.add(p)
+    db.flush()
+    _sync_payment_expense(db, p, c)
     db.commit()
     db.refresh(p)
     return {"ok": True, "id": p.id}
@@ -1809,6 +1870,8 @@ def update_contract_payment(
     p = db.query(ContractPayment).filter(ContractPayment.id == payment_id).first()
     if not p:
         raise HTTPException(404, "Payment not found")
+    if status == "paid" and not payment_method:
+        raise HTTPException(400, "Payment method is required for paid payments")
     p.status = status
     if amount > 0:
         p.amount = amount
@@ -1816,6 +1879,8 @@ def update_contract_payment(
     p.payment_method = payment_method or None
     p.reference = reference or None
     p.notes = notes or None
+    c = db.query(Contract).filter(Contract.id == p.contract_id).first()
+    _sync_payment_expense(db, p, c)
     db.commit()
     return {"ok": True}
 
@@ -1828,6 +1893,7 @@ def delete_contract_payment(payment_id: int, db: Session = Depends(get_db),
     p = db.query(ContractPayment).filter(ContractPayment.id == payment_id).first()
     if not p:
         raise HTTPException(404, "Payment not found")
+    db.query(Expense).filter(Expense.contract_payment_id == p.id).delete()
     db.delete(p)
     db.commit()
     return {"ok": True}

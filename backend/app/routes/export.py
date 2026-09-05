@@ -7,7 +7,7 @@ import io, csv
 from app.database import get_db
 from app.models.sale import Sale
 from app.models.purchase import PurchaseOrder, PurchaseItem, Supplier
-from app.models.expense import Expense
+from app.models.expense import Expense, ExpenseCategory
 from app.models.hr import Employee, SalaryPayment, Brand
 from app.models.cash import CashBalance
 from app.models.branch import Branch
@@ -283,8 +283,9 @@ def _expenses_data(db, user, branch_id, brand_id=None, date_from=None, date_to=N
         q = q.filter(Expense.branch_id == user.branch_id)
     q = apply_date_range(q, Expense.date, date_from, date_to)
     rows = q.order_by(Expense.date.desc()).all()
-    header = ["Date", "Branch", "Description", "Amount", "Payment Method", "Notes"]
-    data = [[str(r.date), bmap.get(r.branch_id, ""), r.description,
+    cmap = {c.id: c.name for c in db.query(ExpenseCategory).all()}
+    header = ["Date", "Branch", "Category", "Description", "Amount", "Payment Method", "Notes"]
+    data = [[str(r.date), bmap.get(r.branch_id, ""), cmap.get(r.category_id, ""), r.description,
              r.amount, r.payment_method, r.notes or ""] for r in rows]
     return header, data
 

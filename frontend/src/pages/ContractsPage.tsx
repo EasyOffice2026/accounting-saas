@@ -2,8 +2,11 @@ import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiFetch, apiPost, apiDownload } from "../contexts/api";
 
+interface Branch { id: number; name: string; name_ar?: string; }
+
 interface ContractRecord {
   id: number; name: string; kind: string; place: string; period: string;
+  branch_id: number | null;
   value: number; start_date: string; end_date: string;
   monthly_payment: number; payment_day: number;
   notes: string; status: string; created_at: string;
@@ -33,9 +36,13 @@ const CONTRACT_TYPE_KEYS: Record<string, string> = {
   "Service Contract": "ct_service",
 };
 
+const PAYMENT_METHODS = ["cash", "bank_transfer", "cheque", "knet", "credit"];
+
 export default function ContractsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [payingPayment, setPayingPayment] = useState<ContractPaymentRecord | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ContractRecord | null>(null);
   const [customType, setCustomType] = useState("");
@@ -64,7 +71,13 @@ export default function ContractsPage() {
 
   useEffect(() => {
     apiGet("/api/hr/contracts").then(setContracts);
+    apiGet("/api/branches/").then(setBranches);
   }, []);
+
+  const branchName = (id: number | null) => {
+    const b = branches.find(x => x.id === id);
+    return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : "—";
+  };
 
   useEffect(() => {
     if (editing) setSelectedKind(editing.kind || "");
@@ -73,6 +86,59 @@ export default function ContractsPage() {
 
   const renderPaymentSection = (c: ContractRecord) => (
     <div className="space-y-3">
+      {!c.branch_id && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded p-2">
+          {t("contract_branch_required")}
+        </div>
+      )}
+
+      {payingPayment && payingPayment.contract_id === c.id && (
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          if (!window.confirm(t("confirm_transaction"))) return;
+          const fd = new FormData(e.currentTarget);
+          fd.append("status", "paid");
+          fd.append("amount", String(payingPayment.amount));
+          try {
+            await apiFetch(`/api/hr/contract-payments/${payingPayment.id}`, { method: "PUT", body: fd });
+            setPayingPayment(null);
+            loadPayments(c.id);
+          } catch (err: unknown) { alert((err as Error).message); }
+        }} className="bg-emerald-50 border border-emerald-200 p-4 rounded grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="col-span-2 md:col-span-5 text-sm font-medium">
+            {t("mark_paid")}: {payingPayment.due_date} — KD {payingPayment.amount.toFixed(3)}
+          </div>
+          <div>
+            <label className="block text-xs mb-1">{t("paid_date")}</label>
+            <input type="date" name="paid_date" required
+              defaultValue={payingPayment.paid_date || new Date().toISOString().slice(0, 10)}
+              className="w-full border rounded px-2 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs mb-1">{t("payment_method")}</label>
+            <select name="payment_method" required defaultValue={payingPayment.payment_method || ""}
+              className="w-full border rounded px-2 py-1.5 text-sm">
+              <option value="">{t("select")}</option>
+              {PAYMENT_METHODS.map(m => <option key={m} value={m}>{t(m)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs mb-1">{t("reference")}</label>
+            <input type="text" name="reference" defaultValue={payingPayment.reference || ""}
+              className="w-full border rounded px-2 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs mb-1">{t("notes")}</label>
+            <input type="text" name="notes" defaultValue={payingPayment.notes || ""}
+              className="w-full border rounded px-2 py-1.5 text-sm" />
+          </div>
+          <div className="flex items-end gap-2">
+            <button type="submit" className="px-4 py-1.5 bg-emerald-600 text-white rounded text-sm">{t("save")}</button>
+            <button type="button" onClick={() => setPayingPayment(null)}
+              className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded text-sm">{t("cancel")}</button>
+          </div>
+        </form>
+      )}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h4 className="font-semibold text-sm">{t("payment_schedule")} — {c.name}</h4>
         <div className="flex gap-2 flex-wrap">
@@ -102,11 +168,14 @@ export default function ContractsPage() {
       {showPaymentForm && (
         <form onSubmit={async (e) => {
           e.preventDefault();
+          if (!window.confirm(t("confirm_transaction"))) return;
           const fd = new FormData(e.currentTarget);
-          await apiFetch(`/api/hr/contracts/${c.id}/payments`, { method: "POST", body: fd });
-          setShowPaymentForm(false);
-          loadPayments(c.id);
-        }} className="bg-white p-4 rounded border grid grid-cols-2 md:grid-cols-4 gap-3">
+          try {
+            await apiFetch(`/api/hr/contracts/${c.id}/payments`, { method: "POST", body: fd });
+            setShowPaymentForm(false);
+            loadPayments(c.id);
+          } catch (err: unknown) { alert((err as Error).message); }
+        }} className="bg-white p-4 rounded border grid grid-cols-2 md:grid-cols-6 gap-3">
           <div>
             <label className="block text-xs mb-1">{t("due_date")}</label>
             <input type="date" name="due_date" required className="w-full border rounded px-2 py-1.5 text-sm" />
@@ -121,6 +190,17 @@ export default function ContractsPage() {
             <select name="status" className="w-full border rounded px-2 py-1.5 text-sm">
               <option value="pending">{t("pending")}</option>
               <option value="paid">{t("paid")}</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs mb-1">{t("paid_date")}</label>
+            <input type="date" name="paid_date" className="w-full border rounded px-2 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs mb-1">{t("payment_method")}</label>
+            <select name="payment_method" className="w-full border rounded px-2 py-1.5 text-sm">
+              <option value="">{t("select")}</option>
+              {PAYMENT_METHODS.map(m => <option key={m} value={m}>{t(m)}</option>)}
             </select>
           </div>
           <div className="flex items-end">
@@ -173,19 +253,13 @@ export default function ContractsPage() {
                 }`}>{t(p.status)}</span>
               </td>
               <td className="px-3 py-2">{p.paid_date || "—"}</td>
-              <td className="px-3 py-2">{p.payment_method || "—"}</td>
+              <td className="px-3 py-2">{p.payment_method ? t(p.payment_method) : "—"}</td>
               <td className="px-3 py-2">{p.reference || "—"}</td>
               <td className="px-3 py-2 text-center space-x-1">
-                {p.status !== "paid" && (
-                  <button onClick={async () => {
-                    const fd = new FormData();
-                    fd.append("status", "paid");
-                    fd.append("paid_date", new Date().toISOString().slice(0, 10));
-                    fd.append("amount", String(p.amount));
-                    await apiFetch(`/api/hr/contract-payments/${p.id}`, { method: "PUT", body: fd });
-                    loadPayments(c.id);
-                  }} className="text-green-600 hover:underline">{t("mark_paid")}</button>
-                )}
+                <button onClick={() => setPayingPayment(p)}
+                  className={`${p.status === "paid" ? "text-blue-600" : "text-green-600"} hover:underline`}>
+                  {p.status === "paid" ? t("edit") : t("mark_paid")}
+                </button>
                 <button onClick={async () => {
                   if (!confirm(t("confirm_delete"))) return;
                   await apiFetch(`/api/hr/contract-payments/${p.id}`, { method: "DELETE" });
@@ -310,6 +384,15 @@ export default function ContractsPage() {
               <input type="hidden" name="kind" value={selectedKind === "__custom__" ? customType : selectedKind} />
             </div>
             <div>
+              <label className="block text-sm font-medium mb-1">{t("branch")}</label>
+              <select name="branch_id" required defaultValue={editing?.branch_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="">{t("select_branch")}</option>
+                {branches.map(b => (
+                  <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label className="block text-sm font-medium mb-1">{t("contract_period")}</label>
               <select name="period" defaultValue={editing?.period || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                 <option value="">{t("select")}</option>
@@ -389,6 +472,7 @@ export default function ContractsPage() {
             <tr>
               <th className="px-3 py-3 text-left">{t("contract_name")}</th>
               <th className="px-3 py-3 text-left">{t("contract_type")}</th>
+              <th className="px-3 py-3 text-left">{t("branch")}</th>
               <th className="px-3 py-3 text-left">{t("contract_period")}</th>
               <th className="px-3 py-3 text-right">{t("contract_value")}</th>
               <th className="px-3 py-3 text-center">{t("status")}</th>
@@ -397,12 +481,13 @@ export default function ContractsPage() {
           </thead>
           <tbody>
             {contracts.length === 0 ? (
-              <tr><td colSpan={isManager ? 6 : 5} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+              <tr><td colSpan={isManager ? 7 : 6} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
             ) : contracts.map(c => (
               <React.Fragment key={c.id}>
               <tr className="border-b hover:bg-gray-50">
                 <td className="px-3 py-3 font-medium">{c.name}</td>
                 <td className="px-3 py-3">{c.kind ? (CONTRACT_TYPE_KEYS[c.kind] ? t(CONTRACT_TYPE_KEYS[c.kind]) : c.kind) : "—"}</td>
+                <td className="px-3 py-3">{branchName(c.branch_id)}</td>
                 <td className="px-3 py-3">{c.period ? t(c.period) : "—"}</td>
                 <td className="px-3 py-3 text-right">{c.value}</td>
                 <td className="px-3 py-3 text-center">
@@ -431,7 +516,7 @@ export default function ContractsPage() {
               {/* Payment tracking expanded row */}
               {expandedContract === c.id && (
                 <tr>
-                  <td colSpan={isManager ? 6 : 5} className="px-4 py-4 bg-gray-50">
+                  <td colSpan={isManager ? 7 : 6} className="px-4 py-4 bg-gray-50">
                     {renderPaymentSection(c)}
                   </td>
                 </tr>

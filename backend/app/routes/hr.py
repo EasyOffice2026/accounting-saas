@@ -369,6 +369,46 @@ def mark_attendance(
     return att
 
 
+def _loan_repayments_for_month(db: Session, employee_id: int, month: str) -> float:
+    """Sum of recorded Advance/Loan repayments that fall in the payroll month
+    (by explicit month if set, otherwise by repayment date)."""
+    year, mon = int(month.split("-")[0]), int(month.split("-")[1])
+    m_start = date(year, mon, 1)
+    m_end = date(year, mon, calendar.monthrange(year, mon)[1])
+    loan_ids = [l.id for l in db.query(AdvanceLoan.id).filter(AdvanceLoan.employee_id == employee_id).all()]
+    if not loan_ids:
+        return 0.0
+    total = db.query(func.coalesce(func.sum(LoanRepayment.amount), 0)).filter(
+        LoanRepayment.loan_id.in_(loan_ids),
+        or_(
+            LoanRepayment.month == month,
+            and_(
+                or_(LoanRepayment.month.is_(None), LoanRepayment.month == ""),
+                LoanRepayment.date >= m_start,
+                LoanRepayment.date <= m_end,
+            ),
+        ),
+    ).scalar() or 0
+    return round(float(total), 3)
+
+
+def _apply_loan_repayments_to_payroll(db: Session, employee_id: int, month: str):
+    """Refresh loan_deduction on the pending salary record for this month."""
+    sp = db.query(SalaryPayment).filter(
+        SalaryPayment.employee_id == employee_id,
+        SalaryPayment.month == month,
+        SalaryPayment.status == "pending",
+    ).first()
+    if not sp:
+        return
+    new_ded = _loan_repayments_for_month(db, employee_id, month)
+    delta = new_ded - (sp.loan_deduction or 0)
+    if abs(delta) < 0.0005:
+        return
+    sp.loan_deduction = new_ded
+    sp.net_salary = round((sp.net_salary or 0) - delta, 3)
+
+
 def _calc_net(basic, total_days, days_worked,
               housing, transport, food, other_allow,
               absence_ded, late_ded, other_ded, advance,
@@ -579,10 +619,8 @@ def generate_monthly_payroll(
         # Pro-rate salary based on actual period days
         prorated_salary = round(per_day * emp_period_days, 3)
 
-        # Loan repayments are tracked manually (see /loans/{id}/repayments),
-        # so payroll does not auto-deduct loans. Managers may still enter a
-        # loan_deduction manually on the payslip if a repayment was via salary.
-        loan_ded = 0
+        # Loan deduction = Advance/Loan repayments recorded for this payroll month
+        loan_ded = _loan_repayments_for_month(db, emp.id, month)
 
         # Auto-calculate benefits from StaffBenefitDeduction for this month (approved only).
         # One-time records apply only in their own month; monthly recurring records
@@ -836,13 +874,16 @@ def mark_salary_paid(
     sp.status = "paid"
     sp.paid_date = date.today()
 
-    # Deduct loan balances
-    if sp.loan_deduction and sp.loan_deduction > 0:
+    # Deduct loan balances for any manual deduction beyond the repayments
+    # already recorded for this month (those reduced the balance on entry).
+    recorded = _loan_repayments_for_month(db, sp.employee_id, sp.month)
+    extra = round((sp.loan_deduction or 0) - recorded, 3)
+    if extra > 0:
         active_loans = db.query(AdvanceLoan).filter(
             AdvanceLoan.employee_id == sp.employee_id,
             AdvanceLoan.status == "active",
         ).all()
-        remaining = sp.loan_deduction
+        remaining = extra
         for loan in active_loans:
             if remaining <= 0:
                 break
@@ -1196,6 +1237,8 @@ def create_loan_repayment(
     db.add(rep)
     loan.balance = round(max(0.0, (loan.balance or 0) - amount), 3)
     loan.status = "paid_off" if loan.balance <= 0 else "active"
+    db.flush()
+    _apply_loan_repayments_to_payroll(db, loan.employee_id, rep.month or rep.date.strftime("%Y-%m"))
     db.commit()
     db.refresh(rep)
     return {"id": rep.id, "balance": loan.balance, "status": loan.status}
@@ -1214,7 +1257,12 @@ def delete_loan_repayment(repayment_id: int, db: Session = Depends(get_db),
         loan.balance = round((loan.balance or 0) + rep.amount, 3)
         if loan.balance > 0:
             loan.status = "active"
+    rep_month = rep.month or rep.date.strftime("%Y-%m")
+    emp_id = loan.employee_id if loan else None
     db.delete(rep)
+    db.flush()
+    if emp_id:
+        _apply_loan_repayments_to_payroll(db, emp_id, rep_month)
     db.commit()
     return {"message": "Deleted"}
 

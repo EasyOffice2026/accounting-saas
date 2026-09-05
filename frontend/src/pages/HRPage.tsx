@@ -1958,6 +1958,12 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium mb-1">{t("payroll_month")}</label>
+                  <input type="month" name="month" defaultValue={new Date().toISOString().slice(0, 7)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <p className="text-xs text-gray-500 mt-1">{t("payroll_month_hint")}</p>
+                </div>
+                <div>
                   <label className="block text-sm font-medium mb-1">{t("notes")}</label>
                   <input name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>

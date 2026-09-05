@@ -4,7 +4,7 @@ from datetime import date
 from typing import Optional
 import os, uuid, json
 
-from app.database import get_db
+from app.database import get_db, UPLOAD_DIR
 from app.models.purchase import (
     PurchaseCategory, Supplier, PurchaseOrder, PurchaseItem, SupplierItem,
     ReceivingOrder, ReceivingItem, Invoice, DeliveryOrder,
@@ -12,9 +12,10 @@ from app.models.purchase import (
 from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
+from app.routes.hr import _brand_branch_ids
+from app.utils.dates import apply_date_range
 
 router = APIRouter(prefix="/api/purchases", tags=["purchases"])
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
 
 
 # --- Purchase Categories ---
@@ -26,7 +27,7 @@ def list_categories(db: Session = Depends(get_db), _=Depends(get_current_user)):
 @router.post("/categories")
 def create_category(name: str = Form(...), name_ar: str = Form(""),
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     existing = db.query(PurchaseCategory).filter(
         PurchaseCategory.name == name.strip(), PurchaseCategory.is_active == True
@@ -43,7 +44,7 @@ def create_category(name: str = Form(...), name_ar: str = Form(""),
 @router.put("/categories/{cat_id}")
 def update_category(cat_id: int, name: str = Form(...), name_ar: str = Form(""),
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     cat = db.query(PurchaseCategory).filter(PurchaseCategory.id == cat_id).first()
     if not cat:
@@ -63,7 +64,7 @@ def update_category(cat_id: int, name: str = Form(...), name_ar: str = Form(""),
 
 @router.delete("/categories/{cat_id}")
 def delete_category(cat_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     cat = db.query(PurchaseCategory).filter(PurchaseCategory.id == cat_id).first()
     if not cat:
@@ -81,13 +82,139 @@ def list_suppliers(db: Session = Depends(get_db), _=Depends(get_current_user)):
 
 @router.post("/suppliers")
 def create_supplier(name: str = Form(...), email: str = Form(""),
-                    whatsapp: str = Form(""), payment_type: str = Form("cash"),
+                    whatsapp: str = Form(""), whatsapp_group: str = Form(""),
+                    payment_type: str = Form("cash"),
+                    category_id: Optional[int] = Form(None),
                     db: Session = Depends(get_db), _=Depends(get_current_user)):
-    s = Supplier(name=name, email=email, whatsapp=whatsapp, payment_type=payment_type)
+    s = Supplier(name=name, email=email, whatsapp=whatsapp,
+                 whatsapp_group=whatsapp_group or None, payment_type=payment_type,
+                 category_id=category_id if category_id else None)
     db.add(s)
     db.commit()
     db.refresh(s)
     return s
+
+
+@router.put("/suppliers/{supplier_id}")
+def update_supplier(supplier_id: int, name: str = Form(...), email: str = Form(""),
+                    whatsapp: str = Form(""), whatsapp_group: str = Form(""),
+                    payment_type: str = Form("cash"),
+                    category_id: Optional[int] = Form(None),
+                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s:
+        raise HTTPException(404, "Supplier not found")
+    s.name = name
+    s.email = email
+    s.whatsapp = whatsapp
+    s.whatsapp_group = whatsapp_group or None
+    s.payment_type = payment_type
+    s.category_id = category_id if category_id else None
+    db.commit()
+    db.refresh(s)
+    return s
+
+
+@router.delete("/suppliers/{supplier_id}")
+def delete_supplier(supplier_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager", "accountant"):
+        raise HTTPException(403, "Not authorized")
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s:
+        raise HTTPException(404, "Supplier not found")
+    # Soft-delete supplier and its items
+    s.is_active = False
+    db.query(SupplierItem).filter(SupplierItem.supplier_id == supplier_id).update({"is_active": False})
+    db.commit()
+    return {"status": "deleted"}
+
+
+@router.delete("/orders/{order_id}")
+def delete_order(order_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager", "accountant"):
+        raise HTTPException(403, "Not authorized")
+    order = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(404, "Order not found")
+    # Delete related records
+    db.query(PurchaseItem).filter(PurchaseItem.purchase_order_id == order_id).delete()
+    db.query(ReceivingItem).filter(
+        ReceivingItem.receiving_order_id.in_(
+            db.query(ReceivingOrder.id).filter(ReceivingOrder.purchase_order_id == order_id)
+        )
+    ).delete(synchronize_session=False)
+    db.query(ReceivingOrder).filter(ReceivingOrder.purchase_order_id == order_id).delete()
+    db.query(DeliveryOrder).filter(DeliveryOrder.purchase_order_id == order_id).delete()
+    db.query(Invoice).filter(Invoice.purchase_order_id == order_id).delete()
+    db.delete(order)
+    db.commit()
+    return {"status": "deleted"}
+
+
+@router.put("/orders/{order_id}")
+def update_order(
+    order_id: int,
+    branch_id: int = Form(...), supplier_id: int = Form(...),
+    category_id: Optional[int] = Form(None),
+    order_date: str = Form(...), payment_type: str = Form("cash"),
+    delivery_location: str = Form(""),
+    items: str = Form("[]"), notes: str = Form(""),
+    attachment: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    order = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(404, "Order not found")
+
+    attachment_path = order.attachment_path
+    if attachment and attachment.filename:
+        ext = os.path.splitext(attachment.filename)[1]
+        fname = f"{uuid.uuid4().hex}{ext}"
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        with open(os.path.join(UPLOAD_DIR, fname), "wb") as f:
+            f.write(attachment.file.read())
+        attachment_path = fname
+
+    items_list = json.loads(items)
+    total = sum(float(i.get("total", 0)) for i in items_list)
+
+    order.branch_id = branch_id
+    order.supplier_id = supplier_id
+    order.category_id = category_id if category_id else None
+    order.date = date.fromisoformat(order_date)
+    order.payment_type = payment_type
+    order.delivery_location = delivery_location or None
+    order.total_amount = total
+    order.attachment_path = attachment_path
+    order.notes = notes
+
+    # Replace items
+    db.query(PurchaseItem).filter(PurchaseItem.purchase_order_id == order_id).delete()
+    for item in items_list:
+        pi = PurchaseItem(
+            purchase_order_id=order_id,
+            item_name=item["item_name"],
+            quantity=float(item["quantity"]),
+            unit=item.get("unit", "pcs"),
+            unit_price=float(item["unit_price"]),
+            total=float(item["total"]),
+        )
+        db.add(pi)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+@router.delete("/invoices/{invoice_id}")
+def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager", "accountant"):
+        raise HTTPException(403, "Not authorized")
+    inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not inv:
+        raise HTTPException(404, "Invoice not found")
+    db.delete(inv)
+    db.commit()
+    return {"status": "deleted"}
 
 
 # --- Supplier Items (Catalog) ---
@@ -151,13 +278,20 @@ def delete_supplier_item(item_id: int, db: Session = Depends(get_db), _=Depends(
 
 # --- Purchase Orders ---
 @router.get("/orders")
-def list_orders(branch_id: Optional[int] = None, db: Session = Depends(get_db),
+def list_orders(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
+                date_from: Optional[str] = None, date_to: Optional[str] = None,
+                db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
     q = db.query(PurchaseOrder)
-    if branch_id:
-        q = q.filter(PurchaseOrder.branch_id == branch_id)
-    elif user.role == "staff" and user.branch_id:
+    bb_ids = _brand_branch_ids(db, brand_id)
+    if user.role == "staff" and user.branch_id:
+        # Branch staff only ever see their own branch's purchase orders
         q = q.filter(PurchaseOrder.branch_id == user.branch_id)
+    elif branch_id:
+        q = q.filter(PurchaseOrder.branch_id == branch_id)
+    elif bb_ids is not None:
+        q = q.filter(PurchaseOrder.branch_id.in_(bb_ids))
+    q = apply_date_range(q, PurchaseOrder.date, date_from, date_to)
     return q.order_by(PurchaseOrder.date.desc()).all()
 
 
@@ -206,6 +340,18 @@ def create_order(
         )
         db.add(pi)
     db.commit()
+
+    # Auto-send Arabic purchase order to supplier's WhatsApp group
+    try:
+        from app.routes.whatsapp import _send_to_entity_group, build_purchase_message
+        supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+        if supplier and supplier.whatsapp_group:
+            branch = db.query(Branch).filter(Branch.id == branch_id).first()
+            msg = build_purchase_message(po, supplier, branch, items_list, "ar")
+            _send_to_entity_group(db, supplier.whatsapp_group, msg)
+    except Exception:
+        pass
+
     return po
 
 
@@ -341,6 +487,8 @@ def get_receiving(order_id: int, db: Session = Depends(get_db), _=Depends(get_cu
 def list_invoices(supplier_id: Optional[int] = None, status: Optional[str] = None,
                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Invoice)
+    if user.role == "staff" and user.branch_id:
+        q = q.filter(Invoice.branch_id == user.branch_id)
     if supplier_id:
         q = q.filter(Invoice.supplier_id == supplier_id)
     if status:

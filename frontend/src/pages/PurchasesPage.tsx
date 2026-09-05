@@ -2,14 +2,16 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
+import DateRangeFilter, { type DateRange, dateRangeParams } from "../components/DateRangeFilter";
 
 interface PurchaseCategoryI { id: number; name: string; name_ar: string | null; is_active: boolean; }
-interface Supplier { id: number; name: string; email: string; whatsapp: string; payment_type: string; }
+interface Supplier { id: number; name: string; email: string; whatsapp: string; whatsapp_group?: string; payment_type: string; category_id?: number | null; }
 interface SupplierItemI { id: number; supplier_id: number; category_id: number | null; item_name: string; item_name_ar: string; packaging: string; unit: string; unit_price: number; }
 interface OrderItem { item_name: string; quantity: number; unit: string; unit_price: number; total: number; }
 interface PurchaseOrder {
   id: number; branch_id: number; supplier_id: number; category_id: number | null; date: string;
   payment_type: string; total_amount: number; status: string; delivery_location: string | null;
+  attachment_path?: string | null;
 }
 interface Branch { id: number; name: string; name_ar?: string; }
 interface InvoiceI {
@@ -34,9 +36,12 @@ export default function PurchasesPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [showOrderForm, setShowOrderForm] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [items, setItems] = useState([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
   const [orderSupplierId, setOrderSupplierId] = useState<number | null>(null);
+  const [orderCatalogItems, setOrderCatalogItems] = useState<SupplierItemI[]>([]);
 
   // Catalog state
   const [catalogSupplierId, setCatalogSupplierId] = useState<number | null>(null);
@@ -51,11 +56,11 @@ export default function PurchasesPage() {
   // Invoice state
   const [invoices, setInvoices] = useState<InvoiceI[]>([]);
   const [payingInvoice, setPayingInvoice] = useState<InvoiceI | null>(null);
+  const [invoiceSupplierFilter, setInvoiceSupplierFilter] = useState<number | null>(null);
 
   // Ledger state
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [expandedSupplier, setExpandedSupplier] = useState<number | null>(null);
-  const [payOnlineLoading, setPayOnlineLoading] = useState<number | null>(null);
 
   // Category state
   const [categories, setCategories] = useState<PurchaseCategoryI[]>([]);
@@ -64,12 +69,25 @@ export default function PurchasesPage() {
   const [catMsg, setCatMsg] = useState("");
   const [catMsgType, setCatMsgType] = useState<"success" | "error">("success");
 
-  const isManager = user?.role === "owner" || user?.role === "manager";
+  const [branchFilter, setBranchFilter] = useState<string>("");
+  const [range, setRange] = useState<DateRange>({ from: "", to: "" });
+
+  const isManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
+  const isStaff = user?.role === "staff";
+
+  const listParams = (bid: string) => {
+    const parts = [...(bid ? [`branch_id=${bid}`] : []), ...dateRangeParams(range)];
+    return parts.length ? `?${parts.join("&")}` : "";
+  };
+
+  const loadOrders = (bid: string = branchFilter) =>
+    apiGet(`/api/purchases/orders${listParams(bid)}`).then(setOrders);
+
+  useEffect(() => { loadOrders(); }, [range]);
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);
     apiGet("/api/purchases/suppliers").then(setSuppliers);
-    apiGet("/api/purchases/orders").then(setOrders);
     apiGet("/api/purchases/categories").then(setCategories);
   }, []);
 
@@ -125,17 +143,52 @@ export default function PurchasesPage() {
     setCatalogItems(res);
   };
 
+  const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<number>>(new Set());
+  const [catalogQuantities, setCatalogQuantities] = useState<Record<number, string>>({});
+
   const loadSupplierItemsForOrder = async (suppId: number) => {
     setOrderSupplierId(suppId);
     const catItems: SupplierItemI[] = await apiGet(`/api/purchases/suppliers/${suppId}/items`);
-    if (catItems.length > 0) {
-      setItems(catItems.map(ci => ({
-        item_name: ci.item_name, quantity: "1", unit: ci.unit,
-        unit_price: ci.unit_price.toFixed(3), total: ci.unit_price.toFixed(3),
-      })));
+    setOrderCatalogItems(catItems);
+    setSelectedCatalogIds(new Set());
+    setCatalogQuantities({});
+    setItems([]);
+  };
+
+  const toggleCatalogItem = (ci: SupplierItemI) => {
+    const newSet = new Set(selectedCatalogIds);
+    const newQty = { ...catalogQuantities };
+    if (newSet.has(ci.id)) {
+      newSet.delete(ci.id);
+      delete newQty[ci.id];
     } else {
-      setItems([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
+      newSet.add(ci.id);
+      newQty[ci.id] = "1";
     }
+    setSelectedCatalogIds(newSet);
+    setCatalogQuantities(newQty);
+    // Sync items array for form submission
+    const selected = orderCatalogItems.filter(c => newSet.has(c.id));
+    setItems(selected.map(c => ({
+      item_name: c.item_name,
+      quantity: newQty[c.id] || "1",
+      unit: c.unit,
+      unit_price: c.unit_price.toFixed(3),
+      total: (parseFloat(newQty[c.id] || "1") * c.unit_price).toFixed(3),
+    })));
+  };
+
+  const updateCatalogQty = (ciId: number, qty: string) => {
+    const newQty = { ...catalogQuantities, [ciId]: qty };
+    setCatalogQuantities(newQty);
+    const selected = orderCatalogItems.filter(c => selectedCatalogIds.has(c.id));
+    setItems(selected.map(c => ({
+      item_name: c.item_name,
+      quantity: newQty[c.id] || "1",
+      unit: c.unit,
+      unit_price: c.unit_price.toFixed(3),
+      total: (parseFloat(newQty[c.id] || "1") * c.unit_price).toFixed(3),
+    })));
   };
 
   const addItem = () => setItems([...items, { item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
@@ -153,20 +206,95 @@ export default function PurchasesPage() {
 
   const handleOrderSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     fd.set("items", JSON.stringify(items));
     if (user?.branch_id) fd.set("branch_id", String(user.branch_id));
-    await apiPost("/api/purchases/orders", fd);
+    // Auto-set category from supplier
+    if (orderSupplierId) {
+      const sup = suppliers.find(s => s.id === orderSupplierId);
+      if (sup?.category_id) fd.set("category_id", String(sup.category_id));
+    }
+    if (editingOrder) {
+      await fetch(`/api/purchases/orders/${editingOrder.id}`, {
+        method: "PUT", body: fd,
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+    } else {
+      await apiPost("/api/purchases/orders", fd);
+    }
     setShowOrderForm(false);
+    setEditingOrder(null);
     setItems([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]);
-    apiGet("/api/purchases/orders").then(setOrders);
+    setOrderSupplierId(null);
+    setOrderCatalogItems([]);
+    setSelectedCatalogIds(new Set());
+    setCatalogQuantities({});
+    loadOrders();
+  };
+
+  const startEditOrder = async (order: PurchaseOrder) => {
+    setEditingOrder(order);
+    setShowOrderForm(true);
+    // Load order items
+    const orderItems: OrderItem[] = await apiGet(`/api/purchases/orders/${order.id}/items`);
+    setItems(orderItems.map(i => ({
+      item_name: i.item_name,
+      quantity: String(i.quantity),
+      unit: i.unit,
+      unit_price: String(i.unit_price),
+      total: String(i.total),
+    })));
+    // Load supplier catalog
+    await loadSupplierItemsForOrder(order.supplier_id);
+    // Pre-select items that match
+    const catItems: SupplierItemI[] = await apiGet(`/api/purchases/suppliers/${order.supplier_id}/items`);
+    const matchedIds = new Set<number>();
+    const quantities: Record<number, string> = {};
+    orderItems.forEach(oi => {
+      const match = catItems.find(c => c.item_name === oi.item_name);
+      if (match) {
+        matchedIds.add(match.id);
+        quantities[match.id] = String(oi.quantity);
+      }
+    });
+    setSelectedCatalogIds(matchedIds);
+    setCatalogQuantities(quantities);
+  };
+
+  const deleteOrder = async (orderId: number) => {
+    if (!confirm(t("confirm_delete"))) return;
+    await fetch(`/api/purchases/orders/${orderId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    });
+    loadOrders();
   };
 
   const handleSupplierSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    await apiPost("/api/purchases/suppliers", new FormData(e.currentTarget));
+    const fd = new FormData(e.currentTarget);
+    if (editingSupplier) {
+      await fetch(`/api/purchases/suppliers/${editingSupplier.id}`, {
+        method: "PUT", body: fd,
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+    } else {
+      await apiPost("/api/purchases/suppliers", fd);
+    }
     setShowSupplierForm(false);
+    setEditingSupplier(null);
     apiGet("/api/purchases/suppliers").then(setSuppliers);
+  };
+
+  const deleteSupplier = async (suppId: number) => {
+    if (!confirm(t("confirm_delete"))) return;
+    await fetch(`/api/purchases/suppliers/${suppId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    });
+    apiGet("/api/purchases/suppliers").then(setSuppliers);
+    if (catalogSupplierId === suppId) { setCatalogSupplierId(null); setCatalogItems([]); }
   };
 
   const handleCatalogItemSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -206,6 +334,7 @@ export default function PurchasesPage() {
   const handleReceiveSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!receivingOrder) return;
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     fd.set("items", JSON.stringify(recvItems));
     await fetch(`/api/purchases/orders/${receivingOrder.id}/receive`, {
@@ -213,7 +342,7 @@ export default function PurchasesPage() {
       headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
     });
     setReceivingOrder(null);
-    apiGet("/api/purchases/orders").then(setOrders);
+    loadOrders();
   };
 
   const updateRecvItem = (i: number, field: string, val: string) => {
@@ -226,6 +355,7 @@ export default function PurchasesPage() {
   const handlePaySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!payingInvoice) return;
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     await fetch(`/api/purchases/invoices/${payingInvoice.id}/pay`, {
       method: "POST", body: fd,
@@ -233,67 +363,36 @@ export default function PurchasesPage() {
     });
     setPayingInvoice(null);
     apiGet("/api/purchases/invoices").then(setInvoices);
-    apiGet("/api/purchases/orders").then(setOrders);
-  };
-
-  const handlePayOnline = async (invoiceId: number) => {
-    setPayOnlineLoading(invoiceId);
-    try {
-      const res = await fetch(`/api/payment/charge/${invoiceId}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
-      const data = await res.json();
-      if (res.ok && data.redirect_url) {
-        window.location.href = data.redirect_url;
-      } else {
-        alert(data.detail || t("payment_error"));
-      }
-    } catch {
-      alert(t("payment_error"));
-    }
-    setPayOnlineLoading(null);
+    loadOrders();
   };
 
   const supplierName = (id: number) => suppliers.find(s => s.id === id)?.name || "";
   const branchName = (id: number) => { const b = branches.find(x => x.id === id); return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : ""; };
   const getSupplier = (id: number) => suppliers.find(s => s.id === id);
 
-  const buildOrderMessage = (order: PurchaseOrder, orderItems: OrderItem[]) => {
-    const supplier = getSupplier(order.supplier_id);
-    let msg = `*Purchase Order #${order.id}*\n`;
-    msg += `Date: ${order.date}\nBranch: ${branchName(order.branch_id)}\n`;
-    msg += `Supplier: ${supplier?.name || ""}\nPayment: ${order.payment_type}\n\n*Items:*\n`;
-    orderItems.forEach((item, i) => {
-      msg += `${i + 1}. ${item.item_name} - ${item.quantity} ${item.unit} x KD ${item.unit_price.toFixed(3)} = KD ${item.total.toFixed(3)}\n`;
-    });
-    msg += `\n*Total: KD ${order.total_amount.toFixed(3)}*`;
-    return msg;
-  };
-
   const sendWhatsApp = async (order: PurchaseOrder) => {
     const supplier = getSupplier(order.supplier_id);
-    if (!supplier?.whatsapp) { alert(t("no_whatsapp")); return; }
-    const orderItems: OrderItem[] = await apiGet(`/api/purchases/orders/${order.id}/items`);
-    const msg = buildOrderMessage(order, orderItems);
-    window.open(`https://wa.me/${supplier.whatsapp.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(msg)}`, "_blank");
+    if (!supplier?.whatsapp && !supplier?.whatsapp_group) { alert(t("no_whatsapp")); return; }
+    try {
+      const fd = new FormData();
+      fd.append("order_id", String(order.id));
+      fd.append("lang", i18n.language);
+      const res = await fetch("/api/whatsapp/send-purchase", {
+        method: "POST", body: fd,
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.detail || "Failed to send via Green API");
+        return;
+      }
+      alert(t("whatsapp_sent") || "Sent successfully via Green API!");
+    } catch (e) {
+      alert("Failed to send via Green API. Check Settings → WhatsApp Integration.");
+    }
   };
 
-  const [sendingEmail, setSendingEmail] = useState<number | null>(null);
-  const sendEmail = async (order: PurchaseOrder) => {
-    const supplier = getSupplier(order.supplier_id);
-    if (!supplier?.email) { alert(t("no_email")); return; }
-    setSendingEmail(order.id);
-    try {
-      const res = await fetch(`/api/email/send-po/${order.id}`, {
-        method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed");
-      alert(data.message);
-    } catch (e: unknown) { alert((e as Error).message || t("email_send_error")); }
-    setSendingEmail(null);
-  };
+
 
   const statusColor = (s: string) => {
     if (s === "paid") return "bg-green-100 text-green-700";
@@ -302,29 +401,34 @@ export default function PurchasesPage() {
     return "bg-yellow-100 text-yellow-700";
   };
 
+  const exportData = (fmt: string) => {
+    const ext = fmt === "excel" ? "xlsx" : fmt;
+    apiDownload(`/api/export/purchases/${fmt}${listParams(branchFilter)}`, `purchases.${ext}`);
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("purchases")}</h2>
         <div className="flex gap-2">
-          <button onClick={() => apiDownload("/api/export/purchases/csv", "purchases.csv")}
+          <button onClick={() => exportData("csv")}
             className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
             {t("export_csv")}
           </button>
-          <button onClick={() => apiDownload("/api/export/purchases/excel", "purchases.xlsx")}
+          <button onClick={() => exportData("excel")}
             className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
             {t("export_excel")}
           </button>
-          <button onClick={() => apiDownload("/api/export/purchases/pdf", "purchases.pdf")}
+          <button onClick={() => exportData("pdf")}
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
             {t("export_pdf")}
           </button>
-          <button onClick={() => setShowSupplierForm(!showSupplierForm)}
+          <button onClick={() => { setEditingSupplier(null); setShowSupplierForm(!showSupplierForm); }}
             className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm">
             + {t("supplier")}
           </button>
           {tab === "orders" && (
-            <button onClick={() => setShowOrderForm(!showOrderForm)}
+            <button onClick={() => { setShowOrderForm(!showOrderForm); if (showOrderForm) { setEditingOrder(null); setOrderSupplierId(null); setOrderCatalogItems([]); setSelectedCatalogIds(new Set()); setCatalogQuantities({}); setItems([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]); } }}
               className="px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
               {showOrderForm ? t("cancel") : t("add_new")}
             </button>
@@ -345,24 +449,32 @@ export default function PurchasesPage() {
 
       {showSupplierForm && (
         <form onSubmit={handleSupplierSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-3">
-          <h3 className="font-semibold">{t("add_new")} {t("supplier")}</h3>
+          <h3 className="font-semibold">{editingSupplier ? t("edit") : t("add_new")} {t("supplier")}</h3>
           <div className="grid grid-cols-2 gap-3">
-            <input name="name" placeholder={t("name")} required className="px-3 py-2 border rounded-lg text-sm" />
-            <input name="email" placeholder={t("email")} className="px-3 py-2 border rounded-lg text-sm" />
-            <input name="whatsapp" placeholder={t("whatsapp")} className="px-3 py-2 border rounded-lg text-sm" />
-            <select name="payment_type" className="px-3 py-2 border rounded-lg text-sm">
+            <input name="name" defaultValue={editingSupplier?.name || ""} placeholder={t("name")} required className="px-3 py-2 border rounded-lg text-sm" />
+            <input name="whatsapp" defaultValue={editingSupplier?.whatsapp || ""} placeholder={t("whatsapp")} className="px-3 py-2 border rounded-lg text-sm" />
+            <input name="whatsapp_group" defaultValue={editingSupplier?.whatsapp_group || ""} placeholder={t("whatsapp_group_id") + " (120363XXX@g.us)"} className="px-3 py-2 border rounded-lg text-sm" />
+            <select name="payment_type" defaultValue={editingSupplier?.payment_type || "cash"} className="px-3 py-2 border rounded-lg text-sm">
               <option value="cash">{t("cash")}</option>
               <option value="credit">{t("credit")}</option>
             </select>
+            <select name="category_id" defaultValue={editingSupplier?.category_id || ""} className="px-3 py-2 border rounded-lg text-sm">
+              <option value="">{t("select_category")}</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{i18n.language === "ar" ? (c.name_ar || c.name) : c.name}</option>)}
+            </select>
           </div>
-          <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">{t("save")}</button>
+          <div className="flex gap-2">
+            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">{t("save")}</button>
+            <button type="button" onClick={() => { setShowSupplierForm(false); setEditingSupplier(null); }}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm">{t("cancel")}</button>
+          </div>
         </form>
       )}
 
       {/* ========== Receiving Modal ========== */}
       {receivingOrder && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <form onSubmit={handleReceiveSubmit} className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-4">
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+          <form onSubmit={handleReceiveSubmit} className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-4 my-auto">
             <h3 className="text-lg font-bold">{t("receive_order")} #{receivingOrder.id}</h3>
             <p className="text-sm text-gray-500">{t("supplier")}: {supplierName(receivingOrder.supplier_id)} | {t("date")}: {receivingOrder.date}</p>
             <div>
@@ -412,8 +524,8 @@ export default function PurchasesPage() {
 
       {/* ========== Pay Invoice Modal ========== */}
       {payingInvoice && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <form onSubmit={handlePaySubmit} className="bg-white rounded-xl p-6 max-w-md w-full space-y-4">
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+          <form onSubmit={handlePaySubmit} className="bg-white rounded-xl p-6 max-w-md w-full space-y-4 max-h-[90vh] overflow-y-auto my-auto">
             <h3 className="text-lg font-bold">{t("pay_invoice")} #{payingInvoice.id}</h3>
             <p className="text-sm text-gray-500">
               {payingInvoice.supplier_name} | PO #{payingInvoice.purchase_order_id} | KD {payingInvoice.total_amount.toFixed(3)}
@@ -440,16 +552,35 @@ export default function PurchasesPage() {
 
       {/* ========== ORDERS TAB ========== */}
       {tab === "orders" && (
+        <div className="mb-4 flex items-center gap-4 flex-wrap">
+          {!isStaff && (
+            <select value={branchFilter}
+              onChange={e => { setBranchFilter(e.target.value); loadOrders(e.target.value); }}
+              className="px-3 py-2 border rounded-lg text-sm">
+              <option value="">{t("all_branches")}</option>
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>
+                  {i18n.language === "ar" ? (b.name_ar || b.name) : b.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <DateRangeFilter value={range} onChange={setRange} />
+        </div>
+      )}
+
+      {tab === "orders" && (
         <>
           {showOrderForm && (
-            <form onSubmit={handleOrderSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
+            <form onSubmit={handleOrderSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4" key={editingOrder?.id || "new"}>
+              <h3 className="font-semibold text-lg">{editingOrder ? `${t("edit")} PO-${String(editingOrder.id).padStart(4,"0")}` : t("add_new")}</h3>
               <div className="grid grid-cols-2 gap-4">
                 {user?.branch_id ? (
                   <input type="hidden" name="branch_id" value={user.branch_id} />
                 ) : (
                   <div>
                     <label className="block text-sm font-medium mb-1">{t("branch")}</label>
-                    <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.branch_id || ""}>
                       {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
                     </select>
                   </div>
@@ -457,6 +588,7 @@ export default function PurchasesPage() {
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("supplier")}</label>
                   <select name="supplier_id" required className="w-full px-3 py-2 border rounded-lg text-sm"
+                    defaultValue={editingOrder?.supplier_id || ""}
                     onChange={e => loadSupplierItemsForOrder(Number(e.target.value))}>
                     <option value="">{t("select_supplier")}</option>
                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -465,58 +597,112 @@ export default function PurchasesPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
-                  <input type="date" name="order_date" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="date" name="order_date" required className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.date || ""} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("payment_type")}</label>
-                  <select name="payment_type" className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="payment_type" className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.payment_type || "cash"}>
                     <option value="cash">{t("cash")}</option>
                     <option value="credit">{t("credit")}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t("category")}</label>
-                  <select name="category_id" className="w-full px-3 py-2 border rounded-lg text-sm">
-                    <option value="">{t("select_category")}</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div>
                   <label className="block text-sm font-medium mb-1">{t("delivery_location")}</label>
-                  <input name="delivery_location" placeholder={t("delivery_location")} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <select name="delivery_location" className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.delivery_location || ""}>
+                    <option value="">{t("select_branch")}</option>
+                    {branches.map(b => {
+                      const label = i18n.language === "ar" ? (b.name_ar || b.name) : b.name;
+                      return <option key={b.id} value={label}>{label}</option>;
+                    })}
+                  </select>
                 </div>
               </div>
 
-              <h3 className="font-semibold">{t("items")}</h3>
-              <div className="space-y-2">
-                {items.map((item, i) => (
-                  <div key={i} className="grid grid-cols-6 gap-2 items-center">
-                    <input placeholder={t("item_name")} value={item.item_name}
-                      onChange={e => updateItem(i, "item_name", e.target.value)}
-                      className="px-2 py-1.5 border rounded text-sm" required />
-                    <input type="number" step="0.01" placeholder={t("quantity")} value={item.quantity}
-                      onChange={e => updateItem(i, "quantity", e.target.value)}
-                      className="px-2 py-1.5 border rounded text-sm" />
-                    <input placeholder={t("unit")} value={item.unit}
-                      onChange={e => updateItem(i, "unit", e.target.value)}
-                      className="px-2 py-1.5 border rounded text-sm" />
-                    <input type="number" step="0.001" placeholder={t("unit_price")} value={item.unit_price}
-                      onChange={e => updateItem(i, "unit_price", e.target.value)}
-                      className="px-2 py-1.5 border rounded text-sm" />
-                    <input readOnly value={item.total} className="px-2 py-1.5 border rounded text-sm bg-gray-50" />
-                    <button type="button" onClick={() => removeItem(i)}
-                      className="text-red-500 hover:text-red-700 text-sm">✕</button>
+              {orderCatalogItems.length > 0 ? (
+                <>
+                  <h3 className="font-semibold">{t("select_products")} <span className="text-sm text-gray-400 font-normal">({selectedCatalogIds.size} {t("selected")})</span></h3>
+                  <div className="bg-gray-50 rounded-lg border max-h-96 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-100 border-b sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-center w-10"></th>
+                          <th className="px-3 py-2 text-left">{t("item_name")}</th>
+                          <th className="px-3 py-2 text-left">{t("item_name_ar")}</th>
+                          <th className="px-3 py-2 text-left">{t("unit")}</th>
+                          <th className="px-3 py-2 text-right">{t("unit_price")} (KD)</th>
+                          <th className="px-3 py-2 text-center w-24">{t("quantity")}</th>
+                          <th className="px-3 py-2 text-right w-24">{t("total")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {orderCatalogItems.map(ci => {
+                          const isSelected = selectedCatalogIds.has(ci.id);
+                          const qty = catalogQuantities[ci.id] || "1";
+                          return (
+                            <tr key={ci.id} className={`border-b cursor-pointer hover:bg-blue-50 ${isSelected ? "bg-emerald-50" : ""}`}
+                              onClick={() => toggleCatalogItem(ci)}>
+                              <td className="px-3 py-2 text-center">
+                                <input type="checkbox" checked={isSelected} readOnly
+                                  className="w-4 h-4 accent-emerald-600" />
+                              </td>
+                              <td className="px-3 py-2 font-medium">{ci.item_name}</td>
+                              <td className="px-3 py-2 text-gray-500" dir="rtl">{ci.item_name_ar || "—"}</td>
+                              <td className="px-3 py-2">{ci.unit}</td>
+                              <td className="px-3 py-2 text-right font-mono">{ci.unit_price.toFixed(3)}</td>
+                              <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                                {isSelected && (
+                                  <input type="number" step="0.01" min="0.01" value={qty}
+                                    onChange={e => updateCatalogQty(ci.id, e.target.value)}
+                                    className="w-20 px-2 py-1 border rounded text-sm text-center" />
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono">
+                                {isSelected ? `${(parseFloat(qty) * ci.unit_price).toFixed(3)}` : "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-              </div>
-              <div className="flex items-center justify-between">
-                <button type="button" onClick={addItem} className="text-sm text-emerald-600 hover:underline">
-                  + {t("add_new")} {t("items")}
-                </button>
-                <span className="text-sm font-semibold">
-                  {t("total")}: KD {items.reduce((s, it) => s + parseFloat(it.total || "0"), 0).toFixed(3)}
-                </span>
-              </div>
+                  <div className="text-right font-semibold">
+                    {t("total")}: KD {items.reduce((s, it) => s + parseFloat(it.total || "0"), 0).toFixed(3)}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 className="font-semibold">{t("items")}</h3>
+                  <div className="space-y-2">
+                    {items.map((item, i) => (
+                      <div key={i} className="grid grid-cols-6 gap-2 items-center">
+                        <input placeholder={t("item_name")} value={item.item_name}
+                          onChange={e => updateItem(i, "item_name", e.target.value)}
+                          className="px-2 py-1.5 border rounded text-sm" required />
+                        <input type="number" step="0.01" placeholder={t("quantity")} value={item.quantity}
+                          onChange={e => updateItem(i, "quantity", e.target.value)}
+                          className="px-2 py-1.5 border rounded text-sm" />
+                        <input placeholder={t("unit")} value={item.unit}
+                          onChange={e => updateItem(i, "unit", e.target.value)}
+                          className="px-2 py-1.5 border rounded text-sm" />
+                        <input type="number" step="0.001" placeholder={t("unit_price")} value={item.unit_price}
+                          onChange={e => updateItem(i, "unit_price", e.target.value)}
+                          className="px-2 py-1.5 border rounded text-sm" />
+                        <input readOnly value={item.total} className="px-2 py-1.5 border rounded text-sm bg-gray-50" />
+                        <button type="button" onClick={() => removeItem(i)}
+                          className="text-red-500 hover:text-red-700 text-sm">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <button type="button" onClick={addItem} className="text-sm text-emerald-600 hover:underline">
+                      + {t("add_new")} {t("items")}
+                    </button>
+                    <span className="text-sm font-semibold">
+                      {t("total")}: KD {items.reduce((s, it) => s + parseFloat(it.total || "0"), 0).toFixed(3)}
+                    </span>
+                  </div>
+                </>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-1">{t("attachment")}</label>
                 <div className="flex gap-2">
@@ -579,6 +765,18 @@ export default function PurchasesPage() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex gap-1 justify-center flex-wrap">
+                        <button onClick={() => startEditOrder(o)}
+                          className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
+                          {t("edit")}
+                        </button>
+                        <button onClick={() => apiDownload(`/api/export/purchase-order/${o.id}/pdf`, `PO-${String(o.id).padStart(4,"0")}.pdf`)}
+                          className="px-2 py-1 bg-orange-500 text-white rounded text-xs hover:bg-orange-600">
+                          {t("print")}
+                        </button>
+                        <button onClick={() => deleteOrder(o.id)}
+                          className="px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700">
+                          {t("delete")}
+                        </button>
                         {o.status === "pending" && (
                           <button onClick={() => startReceiving(o)}
                             className="px-2 py-1 bg-indigo-500 text-white rounded text-xs hover:bg-indigo-600">
@@ -589,11 +787,12 @@ export default function PurchasesPage() {
                           className="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">
                           {t("whatsapp")}
                         </button>
-                        <button onClick={() => sendEmail(o)} title={t("send_email")}
-                          disabled={sendingEmail === o.id}
-                          className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 disabled:opacity-50">
-                          {sendingEmail === o.id ? "..." : t("email")}
-                        </button>
+                        {o.attachment_path && (
+                          <a href={`/uploads/${o.attachment_path}`} target="_blank" rel="noopener noreferrer"
+                            className="px-2 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">
+                            {t("attachment")}
+                          </a>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -607,13 +806,53 @@ export default function PurchasesPage() {
       {/* ========== SUPPLIER CATALOG TAB ========== */}
       {tab === "catalog" && (
         <div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border mb-4">
-            <label className="block text-sm font-medium mb-2">{t("select_supplier")}</label>
-            <select value={catalogSupplierId || ""} onChange={e => loadCatalog(Number(e.target.value))}
-              className="w-full max-w-sm px-3 py-2 border rounded-lg text-sm">
-              <option value="">{t("select_supplier")}</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+          {/* Suppliers List with Edit/Delete */}
+          <div className="bg-white rounded-xl shadow-sm border mb-4 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-4 py-3 text-left">#</th>
+                  <th className="px-4 py-3 text-left">{t("supplier")}</th>
+                  <th className="px-4 py-3 text-left">{t("category")}</th>
+                  <th className="px-4 py-3 text-left">{t("whatsapp")}</th>
+                  <th className="px-4 py-3 text-left">{t("payment_type")}</th>
+                  <th className="px-4 py-3 text-center">{t("actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {suppliers.map((s, idx) => (
+                  <tr key={s.id} className={`border-b hover:bg-gray-50 cursor-pointer ${catalogSupplierId === s.id ? "bg-emerald-50" : ""}`}>
+                    <td className="px-4 py-3" onClick={() => loadCatalog(s.id)}>{idx + 1}</td>
+                    <td className="px-4 py-3 font-medium" onClick={() => loadCatalog(s.id)}>{s.name}</td>
+                    <td className="px-4 py-3" onClick={() => loadCatalog(s.id)}>{categoryName(s.category_id ?? null)}</td>
+                    <td className="px-4 py-3 text-gray-500" onClick={() => loadCatalog(s.id)}>{s.whatsapp || "—"}</td>
+                    <td className="px-4 py-3" onClick={() => loadCatalog(s.id)}>
+                      <span className={`px-2 py-1 rounded-full text-xs ${s.payment_type === "cash" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
+                        {t(s.payment_type)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex gap-1 justify-center">
+                        <button onClick={() => loadCatalog(s.id)}
+                          className="px-2 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
+                          {t("items")}
+                        </button>
+                        <button onClick={() => { setEditingSupplier(s); setShowSupplierForm(true); }}
+                          className="px-2 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600">
+                          {t("edit")}
+                        </button>
+                        {isManager && (
+                          <button onClick={() => deleteSupplier(s.id)}
+                            className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">
+                            {t("delete")}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
           {catalogSupplierId && (
             <>
@@ -799,7 +1038,17 @@ export default function PurchasesPage() {
 
       {/* ========== INVOICES TAB ========== */}
       {tab === "invoices" && (
-        <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+        <div>
+          <div className="bg-white p-4 rounded-xl shadow-sm border mb-4">
+            <label className="block text-sm font-medium mb-2">{t("select_supplier")}</label>
+            <select value={invoiceSupplierFilter || ""}
+              onChange={e => setInvoiceSupplierFilter(e.target.value ? Number(e.target.value) : null)}
+              className="w-full max-w-sm px-3 py-2 border rounded-lg text-sm">
+              <option value="">{t("all_suppliers")}</option>
+              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -815,9 +1064,13 @@ export default function PurchasesPage() {
               </tr>
             </thead>
             <tbody>
-              {invoices.length === 0 ? (
+              {(() => {
+                const filtered = invoiceSupplierFilter
+                  ? invoices.filter(inv => inv.supplier_id === invoiceSupplierFilter)
+                  : invoices;
+                return filtered.length === 0 ? (
                 <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{t("no_invoices")}</td></tr>
-              ) : invoices.map(inv => (
+              ) : filtered.map(inv => (
                 <tr key={inv.id} className="border-b hover:bg-gray-50">
                   <td className="px-4 py-3">{inv.id}</td>
                   <td className="px-4 py-3">{inv.purchase_order_id}</td>
@@ -838,11 +1091,6 @@ export default function PurchasesPage() {
                           className="px-2 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
                           {t("pay")}
                         </button>
-                        <button onClick={() => handlePayOnline(inv.id)}
-                          disabled={payOnlineLoading === inv.id}
-                          className="px-2 py-1 bg-indigo-500 text-white rounded text-xs hover:bg-indigo-600 disabled:opacity-50">
-                          {payOnlineLoading === inv.id ? "..." : t("pay_online")}
-                        </button>
                       </div>
                     )}
                     {inv.status === "paid" && inv.paid_date && (
@@ -850,9 +1098,11 @@ export default function PurchasesPage() {
                     )}
                   </td>
                 </tr>
-              ))}
+              ));
+              })()}
             </tbody>
           </table>
+        </div>
         </div>
       )}
 

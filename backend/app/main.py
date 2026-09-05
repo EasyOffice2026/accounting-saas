@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
 
-from app.database import Base, engine
+from app.database import Base, engine, UPLOAD_DIR, SessionLocal
 from app.models import *  # noqa: F401,F403 — register all models
 from app.utils.auth import hash_password
 from app.routes import auth, branches, sales, purchases, expenses, hr, dashboard
@@ -22,9 +22,8 @@ app.add_middleware(
 )
 
 # Mount uploads
-upload_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
-os.makedirs(upload_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=upload_dir), name="uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Include routes
 app.include_router(auth.router)
@@ -59,12 +58,16 @@ FRONTEND_DIST = os.path.abspath(FRONTEND_DIST)
 if os.path.isdir(FRONTEND_DIST):
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="frontend-assets")
 
+    NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
+
     @app.get("/{full_path:path}")
     async def serve_spa(request: Request, full_path: str):
         file_path = os.path.join(FRONTEND_DIST, full_path)
-        if os.path.isfile(file_path):
+        # Hashed asset files are safe to cache; index.html must never be cached
+        # so clients always fetch the current asset hashes after a deploy.
+        if os.path.isfile(file_path) and not file_path.endswith("index.html"):
             return FileResponse(file_path)
-        return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+        return FileResponse(os.path.join(FRONTEND_DIST, "index.html"), headers=NO_CACHE)
 
 
 @app.on_event("startup")
@@ -72,6 +75,23 @@ def startup():
     Base.metadata.create_all(bind=engine)
     _migrate_columns()
     _seed_data()
+    _sync_contract_expenses()
+
+
+def _sync_contract_expenses():
+    """Backfill: every paid contract payment is mirrored as an Expense."""
+    from app.models.hr import Contract, ContractPayment
+    from app.routes.hr import _sync_payment_expense
+    db = SessionLocal()
+    try:
+        contracts = {c.id: c for c in db.query(Contract).all()}
+        for p in db.query(ContractPayment).filter(ContractPayment.status == "paid").all():
+            c = contracts.get(p.contract_id)
+            if c:
+                _sync_payment_expense(db, p, c)
+        db.commit()
+    finally:
+        db.close()
 
 
 def _migrate_columns():
@@ -85,6 +105,10 @@ def _migrate_columns():
             if "api_url" not in cols:
                 conn.execute(text("ALTER TABLE whatsapp_settings ADD COLUMN api_url TEXT"))
                 conn.commit()
+            for gcol in ["sales_group", "purchases_group", "expenses_group", "hr_group", "transfers_group"]:
+                if gcol not in cols:
+                    conn.execute(text(f"ALTER TABLE whatsapp_settings ADD COLUMN {gcol} TEXT"))
+                    conn.commit()
 
         # Purchase orders: add missing columns
         if "purchase_orders" in insp.get_table_names():
@@ -93,6 +117,17 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE purchase_orders ADD COLUMN delivery_location TEXT"))
             if "category_id" not in cols:
                 conn.execute(text("ALTER TABLE purchase_orders ADD COLUMN category_id INTEGER"))
+            conn.commit()
+
+        # Supplier items: add missing columns
+        if "supplier_items" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("supplier_items")]
+            if "category_id" not in cols:
+                conn.execute(text("ALTER TABLE supplier_items ADD COLUMN category_id INTEGER"))
+            if "item_name_ar" not in cols:
+                conn.execute(text("ALTER TABLE supplier_items ADD COLUMN item_name_ar TEXT"))
+            if "packaging" not in cols:
+                conn.execute(text("ALTER TABLE supplier_items ADD COLUMN packaging TEXT"))
             conn.commit()
 
         # Expenses: add missing columns
@@ -116,6 +151,9 @@ def _migrate_columns():
             for sal_col in ["work_permit_salary", "actual_salary"]:
                 if sal_col not in cols:
                     conn.execute(text(f"ALTER TABLE employees ADD COLUMN {sal_col} FLOAT DEFAULT 0"))
+            for date_col in ["last_working_date", "residency_expiry", "health_card_expiry"]:
+                if date_col not in cols:
+                    conn.execute(text(f"ALTER TABLE employees ADD COLUMN {date_col} DATE"))
             conn.commit()
 
         # Salary payments: add new fields
@@ -147,6 +185,220 @@ def _migrate_columns():
             if "deduction_month" not in cols:
                 conn.execute(text("ALTER TABLE advance_loans ADD COLUMN deduction_month TEXT"))
                 conn.commit()
+
+        # Staff benefits/deductions: add frequency + end_month for recurring incentives
+        if "staff_benefits_deductions" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("staff_benefits_deductions")]
+            if "frequency" not in cols:
+                conn.execute(text("ALTER TABLE staff_benefits_deductions ADD COLUMN frequency TEXT DEFAULT 'one_time'"))
+                conn.commit()
+            if "end_month" not in cols:
+                conn.execute(text("ALTER TABLE staff_benefits_deductions ADD COLUMN end_month TEXT"))
+                conn.commit()
+
+        # Transfer orders - add source_branch_id for branch-to-branch transfers
+        if "transfer_orders" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("transfer_orders")]
+            if "source_branch_id" not in cols:
+                conn.execute(text("ALTER TABLE transfer_orders ADD COLUMN source_branch_id INTEGER"))
+                conn.commit()
+
+        # Resignation table - add dues_cleared_consent columns
+        if "resignations" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("resignations")]
+            if "dues_cleared_consent" not in cols:
+                conn.execute(text("ALTER TABLE resignations ADD COLUMN dues_cleared_consent BOOLEAN DEFAULT FALSE"))
+            if "consent_date" not in cols:
+                conn.execute(text("ALTER TABLE resignations ADD COLUMN consent_date DATE"))
+            if "other_earnings" not in cols:
+                conn.execute(text("ALTER TABLE resignations ADD COLUMN other_earnings FLOAT DEFAULT 0"))
+            if "other_deductions" not in cols:
+                conn.execute(text("ALTER TABLE resignations ADD COLUMN other_deductions FLOAT DEFAULT 0"))
+            conn.commit()
+
+        # Brands table
+        if "brands" not in insp.get_table_names():
+            conn.execute(text("""
+                CREATE TABLE brands (
+                    id SERIAL PRIMARY KEY,
+                    name_en TEXT NOT NULL,
+                    name_ar TEXT,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+
+        # Seed default brand and assign to existing branches/contracts
+        from app.models.hr import Brand
+        brand_count = conn.execute(text("SELECT COUNT(*) FROM brands")).scalar()
+        if brand_count == 0:
+            conn.execute(text("INSERT INTO brands (name_en, name_ar, status) VALUES ('Mudawwarah', 'مدوّرة', 'active')"))
+            conn.commit()
+
+        # Add brand_id to branches
+        if "branches" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("branches")]
+            if "brand_id" not in cols:
+                conn.execute(text("ALTER TABLE branches ADD COLUMN brand_id INTEGER REFERENCES brands(id)"))
+                # Assign all existing branches to brand 1 (Mudawwarah)
+                conn.execute(text("UPDATE branches SET brand_id = 1 WHERE brand_id IS NULL"))
+                conn.commit()
+            if "whatsapp_number" not in cols:
+                conn.execute(text("ALTER TABLE branches ADD COLUMN whatsapp_number TEXT"))
+                conn.commit()
+            if "whatsapp_group" not in cols:
+                conn.execute(text("ALTER TABLE branches ADD COLUMN whatsapp_group TEXT"))
+                conn.commit()
+
+        # Contracts table
+        if "contracts" not in insp.get_table_names():
+            conn.execute(text("""
+                CREATE TABLE contracts (
+                    id SERIAL PRIMARY KEY,
+                    brand_id INTEGER REFERENCES brands(id),
+                    branch_id INTEGER REFERENCES branches(id),
+                    name TEXT NOT NULL,
+                    kind TEXT,
+                    place TEXT,
+                    value FLOAT DEFAULT 0,
+                    start_date DATE,
+                    end_date DATE,
+                    monthly_payment FLOAT DEFAULT 0,
+                    payment_day INTEGER DEFAULT 1,
+                    notes TEXT,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+        else:
+            cols = [c["name"] for c in insp.get_columns("contracts")]
+            if "brand_id" not in cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN brand_id INTEGER REFERENCES brands(id)"))
+                conn.execute(text("UPDATE contracts SET brand_id = 1 WHERE brand_id IS NULL"))
+                conn.commit()
+            if "period" not in cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN period TEXT"))
+                conn.commit()
+            if "branch_id" not in cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN branch_id INTEGER REFERENCES branches(id)"))
+                # Default each contract to its brand's administrative/first branch
+                conn.execute(text("""
+                    UPDATE contracts SET branch_id = (
+                        SELECT b.id FROM branches b WHERE b.brand_id = contracts.brand_id
+                        ORDER BY CASE WHEN b.name = 'Administration' THEN 0 ELSE 1 END, b.id LIMIT 1
+                    ) WHERE branch_id IS NULL AND brand_id IS NOT NULL
+                """))
+                conn.commit()
+
+        if "expenses" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("expenses")]
+            if "contract_payment_id" not in cols:
+                conn.execute(text("ALTER TABLE expenses ADD COLUMN contract_payment_id INTEGER REFERENCES contract_payments(id)"))
+                conn.commit()
+
+        # Transfer order lines: add item_name_ar
+        if "transfer_order_lines" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("transfer_order_lines")]
+            if "item_name_ar" not in cols:
+                conn.execute(text("ALTER TABLE transfer_order_lines ADD COLUMN item_name_ar TEXT"))
+                conn.commit()
+
+        # Transfer items: add category and unit_price
+        if "transfer_items" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("transfer_items")]
+            if "category" not in cols:
+                conn.execute(text("ALTER TABLE transfer_items ADD COLUMN category TEXT DEFAULT 'food'"))
+                conn.commit()
+            if "unit_price" not in cols:
+                conn.execute(text("ALTER TABLE transfer_items ADD COLUMN unit_price FLOAT DEFAULT 0"))
+                conn.commit()
+            if "opening_stock" not in cols:
+                conn.execute(text("ALTER TABLE transfer_items ADD COLUMN opening_stock FLOAT DEFAULT 0"))
+                conn.commit()
+
+        # Transfer order lines: add unit_price
+        if "transfer_order_lines" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("transfer_order_lines")]
+            if "unit_price" not in cols:
+                conn.execute(text("ALTER TABLE transfer_order_lines ADD COLUMN unit_price FLOAT DEFAULT 0"))
+                conn.commit()
+
+        # Users: add allowed_tabs
+        if "users" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("users")]
+            if "allowed_tabs" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN allowed_tabs TEXT"))
+                conn.commit()
+            if "allowed_brands" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN allowed_brands TEXT"))
+                conn.commit()
+
+        # Suppliers: add category_id
+        if "suppliers" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("suppliers")]
+            if "category_id" not in cols:
+                conn.execute(text("ALTER TABLE suppliers ADD COLUMN category_id INTEGER REFERENCES purchase_categories(id)"))
+                conn.commit()
+            if "whatsapp_group" not in cols:
+                conn.execute(text("ALTER TABLE suppliers ADD COLUMN whatsapp_group TEXT"))
+                conn.commit()
+
+        # Sales: add snoonu and cancelled columns
+        if "sales" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("sales")]
+            if "foodics_snoonu" not in cols:
+                conn.execute(text("ALTER TABLE sales ADD COLUMN foodics_snoonu FLOAT DEFAULT 0"))
+                conn.commit()
+            if "physical_snoonu" not in cols:
+                conn.execute(text("ALTER TABLE sales ADD COLUMN physical_snoonu FLOAT DEFAULT 0"))
+                conn.commit()
+            for ch in ["cash", "knet", "link", "talabat", "keeta", "jahez", "snoonu"]:
+                col = f"cancelled_{ch}"
+                if col not in cols:
+                    conn.execute(text(f"ALTER TABLE sales ADD COLUMN {col} FLOAT DEFAULT 0"))
+            conn.commit()
+
+        # Contract payments table
+        if "contract_payments" not in insp.get_table_names():
+            conn.execute(text("""CREATE TABLE IF NOT EXISTS contract_payments (
+                id SERIAL PRIMARY KEY,
+                contract_id INTEGER NOT NULL REFERENCES contracts(id),
+                due_date DATE NOT NULL,
+                amount FLOAT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                paid_date DATE,
+                payment_method TEXT,
+                reference TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            )"""))
+            conn.commit()
+
+        # Seed employers table from existing distinct employee.employer values
+        if "employers" in insp.get_table_names() and "employees" in insp.get_table_names():
+            existing_count = conn.execute(text("SELECT COUNT(*) FROM employers")).scalar()
+            if not existing_count:
+                rows = conn.execute(text(
+                    "SELECT DISTINCT employer FROM employees WHERE employer IS NOT NULL AND employer != ''"
+                )).fetchall()
+                for r in rows:
+                    nm = (r[0] or "").strip()
+                    if nm:
+                        conn.execute(text("INSERT INTO employers (name) VALUES (:n) ON CONFLICT (name) DO NOTHING"), {"n": nm})
+                conn.commit()
+
+        # HR Approval workflow columns
+        _approval_tables = ["salary_payments", "advance_loans", "staff_benefits_deductions", "leave_records"]
+        for tbl in _approval_tables:
+            if tbl in insp.get_table_names():
+                cols = [c["name"] for c in insp.get_columns(tbl)]
+                if "approval_status" not in cols:
+                    conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN approval_status TEXT DEFAULT 'approved'"))
+                    conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN approved_by INTEGER"))
+                    conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN approval_date TIMESTAMP"))
+                    conn.commit()
 
 
 def _seed_data():

@@ -1,29 +1,149 @@
 from fastapi import APIRouter, Depends, Form, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, and_
 from datetime import date, time
 from typing import Optional
 import calendar
 
 from app.database import get_db
-from app.models.hr import Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, LeaveRecord, Resignation
+from app.models.hr import Brand, Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, LoanRepayment, StaffBenefitDeduction, LeaveRecord, Resignation, Contract, ContractPayment, Employer
 from app.models.branch import Branch
+from app.models.expense import Expense, ExpenseCategory
 from app.models.user import User
 from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/api/hr", tags=["hr"])
 
-SALARY_VISIBLE_ROLES = ("owner", "manager")
+SALARY_VISIBLE_ROLES = ("owner", "manager", "accountant")
+
+
+def _brand_branch_ids(db: Session, brand_id: Optional[int]) -> Optional[list]:
+    """Return list of branch IDs for a brand, or None if no filter."""
+    if not brand_id:
+        return None
+    ids = [b.id for b in db.query(Branch).filter(Branch.brand_id == brand_id).all()]
+    return ids
+
+
+def _exclude_left_employees(q):
+    """Hide employees whose last working / termination date has already passed."""
+    left_on = func.coalesce(Employee.last_working_date, Employee.termination_date)
+    return q.filter(
+        Employee.is_active == True,
+        or_(left_on == None, left_on >= date.today()),
+    )
+
+
+def _staff_branch_id(user) -> Optional[int]:
+    """Branch id a user is restricted to (branch staff only), else None."""
+    if user is not None and user.role == "staff" and user.branch_id:
+        return user.branch_id
+    return None
+
+
+def _staff_emp_ids(db: Session, user) -> Optional[list]:
+    """Employee ids in a branch-staff user's own branch, else None (no filter)."""
+    bid = _staff_branch_id(user)
+    if bid is None:
+        return None
+    return [e.id for e in db.query(Employee.id).filter(Employee.branch_id == bid).all()]
+
+
+# --- Brands ---
+@router.get("/brands")
+def list_brands(all: bool = False, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    q = db.query(Brand)
+    allowed = user.get_allowed_brands()
+    if all:
+        # Cross-brand transfers need every brand as a possible source/destination,
+        # regardless of which brands the user is scoped to.
+        rows = q.filter(Brand.status == "active").order_by(Brand.id).all()
+        return [{"id": b.id, "name_en": b.name_en, "name_ar": b.name_ar or "",
+                 "status": b.status or "active"} for b in rows]
+    if allowed:
+        q = q.filter(Brand.id.in_(allowed))
+    else:
+        sbid = _staff_branch_id(user)
+        if sbid is not None:
+            branch = db.query(Branch).filter(Branch.id == sbid).first()
+            if branch is not None and branch.brand_id:
+                q = q.filter(Brand.id == branch.brand_id)
+            else:
+                q = q.filter(False)
+    rows = q.order_by(Brand.id).all()
+    return [{"id": b.id, "name_en": b.name_en, "name_ar": b.name_ar or "",
+             "status": b.status or "active"} for b in rows]
+
+
+@router.post("/brands")
+def create_brand(
+    name_en: str = Form(...), name_ar: str = Form(""),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if user.role != "owner":
+        raise HTTPException(403, "Only owner can create brands")
+    existing = db.query(Brand).filter(Brand.name_en == name_en).first()
+    if existing:
+        raise HTTPException(400, f"Brand '{name_en}' already exists")
+    b = Brand(name_en=name_en, name_ar=name_ar or None)
+    db.add(b)
+    db.commit()
+    db.refresh(b)
+    return {"id": b.id, "name_en": b.name_en, "name_ar": b.name_ar or "", "status": b.status}
+
+
+@router.put("/brands/{brand_id}")
+def update_brand(
+    brand_id: int,
+    name_en: str = Form(...), name_ar: str = Form(""),
+    status: str = Form("active"),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if user.role != "owner":
+        raise HTTPException(403, "Only owner can edit brands")
+    b = db.query(Brand).filter(Brand.id == brand_id).first()
+    if not b:
+        raise HTTPException(404, "Brand not found")
+    b.name_en = name_en
+    b.name_ar = name_ar or None
+    b.status = status
+    db.commit()
+    return {"id": b.id, "name_en": b.name_en, "name_ar": b.name_ar or "", "status": b.status}
+
+
+@router.delete("/brands/{brand_id}")
+def delete_brand(brand_id: int, db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)):
+    if user.role != "owner":
+        raise HTTPException(403, "Only owner can delete brands")
+    b = db.query(Brand).filter(Brand.id == brand_id).first()
+    if not b:
+        raise HTTPException(404, "Brand not found")
+    # Check no branches assigned
+    branch_count = db.query(Branch).filter(Branch.brand_id == brand_id).count()
+    if branch_count > 0:
+        raise HTTPException(400, "Cannot delete brand with assigned branches")
+    db.delete(b)
+    db.commit()
+    return {"ok": True}
 
 
 # --- Employees ---
 @router.get("/employees")
-def list_employees(branch_id: Optional[int] = None, db: Session = Depends(get_db),
+def list_employees(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
+                   include_left: bool = False,
+                   db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
     q = db.query(Employee)
-    if branch_id:
-        q = q.filter(Employee.branch_id == branch_id)
-    elif user.role == "staff" and user.branch_id:
+    if not include_left:
+        q = _exclude_left_employees(q)
+    bb_ids = _brand_branch_ids(db, brand_id)
+    if user.role == "staff" and user.branch_id:
         q = q.filter(Employee.branch_id == user.branch_id)
+    elif branch_id:
+        q = q.filter(Employee.branch_id == branch_id)
+    elif bb_ids is not None:
+        q = q.filter(Employee.branch_id.in_(bb_ids))
     rows = q.all()
     hide_salary = user.role not in SALARY_VISIBLE_ROLES
     result = []
@@ -34,17 +154,58 @@ def list_employees(branch_id: Optional[int] = None, db: Session = Depends(get_db
             "civil_id": emp.civil_id or "", "position": emp.position or "",
             "phone": emp.phone or "",
             "salary": 0 if hide_salary else emp.salary,
-            "work_permit_salary": 0 if hide_salary else (emp.work_permit_salary or 0),
+            "work_permit_salary": emp.work_permit_salary or 0,
             "actual_salary": 0 if hide_salary else (emp.actual_salary or 0),
             "iban": emp.iban or "", "bank_name": emp.bank_name or "",
             "salary_transfer_method": emp.salary_transfer_method or "cash",
-            "employer": emp.employer or "mudawwarah",
+            "employer": emp.employer or "",
             "join_date": str(emp.join_date) if emp.join_date else "",
             "termination_date": str(emp.termination_date) if emp.termination_date else "",
+            "last_working_date": str(emp.last_working_date) if emp.last_working_date else "",
+            "residency_expiry": str(emp.residency_expiry) if emp.residency_expiry else "",
+            "health_card_expiry": str(emp.health_card_expiry) if emp.health_card_expiry else "",
             "is_active": emp.is_active,
         }
         result.append(d)
     return result
+
+
+@router.get("/employers")
+def list_employers(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """Return managed employer list (no duplicates)."""
+    rows = db.query(Employer).order_by(Employer.name).all()
+    return [{"id": e.id, "name": e.name, "name_ar": e.name_ar or ""} for e in rows]
+
+
+@router.post("/employers")
+def create_employer(name: str = Form(...), name_ar: str = Form(""),
+                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    name = name.strip()
+    if not name:
+        raise HTTPException(400, "Name required")
+    existing = db.query(Employer).filter(func.lower(Employer.name) == name.lower()).first()
+    if existing:
+        raise HTTPException(400, f"Employer '{name}' already exists")
+    e = Employer(name=name, name_ar=name_ar.strip() or None)
+    db.add(e)
+    db.commit()
+    db.refresh(e)
+    return {"id": e.id, "name": e.name, "name_ar": e.name_ar or ""}
+
+
+@router.delete("/employers/{employer_id}")
+def delete_employer(employer_id: int, db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    e = db.query(Employer).filter(Employer.id == employer_id).first()
+    if not e:
+        raise HTTPException(404, "Employer not found")
+    db.delete(e)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/employees")
@@ -57,28 +218,44 @@ def create_employee(
     actual_salary: float = Form(0),
     iban: str = Form(""), bank_name: str = Form(""),
     salary_transfer_method: str = Form("cash"),
-    employer: str = Form("mudawwarah"),
+    employer: str = Form(""),
     join_date: str = Form(""),
     termination_date: str = Form(""),
-    db: Session = Depends(get_db), _=Depends(get_current_user),
+    last_working_date: str = Form(""),
+    residency_expiry: str = Form(""),
+    health_card_expiry: str = Form(""),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        salary = actual_salary = 0
+        if user.branch_id:
+            branch_id = user.branch_id
     # Duplicate Civil ID check
     if civil_id and civil_id.strip():
         existing = db.query(Employee).filter(Employee.civil_id == civil_id.strip()).first()
         if existing:
             raise HTTPException(400, f"Employee with Civil ID {civil_id} already exists")
-    # Auto-generate staff_no
-    max_no = db.query(Employee).count()
-    generated_staff_no = f"EMP-{max_no + 1:04d}"
+    # Auto-generate staff_no with Emp-XXX pattern
+    import re as _re
+    max_num = 0
+    all_staff_nos = [e.staff_no for e in db.query(Employee.staff_no).all() if e.staff_no]
+    for sn in all_staff_nos:
+        m = _re.search(r'(\d+)$', sn)
+        if m:
+            max_num = max(max_num, int(m.group(1)))
+    generated_staff_no = f"Emp-{max_num + 1:03d}"
     emp = Employee(
         branch_id=branch_id, name=name, staff_no=generated_staff_no,
         name_ar=name_ar, civil_id=civil_id, position=position, phone=phone,
         salary=salary, work_permit_salary=work_permit_salary,
         actual_salary=actual_salary,
         iban=iban or None, bank_name=bank_name or None,
-        salary_transfer_method=salary_transfer_method, employer=employer,
+        salary_transfer_method=salary_transfer_method, employer=employer or None,
         join_date=date.fromisoformat(join_date) if join_date else None,
         termination_date=date.fromisoformat(termination_date) if termination_date else None,
+        last_working_date=date.fromisoformat(last_working_date) if last_working_date else None,
+        residency_expiry=date.fromisoformat(residency_expiry) if residency_expiry else None,
+        health_card_expiry=date.fromisoformat(health_card_expiry) if health_card_expiry else None,
     )
     db.add(emp)
     db.commit()
@@ -97,37 +274,47 @@ def update_employee(
     actual_salary: float = Form(0),
     iban: str = Form(""), bank_name: str = Form(""),
     salary_transfer_method: str = Form("cash"),
-    employer: str = Form("mudawwarah"),
+    employer: str = Form(""),
     join_date: str = Form(""),
     termination_date: str = Form(""),
+    last_working_date: str = Form(""),
+    residency_expiry: str = Form(""),
+    health_card_expiry: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    if user.role not in SALARY_VISIBLE_ROLES:
+    can_edit_salary = user.role in SALARY_VISIBLE_ROLES
+    if not can_edit_salary and not (user.role == "staff" and user.branch_id):
         raise HTTPException(403, "Not authorized")
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(404, "Employee not found")
+    if not can_edit_salary and emp.branch_id != user.branch_id:
+        raise HTTPException(403, "Not authorized")
     # Duplicate Civil ID check (exclude self)
     if civil_id and civil_id.strip():
         existing = db.query(Employee).filter(Employee.civil_id == civil_id.strip(), Employee.id != emp_id).first()
         if existing:
             raise HTTPException(400, f"Employee with Civil ID {civil_id} already exists")
-    emp.branch_id = branch_id
+    if can_edit_salary:
+        emp.branch_id = branch_id
+        emp.salary = salary
+        emp.actual_salary = actual_salary
+    emp.work_permit_salary = work_permit_salary
+    emp.iban = iban or None
+    emp.bank_name = bank_name or None
+    emp.salary_transfer_method = salary_transfer_method
     emp.name = name
     emp.staff_no = staff_no or emp.staff_no
     emp.name_ar = name_ar
     emp.civil_id = civil_id
     emp.position = position
     emp.phone = phone
-    emp.salary = salary
-    emp.work_permit_salary = work_permit_salary
-    emp.actual_salary = actual_salary
-    emp.iban = iban or None
-    emp.bank_name = bank_name or None
-    emp.salary_transfer_method = salary_transfer_method
-    emp.employer = employer
+    emp.employer = employer or None
     emp.join_date = date.fromisoformat(join_date) if join_date else None
     emp.termination_date = date.fromisoformat(termination_date) if termination_date else None
+    emp.last_working_date = date.fromisoformat(last_working_date) if last_working_date else None
+    emp.residency_expiry = date.fromisoformat(residency_expiry) if residency_expiry else None
+    emp.health_card_expiry = date.fromisoformat(health_card_expiry) if health_card_expiry else None
     db.commit()
     db.refresh(emp)
     return emp
@@ -151,8 +338,11 @@ def delete_employee(
 # --- Attendance ---
 @router.get("/attendance")
 def list_attendance(employee_id: Optional[int] = None, att_date: Optional[str] = None,
-                    db: Session = Depends(get_db), _=Depends(get_current_user)):
+                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Attendance)
+    staff_emp_ids = _staff_emp_ids(db, user)
+    if staff_emp_ids is not None:
+        q = q.filter(Attendance.employee_id.in_(staff_emp_ids)) if staff_emp_ids else q.filter(False)
     if employee_id:
         q = q.filter(Attendance.employee_id == employee_id)
     if att_date:
@@ -179,6 +369,46 @@ def mark_attendance(
     return att
 
 
+def _loan_repayments_for_month(db: Session, employee_id: int, month: str) -> float:
+    """Sum of recorded Advance/Loan repayments that fall in the payroll month
+    (by explicit month if set, otherwise by repayment date)."""
+    year, mon = int(month.split("-")[0]), int(month.split("-")[1])
+    m_start = date(year, mon, 1)
+    m_end = date(year, mon, calendar.monthrange(year, mon)[1])
+    loan_ids = [l.id for l in db.query(AdvanceLoan.id).filter(AdvanceLoan.employee_id == employee_id).all()]
+    if not loan_ids:
+        return 0.0
+    total = db.query(func.coalesce(func.sum(LoanRepayment.amount), 0)).filter(
+        LoanRepayment.loan_id.in_(loan_ids),
+        or_(
+            LoanRepayment.month == month,
+            and_(
+                or_(LoanRepayment.month.is_(None), LoanRepayment.month == ""),
+                LoanRepayment.date >= m_start,
+                LoanRepayment.date <= m_end,
+            ),
+        ),
+    ).scalar() or 0
+    return round(float(total), 3)
+
+
+def _apply_loan_repayments_to_payroll(db: Session, employee_id: int, month: str):
+    """Refresh loan_deduction on the pending salary record for this month."""
+    sp = db.query(SalaryPayment).filter(
+        SalaryPayment.employee_id == employee_id,
+        SalaryPayment.month == month,
+        SalaryPayment.status == "pending",
+    ).first()
+    if not sp:
+        return
+    new_ded = _loan_repayments_for_month(db, employee_id, month)
+    delta = new_ded - (sp.loan_deduction or 0)
+    if abs(delta) < 0.0005:
+        return
+    sp.loan_deduction = new_ded
+    sp.net_salary = round((sp.net_salary or 0) - delta, 3)
+
+
 def _calc_net(basic, total_days, days_worked,
               housing, transport, food, other_allow,
               absence_ded, late_ded, other_ded, advance,
@@ -198,23 +428,30 @@ def _calc_net(basic, total_days, days_worked,
 def list_salary_payments(
     month: Optional[str] = None,
     employee_id: Optional[int] = None,
+    brand_id: Optional[int] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized to view salary data")
     q = db.query(SalaryPayment)
     if month:
         q = q.filter(SalaryPayment.month == month)
     if employee_id:
         q = q.filter(SalaryPayment.employee_id == employee_id)
-    if user.role == "staff" and user.branch_id:
-        q = q.filter(SalaryPayment.branch_id == user.branch_id)
+    bb_ids = _brand_branch_ids(db, brand_id)
+    if bb_ids is not None:
+        q = q.filter(SalaryPayment.branch_id.in_(bb_ids))
     rows = q.order_by(SalaryPayment.month.desc(), SalaryPayment.id).all()
 
-    hide_salary = user.role not in SALARY_VISIBLE_ROLES
+    hide_salary = False
 
     # Get employee info for staff_no and position
     emp_ids = list({r.employee_id for r in rows})
     emps = {e.id: e for e in db.query(Employee).filter(Employee.id.in_(emp_ids)).all()} if emp_ids else {}
+
+    # Filter out records for employees with 0 actual salary
+    rows = [r for r in rows if (emps.get(r.employee_id) and (emps[r.employee_id].actual_salary or 0) > 0)]
 
     return [
         {
@@ -224,7 +461,7 @@ def list_salary_payments(
             "name_ar": emps.get(r.employee_id, Employee()).name_ar or "",
             "designation": emps.get(r.employee_id, Employee()).position or "",
             "current_actual_salary": emps.get(r.employee_id, Employee()).actual_salary or 0,
-            "branch_id": r.branch_id, "month": r.month,
+            "branch_id": emps[r.employee_id].branch_id if emps.get(r.employee_id) else r.branch_id, "month": r.month,
             "basic_salary": 0 if hide_salary else r.basic_salary,
             "total_days": r.total_days or 30,
             "days_worked": r.days_worked or 30,
@@ -260,10 +497,11 @@ def list_salary_payments(
 @router.post("/salary/generate")
 def generate_monthly_payroll(
     month: str = Form(...),
+    brand_id: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     year, mon = int(month.split("-")[0]), int(month.split("-")[1])
     last_day = calendar.monthrange(year, mon)[1]
@@ -273,13 +511,44 @@ def generate_monthly_payroll(
     total_days = 30  # salary basis always 30
     period_working_days = 30
 
-    employees = db.query(Employee).filter(
+    eq = db.query(Employee).filter(
         Employee.is_active == True,
         Employee.actual_salary > 0,
+    )
+    bb_ids = _brand_branch_ids(db, brand_id)
+    if bb_ids is not None:
+        eq = eq.filter(Employee.branch_id.in_(bb_ids))
+    employees = eq.all()
+
+    # Clean up old pending salary records for employees with 0 actual salary
+    zero_salary_emps = db.query(Employee).filter(
+        (Employee.actual_salary == None) | (Employee.actual_salary == 0)
     ).all()
+    zero_ids = [e.id for e in zero_salary_emps]
+    if zero_ids:
+        db.query(SalaryPayment).filter(
+            SalaryPayment.month == month,
+            SalaryPayment.employee_id.in_(zero_ids),
+            SalaryPayment.status == "pending",
+        ).delete(synchronize_session=False)
+
     created = 0
     updated = 0
+    skipped_resigned = []
     for emp in employees:
+        # Skip employees whose last working date is before this payroll month
+        if emp.last_working_date and emp.last_working_date < p_start:
+            # Also clean up any existing pending salary record for this month
+            old_rec = db.query(SalaryPayment).filter(
+                SalaryPayment.employee_id == emp.id,
+                SalaryPayment.month == month,
+                SalaryPayment.status == "pending",
+            ).first()
+            if old_rec:
+                db.delete(old_rec)
+            skipped_resigned.append(emp.id)
+            continue
+
         existing = db.query(SalaryPayment).filter(
             SalaryPayment.employee_id == emp.id,
             SalaryPayment.month == month,
@@ -288,35 +557,91 @@ def generate_monthly_payroll(
         if existing and existing.status in ("paid", "on_hold"):
             continue
 
+        # Determine effective period for this employee
+        emp_period_start = p_start
+        emp_period_end = p_end
+        emp_period_days = period_working_days
+
+        # If employee joined mid-month, start from join_date
+        if emp.join_date and emp.join_date > p_start and emp.join_date <= p_end:
+            emp_period_start = emp.join_date
+            emp_period_days = (p_end - emp.join_date).days + 1
+            emp_period_days = min(max(emp_period_days, 0), 30)
+
+        # If employee has a last_working_date in this month, cap the period
+        if emp.last_working_date and emp_period_start <= emp.last_working_date <= p_end:
+            emp_period_end = emp.last_working_date
+            emp_period_days = (emp.last_working_date - emp_period_start).days + 1
+            emp_period_days = min(max(emp_period_days, 0), 30)
+
         # Auto-calculate leave/absence days for this month
-        leave_recs = db.query(LeaveRecord).filter(
+        # Simple rule: any leave record whose dates overlap with this payroll month
+        # No approval filter — if leave is recorded, it affects salary
+        leave_recs_by_month = db.query(LeaveRecord).filter(
             LeaveRecord.employee_id == emp.id,
             LeaveRecord.month == month,
         ).all()
-        unpaid_absence_days = sum(lr.days for lr in leave_recs if not lr.is_paid)
-        paid_leave_days = sum(lr.days for lr in leave_recs if lr.is_paid)
+        leave_recs_by_date = db.query(LeaveRecord).filter(
+            LeaveRecord.employee_id == emp.id,
+            LeaveRecord.start_date <= p_end,
+            LeaveRecord.end_date >= p_start,
+        ).all()
+        # Merge both sets (deduplicate by id)
+        seen_ids = set()
+        leave_recs = []
+        for lr in leave_recs_by_month + leave_recs_by_date:
+            if lr.id not in seen_ids:
+                seen_ids.add(lr.id)
+                leave_recs.append(lr)
+
+        # Calculate actual days within this payroll month for each leave record
+        unpaid_absence_days = 0
+        paid_leave_days = 0
+        for lr in leave_recs:
+            # Calculate overlap between leave period and payroll month
+            overlap_start = max(lr.start_date, p_start)
+            overlap_end = min(lr.end_date, p_end)
+            overlap_days = max(0, (overlap_end - overlap_start).days + 1)
+            # Cap at 30 days (salary basis)
+            overlap_days = min(overlap_days, 30)
+            if lr.is_paid:
+                paid_leave_days += overlap_days
+            else:
+                unpaid_absence_days += overlap_days
+
         total_leave_days = unpaid_absence_days + paid_leave_days
-        actual_days_worked = max(0, period_working_days - total_leave_days)
+        actual_days_worked = max(0, emp_period_days - total_leave_days)
 
         # Absence deduction (only for unpaid leaves)
         per_day = emp.actual_salary / total_days if total_days > 0 else 0
         absence_ded = round(per_day * unpaid_absence_days, 3)
 
-        # Pro-rate salary if period < 30 days
-        prorated_salary = round(per_day * period_working_days, 3)
+        # Pro-rate salary based on actual period days
+        prorated_salary = round(per_day * emp_period_days, 3)
 
-        # Auto-calculate loan deduction from active loans with matching deduction_month
-        active_loans = db.query(AdvanceLoan).filter(
-            AdvanceLoan.employee_id == emp.id,
-            AdvanceLoan.status == "active",
-            AdvanceLoan.deduction_month == month,
-        ).all()
-        loan_ded = sum(l.monthly_deduction for l in active_loans)
+        # Loan deduction = Advance/Loan repayments recorded for this payroll month
+        loan_ded = _loan_repayments_for_month(db, emp.id, month)
 
-        # Auto-calculate benefits from StaffBenefitDeduction for this month
+        # Auto-calculate benefits from StaffBenefitDeduction for this month (approved only).
+        # One-time records apply only in their own month; monthly recurring records
+        # apply every month from their start month until their optional end month.
         ben_deds = db.query(StaffBenefitDeduction).filter(
             StaffBenefitDeduction.employee_id == emp.id,
-            StaffBenefitDeduction.month == month,
+            StaffBenefitDeduction.approval_status == "approved",
+            or_(
+                and_(
+                    func.coalesce(StaffBenefitDeduction.frequency, "one_time") != "monthly",
+                    StaffBenefitDeduction.month == month,
+                ),
+                and_(
+                    StaffBenefitDeduction.frequency == "monthly",
+                    StaffBenefitDeduction.month <= month,
+                    or_(
+                        StaffBenefitDeduction.end_month.is_(None),
+                        StaffBenefitDeduction.end_month >= month,
+                    ),
+                ),
+            ),
         ).all()
         incentive_total = sum(b.amount for b in ben_deds if b.category == "incentive")
         bonus_total = sum(b.amount for b in ben_deds if b.category == "bonus")
@@ -338,19 +663,13 @@ def generate_monthly_payroll(
         if existing:
             # Update existing pending record with latest calculations
             sp = existing
+            sp.branch_id = emp.branch_id
             sp.basic_salary = emp.actual_salary
             sp.total_days = total_days
-            # Preserve custom period dates if already set by user edit
-            if sp.period_start and sp.period_end and (sp.period_start != p_start or sp.period_end != p_end):
-                custom_days = (sp.period_end - sp.period_start).days + 1
-                custom_working_days = min(max(custom_days, 0), 30)
-                sp.days_worked = max(0, custom_working_days - total_leave_days)
-                prorated_salary = round(per_day * custom_working_days, 3)
-                net = prorated_salary + fixed_allowances + total_additions - fixed_deductions - loan_ded - penalty_total
-            else:
-                sp.days_worked = actual_days_worked
-                sp.period_start = p_start
-                sp.period_end = p_end
+            # Always recalculate period dates when regenerating
+            sp.days_worked = actual_days_worked
+            sp.period_start = emp_period_start
+            sp.period_end = emp_period_end
             sp.other_allowance = other_benefit_total
             sp.allowances = fixed_allowances
             sp.absence_deduction = absence_ded
@@ -374,8 +693,8 @@ def generate_monthly_payroll(
                 basic_salary=emp.actual_salary,
                 total_days=total_days,
                 days_worked=actual_days_worked,
-                period_start=p_start,
-                period_end=p_end,
+                period_start=emp_period_start,
+                period_end=emp_period_end,
                 last_workplace="",
                 housing_allowance=0, transport_allowance=0,
                 food_allowance=0, other_allowance=other_benefit_total,
@@ -430,7 +749,7 @@ def update_salary_payment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
@@ -547,7 +866,7 @@ def mark_salary_paid(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
@@ -555,13 +874,16 @@ def mark_salary_paid(
     sp.status = "paid"
     sp.paid_date = date.today()
 
-    # Deduct loan balances
-    if sp.loan_deduction and sp.loan_deduction > 0:
+    # Deduct loan balances for any manual deduction beyond the repayments
+    # already recorded for this month (those reduced the balance on entry).
+    recorded = _loan_repayments_for_month(db, sp.employee_id, sp.month)
+    extra = round((sp.loan_deduction or 0) - recorded, 3)
+    if extra > 0:
         active_loans = db.query(AdvanceLoan).filter(
             AdvanceLoan.employee_id == sp.employee_id,
             AdvanceLoan.status == "active",
         ).all()
-        remaining = sp.loan_deduction
+        remaining = extra
         for loan in active_loans:
             if remaining <= 0:
                 break
@@ -581,7 +903,7 @@ def hold_salary(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
@@ -599,7 +921,7 @@ def release_salary(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
@@ -617,7 +939,7 @@ def delete_salary_payment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
@@ -629,8 +951,19 @@ def delete_salary_payment(
 
 # --- Staff Transfers ---
 @router.get("/transfers")
-def list_transfers(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return db.query(StaffTransfer).order_by(StaffTransfer.created_at.desc()).all()
+def list_transfers(brand_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    q = db.query(StaffTransfer)
+    sbid = _staff_branch_id(user)
+    if sbid is not None:
+        # Branch staff see transfers involving their branch (in or out)
+        q = q.filter(
+            (StaffTransfer.from_branch_id == sbid) | (StaffTransfer.to_branch_id == sbid)
+        )
+    else:
+        bb_ids = _brand_branch_ids(db, brand_id)
+        if bb_ids is not None:
+            q = q.filter(StaffTransfer.from_branch_id.in_(bb_ids))
+    return q.order_by(StaffTransfer.created_at.desc()).all()
 
 
 @router.post("/transfers")
@@ -663,7 +996,7 @@ def approve_transfer(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     t = db.query(StaffTransfer).filter(StaffTransfer.id == transfer_id).first()
     if not t:
@@ -684,7 +1017,7 @@ def reject_transfer(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     t = db.query(StaffTransfer).filter(StaffTransfer.id == transfer_id).first()
     if not t:
@@ -697,11 +1030,21 @@ def reject_transfer(
 
 # --- Advance / Loan ---
 @router.get("/loans")
-def list_loans(employee_id: Optional[int] = None, db: Session = Depends(get_db),
-               _=Depends(get_current_user)):
+def list_loans(employee_id: Optional[int] = None, brand_id: Optional[int] = None,
+               db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
     q = db.query(AdvanceLoan)
+    staff_emp_ids = _staff_emp_ids(db, user)
+    if staff_emp_ids is not None:
+        q = q.filter(AdvanceLoan.employee_id.in_(staff_emp_ids)) if staff_emp_ids else q.filter(False)
     if employee_id:
         q = q.filter(AdvanceLoan.employee_id == employee_id)
+    elif brand_id:
+        bb_ids = _brand_branch_ids(db, brand_id)
+        if bb_ids is not None:
+            emp_ids = [e.id for e in db.query(Employee.id).filter(Employee.branch_id.in_(bb_ids)).all()]
+            q = q.filter(AdvanceLoan.employee_id.in_(emp_ids)) if emp_ids else q.filter(False)
     return q.order_by(AdvanceLoan.created_at.desc()).all()
 
 
@@ -717,7 +1060,7 @@ def create_loan(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     loan = AdvanceLoan(
         employee_id=employee_id,
@@ -750,7 +1093,7 @@ def update_loan(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     loan = db.query(AdvanceLoan).filter(AdvanceLoan.id == loan_id).first()
     if not loan:
@@ -771,12 +1114,155 @@ def update_loan(
 @router.delete("/loans/{loan_id}")
 def delete_loan(loan_id: int, db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     loan = db.query(AdvanceLoan).filter(AdvanceLoan.id == loan_id).first()
     if not loan:
         raise HTTPException(404, "Loan not found")
+    db.query(LoanRepayment).filter(LoanRepayment.loan_id == loan_id).delete()
     db.delete(loan)
+    db.commit()
+    return {"message": "Deleted"}
+
+
+# --- Loan Repayments (manual repayment tracking) ---
+@router.get("/loans/{loan_id}/repayments")
+def list_loan_repayments(loan_id: int, db: Session = Depends(get_db),
+                         user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    rows = db.query(LoanRepayment).filter(
+        LoanRepayment.loan_id == loan_id
+    ).order_by(LoanRepayment.date.desc()).all()
+    return [
+        {
+            "id": r.id, "loan_id": r.loan_id, "amount": r.amount,
+            "date": str(r.date), "month": r.month or "", "notes": r.notes or "",
+        }
+        for r in rows
+    ]
+
+
+@router.get("/loans/statement")
+def loan_statement(employee_id: int, db: Session = Depends(get_db),
+                   user: User = Depends(get_current_user)):
+    """Unified transaction ledger for one employee: every advance/loan taken
+    plus every repayment/return, chronological, with a running balance."""
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    staff_emp_ids = _staff_emp_ids(db, user)
+    if staff_emp_ids is not None and employee_id not in staff_emp_ids:
+        raise HTTPException(403, "Not authorized")
+
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+
+    loans = db.query(AdvanceLoan).filter(AdvanceLoan.employee_id == employee_id).all()
+    loan_ids = [l.id for l in loans]
+    reps = []
+    if loan_ids:
+        reps = db.query(LoanRepayment).filter(LoanRepayment.loan_id.in_(loan_ids)).all()
+
+    txns = []
+    for l in loans:
+        txns.append({
+            "id": l.id,
+            "kind": "disbursement",
+            "type": l.loan_type,  # advance | loan
+            "loan_id": l.id,
+            "date": str(l.date),
+            "amount": round(l.amount or 0, 3),
+            "notes": l.notes or "",
+            "status": l.status,
+        })
+    for r in reps:
+        txns.append({
+            "id": r.id,
+            "kind": "repayment",
+            "type": "repayment",
+            "loan_id": r.loan_id,
+            "date": str(r.date),
+            "amount": round(r.amount or 0, 3),
+            "notes": r.notes or "",
+            "status": "",
+        })
+
+    txns.sort(key=lambda x: (x["date"], 0 if x["kind"] == "disbursement" else 1))
+    running = 0.0
+    for tx in txns:
+        running += tx["amount"] if tx["kind"] == "disbursement" else -tx["amount"]
+        tx["running_balance"] = round(running, 3)
+
+    total_taken = round(sum(l.amount or 0 for l in loans), 3)
+    total_repaid = round(sum(r.amount or 0 for r in reps), 3)
+    outstanding = round(sum(l.balance or 0 for l in loans), 3)
+    return {
+        "employee": {"id": emp.id, "name": emp.name, "name_ar": emp.name_ar or "",
+                     "staff_no": emp.staff_no or ""},
+        "totals": {
+            "total_taken": total_taken,
+            "total_repaid": total_repaid,
+            "outstanding": outstanding,
+            "loan_count": len(loans),
+        },
+        "transactions": txns,
+    }
+
+
+@router.post("/loans/{loan_id}/repayments")
+def create_loan_repayment(
+    loan_id: int,
+    amount: float = Form(...),
+    repayment_date: str = Form(...),
+    month: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in ("owner", "manager", "accountant"):
+        raise HTTPException(403, "Not authorized")
+    loan = db.query(AdvanceLoan).filter(AdvanceLoan.id == loan_id).first()
+    if not loan:
+        raise HTTPException(404, "Loan not found")
+    if amount <= 0:
+        raise HTTPException(400, "Amount must be positive")
+    rep = LoanRepayment(
+        loan_id=loan_id,
+        amount=amount,
+        date=date.fromisoformat(repayment_date),
+        month=month or None,
+        notes=notes,
+    )
+    db.add(rep)
+    loan.balance = round(max(0.0, (loan.balance or 0) - amount), 3)
+    loan.status = "paid_off" if loan.balance <= 0 else "active"
+    db.flush()
+    _apply_loan_repayments_to_payroll(db, loan.employee_id, rep.month or rep.date.strftime("%Y-%m"))
+    db.commit()
+    db.refresh(rep)
+    return {"id": rep.id, "balance": loan.balance, "status": loan.status}
+
+
+@router.delete("/loans/repayments/{repayment_id}")
+def delete_loan_repayment(repayment_id: int, db: Session = Depends(get_db),
+                          user: User = Depends(get_current_user)):
+    if user.role not in ("owner", "manager", "accountant"):
+        raise HTTPException(403, "Not authorized")
+    rep = db.query(LoanRepayment).filter(LoanRepayment.id == repayment_id).first()
+    if not rep:
+        raise HTTPException(404, "Repayment not found")
+    loan = db.query(AdvanceLoan).filter(AdvanceLoan.id == rep.loan_id).first()
+    if loan:
+        loan.balance = round((loan.balance or 0) + rep.amount, 3)
+        if loan.balance > 0:
+            loan.status = "active"
+    rep_month = rep.month or rep.date.strftime("%Y-%m")
+    emp_id = loan.employee_id if loan else None
+    db.delete(rep)
+    db.flush()
+    if emp_id:
+        _apply_loan_repayments_to_payroll(db, emp_id, rep_month)
     db.commit()
     return {"message": "Deleted"}
 
@@ -784,12 +1270,21 @@ def delete_loan(loan_id: int, db: Session = Depends(get_db),
 # --- Benefits & Deductions ---
 @router.get("/benefits-deductions")
 def list_benefits_deductions(employee_id: Optional[int] = None, month: Optional[str] = None,
-                             db: Session = Depends(get_db), _=Depends(get_current_user)):
+                             brand_id: Optional[int] = None,
+                             db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(StaffBenefitDeduction)
+    staff_emp_ids = _staff_emp_ids(db, user)
+    if staff_emp_ids is not None:
+        q = q.filter(StaffBenefitDeduction.employee_id.in_(staff_emp_ids)) if staff_emp_ids else q.filter(False)
     if employee_id:
         q = q.filter(StaffBenefitDeduction.employee_id == employee_id)
     if month:
         q = q.filter(StaffBenefitDeduction.month == month)
+    if brand_id and not employee_id:
+        bb_ids = _brand_branch_ids(db, brand_id)
+        if bb_ids is not None:
+            emp_ids = [e.id for e in db.query(Employee.id).filter(Employee.branch_id.in_(bb_ids)).all()]
+            q = q.filter(StaffBenefitDeduction.employee_id.in_(emp_ids)) if emp_ids else q.filter(False)
     return q.order_by(StaffBenefitDeduction.created_at.desc()).all()
 
 
@@ -800,19 +1295,24 @@ def create_benefit_deduction(
     amount: float = Form(...),
     bd_date: str = Form(...),
     month: str = Form(""),
+    frequency: str = Form("one_time"),
+    end_month: str = Form(""),
     notes: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
-        raise HTTPException(403, "Not authorized")
+    is_mgr = user.role in ("owner", "manager", "accountant")
     bd = StaffBenefitDeduction(
         employee_id=employee_id,
         category=category,
         amount=amount,
+        frequency=frequency if frequency in ("one_time", "monthly") else "one_time",
         date=date.fromisoformat(bd_date),
         month=month or None,
+        end_month=end_month or None,
         notes=notes,
+        approval_status="approved" if is_mgr else "pending_approval",
+        approved_by=user.id if is_mgr else None,
     )
     db.add(bd)
     db.commit()
@@ -828,11 +1328,13 @@ def update_benefit_deduction(
     amount: float = Form(...),
     bd_date: str = Form(...),
     month: str = Form(""),
+    frequency: str = Form("one_time"),
+    end_month: str = Form(""),
     notes: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     bd = db.query(StaffBenefitDeduction).filter(StaffBenefitDeduction.id == bd_id).first()
     if not bd:
@@ -840,8 +1342,10 @@ def update_benefit_deduction(
     bd.employee_id = employee_id
     bd.category = category
     bd.amount = amount
+    bd.frequency = frequency if frequency in ("one_time", "monthly") else "one_time"
     bd.date = date.fromisoformat(bd_date)
     bd.month = month or None
+    bd.end_month = end_month or None
     bd.notes = notes
     db.commit()
     return {"message": "Updated"}
@@ -850,7 +1354,7 @@ def update_benefit_deduction(
 @router.delete("/benefits-deductions/{bd_id}")
 def delete_benefit_deduction(bd_id: int, db: Session = Depends(get_db),
                              user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     bd = db.query(StaffBenefitDeduction).filter(StaffBenefitDeduction.id == bd_id).first()
     if not bd:
@@ -863,12 +1367,21 @@ def delete_benefit_deduction(bd_id: int, db: Session = Depends(get_db),
 # --- Leave / Absence Records ---
 @router.get("/leaves")
 def list_leaves(employee_id: Optional[int] = None, month: Optional[str] = None,
-                db: Session = Depends(get_db), _=Depends(get_current_user)):
+                brand_id: Optional[int] = None,
+                db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(LeaveRecord)
+    staff_emp_ids = _staff_emp_ids(db, user)
+    if staff_emp_ids is not None:
+        q = q.filter(LeaveRecord.employee_id.in_(staff_emp_ids)) if staff_emp_ids else q.filter(False)
     if employee_id:
         q = q.filter(LeaveRecord.employee_id == employee_id)
     if month:
         q = q.filter(LeaveRecord.month == month)
+    if brand_id and not employee_id:
+        bb_ids = _brand_branch_ids(db, brand_id)
+        if bb_ids is not None:
+            emp_ids = [e.id for e in db.query(Employee.id).filter(Employee.branch_id.in_(bb_ids)).all()]
+            q = q.filter(LeaveRecord.employee_id.in_(emp_ids)) if emp_ids else q.filter(False)
     rows = q.order_by(LeaveRecord.start_date.desc()).all()
     return [
         {
@@ -894,8 +1407,7 @@ def create_leave(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
-        raise HTTPException(403, "Not authorized")
+    is_mgr = user.role in ("owner", "manager", "accountant")
     sd = date.fromisoformat(start_date)
     ed = date.fromisoformat(end_date)
     days = (ed - sd).days + 1
@@ -910,6 +1422,8 @@ def create_leave(
         is_paid=is_paid,
         month=month or None,
         notes=notes,
+        approval_status="approved" if is_mgr else "pending_approval",
+        approved_by=user.id if is_mgr else None,
     )
     db.add(rec)
     db.commit()
@@ -930,7 +1444,7 @@ def update_leave(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     rec = db.query(LeaveRecord).filter(LeaveRecord.id == leave_id).first()
     if not rec:
@@ -955,7 +1469,7 @@ def update_leave(
 @router.delete("/leaves/{leave_id}")
 def delete_leave(leave_id: int, db: Session = Depends(get_db),
                  user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     rec = db.query(LeaveRecord).filter(LeaveRecord.id == leave_id).first()
     if not rec:
@@ -992,16 +1506,27 @@ def _resignation_to_dict(r):
         "deductions_amount": r.deductions_amount or 0,
         "final_settlement_amount": r.final_settlement_amount or 0,
         "finance_date": str(r.finance_date) if r.finance_date else "",
+        "dues_cleared_consent": r.dues_cleared_consent if r.dues_cleared_consent else False,
+        "consent_date": str(r.consent_date) if r.consent_date else "",
         "status": r.status or "draft",
         "created_at": str(r.created_at) if r.created_at else "",
     }
 
 
 @router.get("/resignations")
-def list_resignations(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def list_resignations(brand_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if user.role not in SALARY_VISIBLE_ROLES:
         raise HTTPException(403, "Not authorized")
-    rows = db.query(Resignation).order_by(Resignation.id.desc()).all()
+    q = db.query(Resignation)
+    staff_emp_ids = _staff_emp_ids(db, user)
+    if staff_emp_ids is not None:
+        q = q.filter(Resignation.employee_id.in_(staff_emp_ids)) if staff_emp_ids else q.filter(False)
+    if brand_id:
+        bb_ids = _brand_branch_ids(db, brand_id)
+        if bb_ids is not None:
+            emp_ids = [e.id for e in db.query(Employee.id).filter(Employee.branch_id.in_(bb_ids)).all()]
+            q = q.filter(Resignation.employee_id.in_(emp_ids)) if emp_ids else q.filter(False)
+    rows = q.order_by(Resignation.id.desc()).all()
     return [_resignation_to_dict(r) for r in rows]
 
 
@@ -1032,6 +1557,13 @@ def create_resignation(
         resignation_date=date.fromisoformat(resignation_date) if resignation_date else None,
     )
     db.add(r)
+    # Sync dates to employee record
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    if emp:
+        if resignation_date:
+            emp.termination_date = date.fromisoformat(resignation_date)
+        if last_working_day:
+            emp.last_working_date = date.fromisoformat(last_working_day)
     db.commit()
     db.refresh(r)
     return _resignation_to_dict(r)
@@ -1062,6 +1594,8 @@ def update_resignation(
     deductions_amount: float = Form(0),
     final_settlement_amount: float = Form(0),
     finance_date: str = Form(""),
+    dues_cleared_consent: bool = Form(False),
+    consent_date: str = Form(""),
     status: str = Form("draft"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
@@ -1104,7 +1638,16 @@ def update_resignation(
     r.deductions_amount = deductions_amount
     r.final_settlement_amount = final_settlement_amount
     r.finance_date = date.fromisoformat(finance_date) if finance_date else None
+    r.dues_cleared_consent = dues_cleared_consent
+    r.consent_date = date.fromisoformat(consent_date) if consent_date else None
     r.status = status
+    # Sync dates to employee record
+    emp = db.query(Employee).filter(Employee.id == r.employee_id).first()
+    if emp:
+        if resignation_date:
+            emp.termination_date = date.fromisoformat(resignation_date)
+        if last_working_day:
+            emp.last_working_date = date.fromisoformat(last_working_day)
     db.commit()
     db.refresh(r)
     return _resignation_to_dict(r)
@@ -1121,3 +1664,381 @@ def delete_resignation(res_id: int, db: Session = Depends(get_db),
     db.delete(r)
     db.commit()
     return {"ok": True}
+
+
+# --- Contracts & Subscriptions ---
+CONTRACT_KIND_AR = {
+    "Rent Contract": "عقد إيجار", "Legal Contract": "عقد قانوني",
+    "Internet Contract": "عقد إنترنت", "Subscription": "اشتراك",
+    "Maintenance Contract": "عقد صيانة", "Consultancy Contract": "عقد استشاري",
+    "Insurance Contract": "عقد تأمين", "Service Contract": "عقد خدمات",
+}
+DEFAULT_CONTRACT_CATEGORY = ("Contracts & Subscriptions", "العقود والاشتراكات")
+
+
+def _contract_expense_category(db: Session, kind: Optional[str]) -> ExpenseCategory:
+    """Expense category named after the contract type (created on demand)."""
+    name = (kind or "").strip() or DEFAULT_CONTRACT_CATEGORY[0]
+    cat = db.query(ExpenseCategory).filter(func.lower(ExpenseCategory.name) == name.lower()).first()
+    if not cat:
+        name_ar = CONTRACT_KIND_AR.get(name) or (DEFAULT_CONTRACT_CATEGORY[1] if name == DEFAULT_CONTRACT_CATEGORY[0] else None)
+        cat = ExpenseCategory(name=name, name_ar=name_ar, is_active=True)
+        db.add(cat)
+        db.flush()
+    elif not cat.is_active:
+        cat.is_active = True
+    return cat
+
+
+def _sync_payment_expense(db: Session, p: ContractPayment, c: Contract):
+    """Mirror a paid contract payment as an Expense so it reports in Expenses/Dashboard."""
+    exp = db.query(Expense).filter(Expense.contract_payment_id == p.id).first()
+    if p.status != "paid" or not c.branch_id:
+        if exp:
+            db.delete(exp)
+        return
+    cat = _contract_expense_category(db, c.kind)
+    if not exp:
+        exp = Expense(contract_payment_id=p.id)
+        db.add(exp)
+    exp.branch_id = c.branch_id
+    exp.category_id = cat.id
+    exp.date = p.paid_date or p.due_date
+    exp.description = f"{c.name} — {p.due_date:%b %Y}"
+    exp.amount = p.amount
+    exp.payment_method = p.payment_method or "cash"
+    exp.notes = " | ".join(x for x in [p.reference, p.notes] if x) or None
+
+
+def _sync_contract_expenses(db: Session, c: Contract):
+    for p in db.query(ContractPayment).filter(ContractPayment.contract_id == c.id).all():
+        _sync_payment_expense(db, p, c)
+
+
+def _contract_to_dict(c):
+    return {
+        "id": c.id, "brand_id": c.brand_id, "branch_id": c.branch_id,
+        "name": c.name or "", "kind": c.kind or "",
+        "place": c.place or "", "period": c.period or "", "value": c.value or 0,
+        "start_date": str(c.start_date) if c.start_date else "",
+        "end_date": str(c.end_date) if c.end_date else "",
+        "monthly_payment": c.monthly_payment or 0,
+        "payment_day": c.payment_day or 1,
+        "notes": c.notes or "", "status": c.status or "active",
+        "created_at": str(c.created_at) if c.created_at else "",
+    }
+
+
+@router.get("/contracts")
+def list_contracts(brand_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    q = db.query(Contract)
+    if brand_id:
+        q = q.filter(Contract.brand_id == brand_id)
+    rows = q.order_by(Contract.id.desc()).all()
+    return [_contract_to_dict(c) for c in rows]
+
+
+@router.post("/contracts")
+def create_contract(
+    name: str = Form(...),
+    kind: str = Form(""), place: str = Form(""),
+    period: str = Form(""),
+    value: float = Form(0), start_date: str = Form(""),
+    end_date: str = Form(""), monthly_payment: float = Form(0),
+    payment_day: int = Form(1), notes: str = Form(""),
+    status: str = Form("active"),
+    brand_id: Optional[int] = Form(None),
+    branch_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    c = Contract(
+        name=name, kind=kind or None, place=place or None,
+        period=period or None,
+        value=value, monthly_payment=monthly_payment,
+        payment_day=payment_day, notes=notes or None, status=status,
+        brand_id=brand_id, branch_id=branch_id,
+        start_date=date.fromisoformat(start_date) if start_date else None,
+        end_date=date.fromisoformat(end_date) if end_date else None,
+    )
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return _contract_to_dict(c)
+
+
+@router.put("/contracts/{contract_id}")
+def update_contract(
+    contract_id: int,
+    name: str = Form(...),
+    kind: str = Form(""), place: str = Form(""),
+    period: str = Form(""),
+    value: float = Form(0), start_date: str = Form(""),
+    end_date: str = Form(""), monthly_payment: float = Form(0),
+    payment_day: int = Form(1), notes: str = Form(""),
+    status: str = Form("active"),
+    branch_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    c = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not c:
+        raise HTTPException(404, "Contract not found")
+    c.name = name
+    c.branch_id = branch_id
+    c.kind = kind or None
+    c.place = place or None
+    c.period = period or None
+    c.value = value
+    c.monthly_payment = monthly_payment
+    c.payment_day = payment_day
+    c.notes = notes or None
+    c.status = status
+    c.start_date = date.fromisoformat(start_date) if start_date else None
+    c.end_date = date.fromisoformat(end_date) if end_date else None
+    _sync_contract_expenses(db, c)
+    db.commit()
+    db.refresh(c)
+    return _contract_to_dict(c)
+
+
+@router.delete("/contracts/{contract_id}")
+def delete_contract(contract_id: int, db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    c = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not c:
+        raise HTTPException(404, "Contract not found")
+    for p in db.query(ContractPayment).filter(ContractPayment.contract_id == c.id).all():
+        db.query(Expense).filter(Expense.contract_payment_id == p.id).delete()
+        db.delete(p)
+    db.delete(c)
+    db.commit()
+    return {"ok": True}
+
+
+# --- Contract Payments ---
+@router.get("/contracts/{contract_id}/payments")
+def list_contract_payments(contract_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    rows = db.query(ContractPayment).filter(ContractPayment.contract_id == contract_id)\
+        .order_by(ContractPayment.due_date).all()
+    return [{
+        "id": p.id, "contract_id": p.contract_id,
+        "due_date": str(p.due_date), "amount": p.amount,
+        "status": p.status, "paid_date": str(p.paid_date) if p.paid_date else None,
+        "payment_method": p.payment_method, "reference": p.reference,
+        "notes": p.notes,
+    } for p in rows]
+
+
+@router.post("/contracts/{contract_id}/payments")
+def create_contract_payment(
+    contract_id: int,
+    due_date: str = Form(...), amount: float = Form(...),
+    status: str = Form("pending"), paid_date: str = Form(""),
+    payment_method: str = Form(""), reference: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    c = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not c:
+        raise HTTPException(404, "Contract not found")
+    if status == "paid" and not payment_method:
+        raise HTTPException(400, "Payment method is required for paid payments")
+    p = ContractPayment(
+        contract_id=contract_id,
+        due_date=date.fromisoformat(due_date),
+        amount=amount, status=status,
+        paid_date=date.fromisoformat(paid_date) if paid_date else None,
+        payment_method=payment_method or None,
+        reference=reference or None,
+        notes=notes or None,
+    )
+    db.add(p)
+    db.flush()
+    _sync_payment_expense(db, p, c)
+    db.commit()
+    db.refresh(p)
+    return {"ok": True, "id": p.id}
+
+
+@router.post("/contracts/{contract_id}/generate-payments")
+def generate_contract_payments(
+    contract_id: int,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """Auto-generate monthly payment schedule from contract start to end date."""
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    c = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not c:
+        raise HTTPException(404, "Contract not found")
+    if not c.start_date or not c.end_date or not c.monthly_payment:
+        raise HTTPException(400, "Contract must have start_date, end_date, and monthly_payment")
+    # Delete existing auto-generated payments
+    existing = db.query(ContractPayment).filter(ContractPayment.contract_id == contract_id).count()
+    if existing > 0:
+        raise HTTPException(400, "Payments already exist. Delete them first to regenerate.")
+    from dateutil.relativedelta import relativedelta
+    current = c.start_date
+    day = c.payment_day or 1
+    count = 0
+    while current <= c.end_date:
+        try:
+            due = current.replace(day=min(day, calendar.monthrange(current.year, current.month)[1]))
+        except Exception:
+            due = current
+        p = ContractPayment(contract_id=contract_id, due_date=due, amount=c.monthly_payment, status="pending")
+        db.add(p)
+        count += 1
+        current = current + relativedelta(months=1)
+    db.commit()
+    return {"ok": True, "generated": count}
+
+
+@router.put("/contract-payments/{payment_id}")
+def update_contract_payment(
+    payment_id: int,
+    status: str = Form("pending"), paid_date: str = Form(""),
+    payment_method: str = Form(""), reference: str = Form(""),
+    notes: str = Form(""), amount: float = Form(0),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    p = db.query(ContractPayment).filter(ContractPayment.id == payment_id).first()
+    if not p:
+        raise HTTPException(404, "Payment not found")
+    if status == "paid" and not payment_method:
+        raise HTTPException(400, "Payment method is required for paid payments")
+    p.status = status
+    if amount > 0:
+        p.amount = amount
+    p.paid_date = date.fromisoformat(paid_date) if paid_date else None
+    p.payment_method = payment_method or None
+    p.reference = reference or None
+    p.notes = notes or None
+    c = db.query(Contract).filter(Contract.id == p.contract_id).first()
+    _sync_payment_expense(db, p, c)
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/contract-payments/{payment_id}")
+def delete_contract_payment(payment_id: int, db: Session = Depends(get_db),
+                            user: User = Depends(get_current_user)):
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    p = db.query(ContractPayment).filter(ContractPayment.id == payment_id).first()
+    if not p:
+        raise HTTPException(404, "Payment not found")
+    db.query(Expense).filter(Expense.contract_payment_id == p.id).delete()
+    db.delete(p)
+    db.commit()
+    return {"ok": True}
+
+
+# ── HR Approval Workflow ──────────────────────────────────────────────
+
+APPROVAL_MODELS = {
+    "salary": SalaryPayment,
+    "advance_loan": AdvanceLoan,
+    "benefit_deduction": StaffBenefitDeduction,
+    "leave": LeaveRecord,
+}
+
+MANAGER_ROLES = ("owner", "manager", "accountant")
+
+
+@router.post("/approve/{txn_type}/{txn_id}")
+def approve_hr_transaction(txn_type: str, txn_id: int,
+                           db: Session = Depends(get_db),
+                           user: User = Depends(get_current_user)):
+    """Approve an HR transaction. Only owner/manager can approve."""
+    if user.role not in MANAGER_ROLES:
+        raise HTTPException(403, "Only owner/manager can approve transactions")
+    model = APPROVAL_MODELS.get(txn_type)
+    if not model:
+        raise HTTPException(400, f"Invalid transaction type: {txn_type}")
+    record = db.query(model).filter(model.id == txn_id).first()
+    if not record:
+        raise HTTPException(404, "Record not found")
+    from datetime import datetime, timezone
+    record.approval_status = "approved"
+    record.approved_by = user.id
+    record.approval_date = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True, "approval_status": "approved"}
+
+
+@router.post("/reject/{txn_type}/{txn_id}")
+def reject_hr_transaction(txn_type: str, txn_id: int,
+                          db: Session = Depends(get_db),
+                          user: User = Depends(get_current_user)):
+    """Reject an HR transaction. Only owner/manager can reject."""
+    if user.role not in MANAGER_ROLES:
+        raise HTTPException(403, "Only owner/manager can reject transactions")
+    model = APPROVAL_MODELS.get(txn_type)
+    if not model:
+        raise HTTPException(400, f"Invalid transaction type: {txn_type}")
+    record = db.query(model).filter(model.id == txn_id).first()
+    if not record:
+        raise HTTPException(404, "Record not found")
+    from datetime import datetime, timezone
+    record.approval_status = "rejected"
+    record.approved_by = user.id
+    record.approval_date = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True, "approval_status": "rejected"}
+
+
+@router.get("/pending-approvals")
+def list_pending_approvals(brand_id: Optional[int] = None,
+                           db: Session = Depends(get_db),
+                           user: User = Depends(get_current_user)):
+    """List all pending HR transactions for manager approval."""
+    if user.role not in MANAGER_ROLES:
+        raise HTTPException(403, "Only owner/manager can view pending approvals")
+    bb_ids = _brand_branch_ids(db, brand_id)
+    results = []
+
+    # Pending salary payments
+    q = db.query(SalaryPayment).filter(SalaryPayment.approval_status == "pending_approval")
+    if bb_ids is not None:
+        q = q.filter(SalaryPayment.branch_id.in_(bb_ids))
+    for s in q.all():
+        emp = db.query(Employee).filter(Employee.id == s.employee_id).first()
+        results.append({"type": "salary", "id": s.id, "employee": emp.name if emp else "?",
+                        "detail": f"Salary {s.month} - KD {s.net_salary:.3f}", "date": str(s.created_at.date() if s.created_at else "")})
+
+    # Pending advance/loans
+    q = db.query(AdvanceLoan).filter(AdvanceLoan.approval_status == "pending_approval")
+    for a in q.all():
+        emp = db.query(Employee).filter(Employee.id == a.employee_id).first()
+        results.append({"type": "advance_loan", "id": a.id, "employee": emp.name if emp else "?",
+                        "detail": f"{a.loan_type.title()} - KD {a.amount:.3f}", "date": str(a.date)})
+
+    # Pending benefits/deductions
+    q = db.query(StaffBenefitDeduction).filter(StaffBenefitDeduction.approval_status == "pending_approval")
+    for b in q.all():
+        emp = db.query(Employee).filter(Employee.id == b.employee_id).first()
+        results.append({"type": "benefit_deduction", "id": b.id, "employee": emp.name if emp else "?",
+                        "detail": f"{b.category.title()} - KD {b.amount:.3f}", "date": str(b.date)})
+
+    # Pending leaves
+    q = db.query(LeaveRecord).filter(LeaveRecord.approval_status == "pending_approval")
+    for l in q.all():
+        emp = db.query(Employee).filter(Employee.id == l.employee_id).first()
+        results.append({"type": "leave", "id": l.id, "employee": emp.name if emp else "?",
+                        "detail": f"{l.leave_type.replace('_', ' ').title()} - {l.days} days", "date": str(l.start_date)})
+
+    return results

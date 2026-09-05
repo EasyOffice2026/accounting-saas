@@ -13,7 +13,7 @@ interface CashSummary {
 interface CashTxn {
   id: number; branch_id: number; date: string;
   txn_type: string; category: string; amount: number;
-  reference: string; notes: string;
+  reference: string; notes: string; balance: number;
 }
 
 export default function CashPage() {
@@ -26,7 +26,12 @@ export default function CashPage() {
   const [transactions, setTransactions] = useState<CashTxn[]>([]);
   const [tab, setTab] = useState<"summary" | "transactions">("summary");
   const [showTxnForm, setShowTxnForm] = useState(false);
-  const [depositAmount, setDepositAmount] = useState("0");
+  const [txnType, setTxnType] = useState<"cash_in" | "cash_out">("cash_in");
+
+  const categoriesFor = (type: string) =>
+    type === "cash_in"
+      ? [{ value: "opening_balance", label: t("opening_balance") }, { value: "petty_cash", label: t("petty_cash") }]
+      : [{ value: "deposit", label: t("bank_deposit") }, { value: "withdrawal", label: t("withdrawal") }];
 
   useEffect(() => {
     apiGet("/api/branches/").then((bs: Branch[]) => {
@@ -46,26 +51,16 @@ export default function CashPage() {
 
   const loadData = () => {
     apiGet(`/api/cash/summary?branch_id=${branchId}&summary_date=${selectedDate}`).then(setSummary);
-    apiGet(`/api/cash/transactions?branch_id=${branchId}&date_from=${selectedDate}&date_to=${selectedDate}`).then(setTransactions);
-  };
-
-  const handleSaveBalance = async () => {
-    const params = new URLSearchParams({
-      branch_id: branchId,
-      balance_date: selectedDate,
-      opening_balance: String(summary?.opening_balance || 0),
-      deposited: depositAmount,
-    });
-    await apiFetch(`/api/cash/save-balance?${params}`, { method: "POST" });
-    loadData();
+    apiGet(`/api/cash/transactions?branch_id=${branchId}`).then(setTransactions);
   };
 
   const handleAddTxn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     const params = new URLSearchParams({
       branch_id: branchId,
-      txn_date: selectedDate,
+      txn_date: fd.get("txn_date") as string || selectedDate,
       txn_type: fd.get("txn_type") as string,
       category: fd.get("category") as string,
       amount: fd.get("amount") as string,
@@ -188,6 +183,10 @@ export default function CashPage() {
                   <span>{t("cash_withdrawn")}</span>
                   <span className="font-medium text-red-600">KD {summary.cash_withdrawn.toFixed(3)}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span>{t("deposited")}</span>
+                  <span className="font-medium text-red-600">KD {summary.deposited.toFixed(3)}</span>
+                </div>
                 <div className="flex justify-between border-t pt-2 font-bold">
                   <span>{t("total_out")}</span>
                   <span className="text-red-700">KD {summary.total_out.toFixed(3)}</span>
@@ -205,29 +204,6 @@ export default function CashPage() {
               </span>
             </div>
           </div>
-
-          {/* Deposit Section */}
-          <div className="mt-4 p-4 bg-yellow-50 border rounded-lg">
-            <h4 className="font-semibold mb-2">{t("deposited")}</h4>
-            <div className="flex gap-3 items-end">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">{t("amount")}</label>
-                <input type="number" step="0.001" value={depositAmount}
-                  onChange={e => setDepositAmount(e.target.value)}
-                  className="px-3 py-2 border rounded-lg text-sm w-40" />
-              </div>
-              <button onClick={handleSaveBalance}
-                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
-                {t("save_balance")}
-              </button>
-            </div>
-            {summary.deposited > 0 && (
-              <p className="text-sm mt-2 text-yellow-700">
-                {t("deposited")}: KD {summary.deposited.toFixed(3)} |{" "}
-                {t("available_balance")}: KD {(summary.closing_balance - summary.deposited).toFixed(3)}
-              </p>
-            )}
-          </div>
         </div>
       )}
 
@@ -242,21 +218,27 @@ export default function CashPage() {
 
           {showTxnForm && (
             <form onSubmit={handleAddTxn} className="bg-white p-6 rounded-xl shadow-sm border mb-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">{t("cash_in")} / {t("cash_out")}</label>
-                  <select name="txn_type" className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <label className="block text-xs text-gray-500 mb-1">{t("date")}</label>
+                  <input type="date" name="txn_date" defaultValue={selectedDate}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">{t("type")}</label>
+                  <select name="txn_type" value={txnType}
+                    onChange={e => setTxnType(e.target.value as "cash_in" | "cash_out")}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="cash_in">{t("cash_in")}</option>
                     <option value="cash_out">{t("cash_out")}</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">{t("category")}</label>
-                  <select name="category" className="w-full px-3 py-2 border rounded-lg text-sm">
-                    <option value="petty_cash">{t("petty_cash")}</option>
-                    <option value="deposit">{t("deposit")}</option>
-                    <option value="withdrawal">{t("withdrawal")}</option>
-                    <option value="other">{t("other")}</option>
+                  <select name="category" key={txnType} className="w-full px-3 py-2 border rounded-lg text-sm">
+                    {categoriesFor(txnType).map(c => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -268,10 +250,10 @@ export default function CashPage() {
                   <label className="block text-xs text-gray-500 mb-1">{t("reference")}</label>
                   <input name="reference" className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">{t("notes")}</label>
-                <textarea name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">{t("notes")}</label>
+                  <input name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
               </div>
               <button type="submit"
                 className="px-6 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
@@ -281,32 +263,42 @@ export default function CashPage() {
           )}
 
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-            <table className="w-full text-sm min-w-[600px]">
+            <table className="w-full text-sm min-w-[700px]">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left">{t("date")}</th>
-                  <th className="px-4 py-3 text-left">{t("cash_in")} / {t("cash_out")}</th>
+                  <th className="px-4 py-3 text-left">{t("type")}</th>
                   <th className="px-4 py-3 text-left">{t("category")}</th>
-                  <th className="px-4 py-3 text-right">{t("amount")}</th>
+                  <th className="px-4 py-3 text-right">{t("cash_in")}</th>
+                  <th className="px-4 py-3 text-right">{t("cash_out")}</th>
+                  <th className="px-4 py-3 text-right font-bold">{t("balance")}</th>
                   <th className="px-4 py-3 text-left">{t("reference")}</th>
-                  <th className="px-4 py-3 text-left">{t("notes")}</th>
                 </tr>
               </thead>
               <tbody>
                 {transactions.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : transactions.map(txn => (
-                  <tr key={txn.id} className="border-b hover:bg-gray-50">
+                  <tr key={txn.id} className={`border-b hover:bg-gray-50 ${txn.txn_type === "opening_balance" ? "bg-blue-50" : ""}`}>
                     <td className="px-4 py-3">{txn.date}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs ${txn.txn_type === "cash_in" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                        {txn.txn_type === "cash_in" ? t("cash_in") : t("cash_out")}
+                      <span className={`px-2 py-0.5 rounded text-xs ${
+                        txn.txn_type === "cash_out" ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
+                      }`}>
+                        {txn.txn_type === "cash_out" ? t("cash_out") : t("cash_in")}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{txn.category}</td>
-                    <td className="px-4 py-3 text-right font-medium">KD {txn.amount.toFixed(3)}</td>
-                    <td className="px-4 py-3">{txn.reference || "-"}</td>
-                    <td className="px-4 py-3">{txn.notes || "-"}</td>
+                    <td className="px-4 py-3">{txn.category === "deposit" ? t("bank_deposit") : (t(txn.category) || txn.category)}</td>
+                    <td className="px-4 py-3 text-right font-medium text-green-600">
+                      {(txn.txn_type === "cash_in" || txn.txn_type === "opening_balance") ? `KD ${txn.amount.toFixed(3)}` : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium text-red-600">
+                      {txn.txn_type === "cash_out" ? `KD ${txn.amount.toFixed(3)}` : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold">
+                      KD {txn.balance.toFixed(3)}
+                    </td>
+                    <td className="px-4 py-3">{txn.reference || txn.notes || "-"}</td>
                   </tr>
                 ))}
               </tbody>

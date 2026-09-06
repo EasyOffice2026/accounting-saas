@@ -385,7 +385,8 @@ export default function ContractsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">{t("branch")}</label>
-              <select name="branch_id" required defaultValue={editing?.branch_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
+              <select name="branch_id" required
+                defaultValue={editing?.branch_id || branches.find(b => /administration/i.test(b.name))?.id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                 <option value="">{t("select_branch")}</option>
                 {branches.map(b => (
                   <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>

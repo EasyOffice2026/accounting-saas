@@ -1823,6 +1823,53 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db),
 
 
 # --- Contract Payments ---
+@router.get("/contract-reminders")
+def list_contract_reminders(
+    brand_id: Optional[int] = None,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """Unpaid (pending/overdue) contract payments across all contracts."""
+    if user.role not in SALARY_VISIBLE_ROLES:
+        raise HTTPException(403, "Not authorized")
+    q = db.query(ContractPayment, Contract).join(Contract, Contract.id == ContractPayment.contract_id)\
+        .filter(ContractPayment.status != "paid", Contract.status == "active")
+    if brand_id:
+        q = q.filter(Contract.brand_id == brand_id)
+    today = date.today()
+    out = []
+    seen_contracts = set()
+    for p, c in q.order_by(ContractPayment.due_date).all():
+        seen_contracts.add(c.id)
+        out.append({
+            "payment_id": p.id, "contract_id": c.id, "contract_name": c.name,
+            "kind": c.kind, "branch_id": c.branch_id, "period": c.period,
+            "amount": p.amount, "due_date": str(p.due_date),
+            "days_remaining": (p.due_date - today).days, "status": p.status,
+        })
+    # Active contracts with no unpaid payment yet: show the next scheduled due date
+    cq = db.query(Contract).filter(Contract.status == "active", Contract.monthly_payment > 0)
+    if brand_id:
+        cq = cq.filter(Contract.brand_id == brand_id)
+    for c in cq.all():
+        if c.id in seen_contracts or not c.payment_day:
+            continue
+        y, m = today.year, today.month
+        nxt = date(y, m, min(c.payment_day, calendar.monthrange(y, m)[1]))
+        if nxt < today:
+            y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+            nxt = date(y, m, min(c.payment_day, calendar.monthrange(y, m)[1]))
+        if c.end_date and nxt > c.end_date:
+            continue
+        out.append({
+            "payment_id": None, "contract_id": c.id, "contract_name": c.name,
+            "kind": c.kind, "branch_id": c.branch_id, "period": c.period,
+            "amount": c.monthly_payment, "due_date": str(nxt),
+            "days_remaining": (nxt - today).days, "status": "upcoming",
+        })
+    out.sort(key=lambda r: r["due_date"])
+    return out
+
+
 @router.get("/contracts/{contract_id}/payments")
 def list_contract_payments(contract_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if user.role not in SALARY_VISIBLE_ROLES:

@@ -18,6 +18,12 @@ interface ContractPaymentRecord {
   payment_method: string | null; reference: string | null; notes: string | null;
 }
 
+interface ReminderRecord {
+  payment_id: number | null; contract_id: number; contract_name: string;
+  kind: string; branch_id: number | null; period: string;
+  amount: number; due_date: string; days_remaining: number; status: string;
+}
+
 const DEFAULT_CONTRACT_TYPES = [
   "Rent Contract", "Legal Contract", "Internet Contract",
   "Subscription", "Maintenance Contract", "Consultancy Contract",
@@ -50,7 +56,8 @@ export default function ContractsPage() {
   const [expandedContract, setExpandedContract] = useState<number | null>(null);
   const [payments, setPayments] = useState<ContractPaymentRecord[]>([]);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [tab, setTab] = useState<"contracts" | "ledger">("contracts");
+  const [tab, setTab] = useState<"contracts" | "ledger" | "reminders">("contracts");
+  const [reminders, setReminders] = useState<ReminderRecord[]>([]);
   const [ledgerSearch, setLedgerSearch] = useState("");
   const [ledgerContractId, setLedgerContractId] = useState<number | null>(null);
 
@@ -71,6 +78,7 @@ export default function ContractsPage() {
 
   useEffect(() => {
     apiGet("/api/hr/contracts").then(setContracts);
+    apiGet("/api/hr/contract-reminders").then(setReminders);
     apiGet("/api/branches/").then(setBranches);
   }, []);
 
@@ -299,15 +307,66 @@ export default function ContractsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
-        {(["contracts", "ledger"] as const).map(tb => (
-          <button key={tb} onClick={() => { setTab(tb); setPayments([]); setLedgerContractId(null); setShowPaymentForm(false); }}
+        {(["contracts", "ledger", "reminders"] as const).map(tb => (
+          <button key={tb} onClick={() => { setTab(tb); setPayments([]); setLedgerContractId(null); setShowPaymentForm(false); if (tb === "reminders") apiGet("/api/hr/contract-reminders").then(setReminders); }}
             className={`px-4 py-2 rounded-md text-sm font-medium transition ${
               tab === tb ? "bg-white shadow text-emerald-700" : "text-gray-500 hover:text-gray-700"
             }`}>
-            {tb === "contracts" ? t("contracts_tab") : t("payment_ledger")}
+            {tb === "contracts" ? t("contracts_tab") : tb === "ledger" ? t("payment_ledger") : t("payment_reminders")}
+            {tb === "reminders" && reminders.some(r => r.days_remaining <= 7) && (
+              <span className="ml-2 inline-block bg-amber-500 text-white text-xs rounded-full px-2">{reminders.filter(r => r.days_remaining <= 7).length}</span>
+            )}
           </button>
         ))}
       </div>
+
+      {/* ===== REMINDERS TAB ===== */}
+      {tab === "reminders" && (
+        <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-3 py-3 text-left">{t("contract_name")}</th>
+                <th className="px-3 py-3 text-left">{t("contract_type")}</th>
+                <th className="px-3 py-3 text-left">{t("branch")}</th>
+                <th className="px-3 py-3 text-left">{t("period")}</th>
+                <th className="px-3 py-3 text-right">{t("amount")} (KD)</th>
+                <th className="px-3 py-3 text-left">{t("due_date")}</th>
+                <th className="px-3 py-3 text-center">{t("days_remaining")}</th>
+                <th className="px-3 py-3 text-center">{t("status")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {reminders.length === 0 ? (
+                <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+              ) : reminders.map(r => {
+                const overdue = r.days_remaining < 0;
+                const soon = !overdue && r.days_remaining <= 7;
+                const rowCls = overdue ? "bg-red-50" : soon ? "bg-amber-50" : "";
+                const daysCls = overdue ? "text-red-700 font-bold" : soon ? "text-amber-700 font-bold" : "text-gray-700";
+                return (
+                  <tr key={`${r.contract_id}-${r.payment_id ?? r.due_date}`} className={rowCls}>
+                    <td className="px-3 py-3 font-medium">{r.contract_name}</td>
+                    <td className="px-3 py-3">{r.kind ? (CONTRACT_TYPE_KEYS[r.kind] ? t(CONTRACT_TYPE_KEYS[r.kind]) : r.kind) : "—"}</td>
+                    <td className="px-3 py-3">{branchName(r.branch_id)}</td>
+                    <td className="px-3 py-3 capitalize">{r.period}</td>
+                    <td className="px-3 py-3 text-right font-mono">{r.amount.toFixed(3)}</td>
+                    <td className="px-3 py-3">{new Date(r.due_date).toLocaleDateString("en-GB")}</td>
+                    <td className={`px-3 py-3 text-center ${daysCls}`}>
+                      {overdue ? `${Math.abs(r.days_remaining)} ${t("days_overdue")}` : r.days_remaining === 0 ? t("due_today") : `${r.days_remaining} ${t("days")}`}
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <span className={`px-2 py-0.5 rounded text-xs ${overdue ? "bg-red-100 text-red-700" : r.status === "pending" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}>
+                        {overdue ? t("overdue") : t(r.status)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* ===== LEDGER TAB ===== */}
       {tab === "ledger" && (
@@ -443,28 +502,6 @@ export default function ContractsPage() {
           </div>
         </form>
       )}
-
-      {/* Payment Reminders */}
-      {(() => {
-        const today = new Date();
-        const currentDay = today.getDate();
-        const upcoming = contracts.filter(c => c.status === "active" && c.monthly_payment > 0);
-        const due = upcoming.filter(c => {
-          const diff = c.payment_day - currentDay;
-          return diff >= 0 && diff <= 7;
-        });
-        if (due.length === 0) return null;
-        return (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
-            <h4 className="font-semibold text-amber-800 text-sm mb-2">⏰ {t("payment_reminders")}</h4>
-            {due.map(c => (
-              <div key={c.id} className="text-sm text-amber-700">
-                <strong>{c.name}</strong> — {c.monthly_payment} KD {t("due_on_day")} {c.payment_day}
-              </div>
-            ))}
-          </div>
-        );
-      })()}
 
       {/* Contracts Table */}
       <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">

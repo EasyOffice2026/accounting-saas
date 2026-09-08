@@ -10,10 +10,15 @@ router = APIRouter(prefix="/api/branches", tags=["branches"])
 
 
 @router.get("/")
-def list_branches(brand_id: Optional[int] = None, db: Session = Depends(get_db)):
+def list_branches(brand_id: Optional[int] = None, scope: Optional[str] = None,
+                  db: Session = Depends(get_db)):
     q = db.query(Branch)
     if brand_id:
         q = q.filter(Branch.brand_id == brand_id)
+    if scope == "personnel":
+        q = q.filter(Branch.name.like("Personnel Office%"))
+    elif scope == "operating":
+        q = q.filter(~Branch.name.like("Personnel Office%"))
     rows = q.all()
     return [{"id": b.id, "name": b.name, "name_ar": b.name_ar or "",
              "brand_id": b.brand_id, "is_central_kitchen": b.is_central_kitchen,

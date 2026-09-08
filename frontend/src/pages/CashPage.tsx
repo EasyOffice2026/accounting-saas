@@ -34,7 +34,9 @@ export default function CashPage() {
       : [{ value: "deposit", label: t("bank_deposit") }, { value: "withdrawal", label: t("withdrawal") }];
 
   useEffect(() => {
-    apiGet("/api/branches/").then((bs: Branch[]) => {
+    const scope = user?.role === "personnel" ? "?scope=personnel"
+      : ["owner", "manager", "accountant"].includes(user?.role || "") ? "" : "?scope=operating";
+    apiGet(`/api/branches/${scope}`).then((bs: Branch[]) => {
       setBranches(bs.filter(b => !b.name.includes("Central")));
       if (user?.branch_id) {
         setBranchId(String(user.branch_id));

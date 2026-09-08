@@ -5,7 +5,7 @@ import { useBrand } from "../contexts/BrandContext";
 import {
   LayoutDashboard, ShoppingCart, Package, Receipt,
   Users, LogOut, Menu, X, Banknote, Settings, ArrowLeftRight, FileText,
-  Building2, ChevronDown, Globe,
+  Building2, ChevronDown, Globe, IdCard,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -15,6 +15,7 @@ const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles
   { path: "/purchases", icon: Package, key: "purchases" },
   { path: "/expenses", icon: Receipt, key: "expenses" },
   { path: "/hr", icon: Users, key: "hr" },
+  { path: "/renewals", icon: IdCard, key: "renewals", roles: ["owner", "manager", "accountant", "personnel"] },
 
   { path: "/cash", icon: Banknote, key: "cash_management" },
   { path: "/transfers", icon: ArrowLeftRight, key: "internal_transfer" },

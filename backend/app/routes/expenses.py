@@ -58,6 +58,8 @@ def list_expenses(branch_id: Optional[int] = None, brand_id: Optional[int] = Non
         q = q.filter(Expense.branch_id == branch_id)
     elif bb_ids is not None:
         q = q.filter(Expense.branch_id.in_(bb_ids))
+    if user.role == "personnel":
+        q = q.filter(Expense.renewal_request_id.isnot(None))
     q = apply_date_range(q, Expense.date, date_from, date_to)
     return q.order_by(Expense.date.desc()).all()
 
@@ -133,6 +135,9 @@ def update_expense(
     if exp.contract_payment_id:
         from fastapi import HTTPException
         raise HTTPException(400, "This expense is managed from Contracts & Subscriptions")
+    if exp.renewal_request_id:
+        from fastapi import HTTPException
+        raise HTTPException(400, "This expense is managed from HR Documents & Renewals")
     exp.branch_id = branch_id
     exp.category_id = category_id
     exp.supplier_id = supplier_id if supplier_id else None
@@ -159,6 +164,9 @@ def delete_expense(expense_id: int, db: Session = Depends(get_db),
     if exp.contract_payment_id:
         from fastapi import HTTPException
         raise HTTPException(400, "This expense is managed from Contracts & Subscriptions")
+    if exp.renewal_request_id:
+        from fastapi import HTTPException
+        raise HTTPException(400, "This expense is managed from HR Documents & Renewals")
     db.delete(exp)
     db.commit()
     return {"ok": True}

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import date as date_cls
@@ -14,6 +14,22 @@ from app.routes.hr import _brand_branch_ids
 router = APIRouter(prefix="/api/cash", tags=["cash"])
 
 
+def _personnel_branch_ids(db: Session, user: User) -> list:
+    from app.models.branch import Branch
+    from app.routes.renewals import PERSONNEL_BRANCH_PREFIX
+    q = db.query(Branch.id).filter(Branch.name.like(f"{PERSONNEL_BRANCH_PREFIX}%"))
+    allowed = user.get_allowed_brands()
+    if allowed is not None:
+        q = q.filter(Branch.brand_id.in_(allowed))
+    return [b.id for b in q.all()]
+
+
+def _guard_personnel(db: Session, user: User, branch_id: int):
+    """The Personnel Officer can only operate the Personnel Office cash boxes."""
+    if user.role == "personnel" and branch_id not in _personnel_branch_ids(db, user):
+        raise HTTPException(403, "Personnel Officer can only access the Personnel Office petty cash")
+
+
 @router.get("/transactions")
 def list_transactions(
     branch_id: int = Query(None),
@@ -25,7 +41,10 @@ def list_transactions(
 ):
     q = db.query(CashTransaction)
     bb_ids = _brand_branch_ids(db, brand_id)
-    if user.role == "staff" and user.branch_id:
+    if user.role == "personnel":
+        pids = _personnel_branch_ids(db, user)
+        q = q.filter(CashTransaction.branch_id.in_([branch_id] if branch_id in pids else pids))
+    elif user.role == "staff" and user.branch_id:
         q = q.filter(CashTransaction.branch_id == user.branch_id)
     elif branch_id:
         q = q.filter(CashTransaction.branch_id == branch_id)
@@ -69,6 +88,7 @@ def create_transaction(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    _guard_personnel(db, user, branch_id)
     # An "opening_balance" category anchors the running balance, so store it
     # with the special opening_balance txn_type regardless of the chosen type.
     if category == "opening_balance":
@@ -91,6 +111,7 @@ def cash_summary(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    _guard_personnel(db, user, branch_id)
     target_date = date_cls.fromisoformat(summary_date) if summary_date else date_cls.today()
 
     # Cash sales for this branch on this date

@@ -9,7 +9,7 @@ from app.models import *  # noqa: F401,F403 — register all models
 from app.utils.auth import hash_password
 from app.routes import auth, branches, sales, purchases, expenses, hr, dashboard
 from app.routes import cash, items, export, email, payment, transfers, whatsapp, users
-from app.routes import foodics
+from app.routes import foodics, renewals
 
 app = FastAPI(title="Mudawwarah Restaurant Management System")
 
@@ -42,6 +42,7 @@ app.include_router(transfers.router)
 app.include_router(whatsapp.router)
 app.include_router(users.router)
 app.include_router(foodics.router)
+app.include_router(renewals.router)
 
 
 @app.get("/healthz")
@@ -76,6 +77,16 @@ def startup():
     _migrate_columns()
     _seed_data()
     _sync_contract_expenses()
+    _seed_renewals()
+
+
+def _seed_renewals():
+    from app.routes.renewals import seed_renewals
+    db = SessionLocal()
+    try:
+        seed_renewals(db)
+    finally:
+        db.close()
 
 
 def _sync_contract_expenses():
@@ -296,6 +307,9 @@ def _migrate_columns():
             cols = [c["name"] for c in insp.get_columns("expenses")]
             if "contract_payment_id" not in cols:
                 conn.execute(text("ALTER TABLE expenses ADD COLUMN contract_payment_id INTEGER REFERENCES contract_payments(id)"))
+                conn.commit()
+            if "renewal_request_id" not in cols:
+                conn.execute(text("ALTER TABLE expenses ADD COLUMN renewal_request_id INTEGER REFERENCES renewal_requests(id)"))
                 conn.commit()
 
         # Transfer order lines: add item_name_ar

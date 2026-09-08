@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Printer, FileSpreadsheet, FileText, Paperclip, Pencil, Trash2 } from "lucide-react";
+import { Plus, Printer, FileSpreadsheet, FileText, Paperclip, Pencil, Trash2, Search, User as UserIcon, Building2, X } from "lucide-react";
 import { apiGet, apiPost, apiPut, apiDelete, apiFetch, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useBrand } from "../contexts/BrandContext";
@@ -9,7 +9,7 @@ type Tab = "overview" | "requests" | "approvals" | "staff" | "company" | "prices
 
 interface RType { id: number; group: string; name: string; name_ar: string; default_fee: number; validity_months: number; reminder_days: number; is_active: boolean; }
 interface Branch { id: number; name: string; name_ar: string; }
-interface Emp { id: number; name: string; name_ar: string; civil_id: string; branch_id: number; position: string; }
+interface Emp { id: number; staff_no: string; name: string; name_ar: string; civil_id: string; branch_id: number; position: string; }
 interface License { id: number; brand_id: number; branch_id: number | null; branch_name: string; type_id: number | null; type_name: string; name: string; license_no: string; authority: string; issue_date: string; expiry_date: string; days_remaining: number | null; status: string; notes: string; file1: string | null; file2: string | null; file3: string | null; }
 interface Doc { id: number; employee_id: number; employee_name: string; employee_name_ar: string; civil_id: string; branch_id: number | null; branch_name: string; type_id: number; type_name: string; doc_no: string; authority: string; issue_date: string; expiry_date: string; days_remaining: number | null; status: string; notes: string; file1: string | null; file2: string | null; file3: string | null; }
 interface BoardRow { kind: string; ref_id: number; employee_id: number | null; license_id: number | null; name: string; id_no: string; branch_id: number | null; branch_name: string; type_id: number | null; type_name: string; doc_no: string; expiry_date: string; days_remaining: number | null; status: string; }
@@ -41,6 +41,72 @@ function DaysBadge({ d }: { d: number | null }) {
   if (d === null || d === undefined) return <span className="text-gray-400">—</span>;
   const cls = d < 0 ? "bg-red-100 text-red-800" : d <= 30 ? "bg-amber-100 text-amber-800" : d <= 90 ? "bg-yellow-100 text-yellow-800" : "bg-green-100 text-green-800";
   return <span className={`px-2 py-0.5 rounded text-xs font-semibold ${cls}`}>{d < 0 ? `${-d} ${t("rn_days_overdue")}` : d}</span>;
+}
+
+interface PickItem { id: number; title: string; subtitle: string; meta: string; }
+
+function SearchPicker({ items, value, onChange, placeholder, disabled }: {
+  items: PickItem[]; value: string; onChange: (id: string) => void; placeholder: string; disabled?: boolean;
+}) {
+  const { t } = useTranslation();
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const selected = items.find(x => String(x.id) === value);
+  const ql = q.trim().toLowerCase();
+  const list = (ql ? items.filter(x => `${x.title} ${x.subtitle} ${x.meta}`.toLowerCase().includes(ql)) : items).slice(0, 50);
+  if (selected && !open) {
+    return (
+      <div className="flex items-center justify-between border rounded px-3 py-2 bg-white">
+        <div className="min-w-0"><div className="font-semibold truncate">{selected.title}</div><div className="text-xs text-gray-500 font-mono">{selected.subtitle}</div></div>
+        {!disabled && <button type="button" onClick={() => { setQ(""); setOpen(true); }} className="text-xs text-blue-600 hover:underline ms-3 shrink-0">{t("rn_change")}</button>}
+      </div>
+    );
+  }
+  return (
+    <div className="relative">
+      <div className="flex items-center border rounded px-2 bg-white focus-within:ring-2 focus-within:ring-emerald-500">
+        <Search size={15} className="text-gray-400 shrink-0" />
+        <input autoFocus={open} className="px-2 py-2 text-sm w-full outline-none" placeholder={placeholder} value={q} disabled={disabled}
+          onChange={e => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)} />
+        {selected && <button type="button" onClick={() => setOpen(false)} className="text-gray-400"><X size={14} /></button>}
+      </div>
+      {open && (
+        <div className="absolute z-30 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-72 overflow-y-auto">
+          {list.length === 0 && <div className="px-3 py-3 text-sm text-gray-500">{t("rn_no_match")}</div>}
+          {list.map(x => (
+            <button type="button" key={x.id} onMouseDown={() => { onChange(String(x.id)); setOpen(false); setQ(""); }}
+              className={`w-full text-start px-3 py-2 hover:bg-emerald-50 border-b last:border-b-0 ${String(x.id) === value ? "bg-emerald-50" : ""}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-sm truncate">{x.title}</span>
+                <span className="text-xs bg-gray-100 text-gray-700 rounded px-1.5 py-0.5 shrink-0">{x.meta}</span>
+              </div>
+              <div className="text-xs text-gray-500 font-mono">{x.subtitle}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Field({ label, value, mono }: { label: string; value: string | undefined; mono?: boolean }) {
+  return (
+    <div className="bg-white border rounded px-3 py-2">
+      <div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>
+      <div className={`text-sm font-semibold truncate ${mono ? "font-mono" : ""}`}>{value || "—"}</div>
+    </div>
+  );
+}
+
+function Section({ title, icon, children, extra }: { title: string; icon?: React.ReactNode; children: React.ReactNode; extra?: React.ReactNode }) {
+  return (
+    <div className="border rounded-lg">
+      <div className="flex items-center justify-between bg-gray-50 border-b px-4 py-2 rounded-t-lg">
+        <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">{icon}{title}</div>{extra}
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  );
 }
 
 function Files({ f1, f2, f3 }: { f1: string | null; f2: string | null; f3: string | null }) {
@@ -139,6 +205,10 @@ export default function RenewalsPage() {
     setLine(i, { type_id: tid ? Number(tid) : "", fee: ty?.default_fee || 0, current_expiry });
   };
   const reqTotal = rf.lines.reduce((s, l) => s + (Number(l.fee) || 0) + (Number(l.extra_charges) || 0), 0);
+  const selEmp = rf.group === "staff" && rf.employee_id ? employees.find(e => e.id === Number(rf.employee_id)) : undefined;
+  const selLic = rf.group === "company" && rf.license_id ? licenses.find(l => l.id === Number(rf.license_id)) : undefined;
+  const selDocs = selEmp ? docs.filter(d => d.employee_id === selEmp.id) : [];
+  const openOthers = (lastTxn?.open_requests || []).filter(o => o.id !== editReq?.id);
 
   const saveReq = async (submit: boolean) => {
     if (!brandId) return;
@@ -523,88 +593,164 @@ export default function RenewalsPage() {
       {/* ---------- Request form modal */}
       {showReq && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center overflow-y-auto p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl p-5 space-y-4 my-4">
-            <div className="flex justify-between items-center"><h2 className="text-lg font-bold">{editReq ? editReq.request_no : t("rn_new_request")}</h2><button onClick={() => setShowReq(false)} className="text-gray-500">✕</button></div>
-            <div className="grid md:grid-cols-4 gap-3">
-              <div><label className="text-xs text-gray-600">{t("rn_group")}</label>
-                <select className={inp} value={rf.group} disabled={!!editReq} onChange={e => setRf(f => ({ ...f, group: e.target.value, employee_id: "", license_id: "", lines: [emptyLine()] }))}>
-                  <option value="staff">{t("rn_staff")}</option><option value="company">{t("rn_company")}</option>
-                </select></div>
-              {rf.group === "staff" ? (
-                <div className="md:col-span-2"><label className="text-xs text-gray-600">{t("rn_employee")}</label>
-                  <select className={inp} value={rf.employee_id} disabled={!!editReq} onChange={e => setRf(f => ({ ...f, employee_id: e.target.value }))}>
-                    <option value="">{t("rn_select_employee")}</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{ar && e.name_ar ? e.name_ar : e.name} — {e.civil_id || "?"} — {bname(branches.find(b => b.id === e.branch_id))}</option>)}
-                  </select></div>
-              ) : (
-                <div className="md:col-span-2"><label className="text-xs text-gray-600">{t("rn_license")}</label>
-                  <select className={inp} value={rf.license_id} disabled={!!editReq} onChange={e => setRf(f => ({ ...f, license_id: e.target.value }))}>
-                    <option value="">{t("rn_select_license")}</option>
-                    {licenses.map(l => <option key={l.id} value={l.id}>{l.name} — {l.license_no} — {l.branch_name}</option>)}
-                  </select></div>
-              )}
-              <div><label className="text-xs text-gray-600">{t("rn_urgency")}</label>
-                <select className={inp} value={rf.urgency} onChange={e => setRf(f => ({ ...f, urgency: e.target.value }))}>
-                  <option value="normal">{t("rn_normal")}</option><option value="urgent">{t("rn_urgent")}</option>
-                </select></div>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl my-4 overflow-hidden">
+            <div className="flex justify-between items-center px-5 py-3 bg-emerald-700 text-white">
+              <div>
+                <h2 className="text-lg font-bold">{editReq ? editReq.request_no : t("rn_new_request")}</h2>
+                <div className="text-xs text-emerald-100">{brands.find(b => b.id === brandId)?.name_en || ""}{editReq ? ` · ${editReq.status_label}` : ""}</div>
+              </div>
+              <button onClick={() => setShowReq(false)} className="text-emerald-100 hover:text-white"><X size={20} /></button>
             </div>
 
-            {lastTxn && (
-              <div className={`rounded p-3 text-sm ${lastTxn.open_requests.filter(o => o.id !== editReq?.id).length ? "bg-red-50 border border-red-200" : "bg-blue-50 border border-blue-200"}`}>
-                <div className="font-semibold">{t("rn_last_txn")}</div>
-                {lastTxn.last ? (
-                  <div>{lastTxn.last.request_no} · {lastTxn.last.paid_date} · KD {kd(lastTxn.last.paid_amount)} · {lastTxn.last.paid_by_name}
-                    <ul className="list-disc ms-5 text-xs text-gray-700">{lastTxn.last.lines.map((l, i) => <li key={i}>{l.type_name}{l.new_expiry ? ` → ${l.new_expiry}` : ""} — KD {kd(l.line_total)}</li>)}</ul>
+            <div className="p-5 space-y-4">
+              <Section title={t("rn_request_for")} icon={rf.group === "staff" ? <UserIcon size={16} /> : <Building2 size={16} />}
+                extra={
+                  <div className="inline-flex rounded overflow-hidden border text-xs">
+                    {(["staff", "company"] as const).map(g => (
+                      <button key={g} type="button" disabled={!!editReq}
+                        onClick={() => setRf(f => ({ ...f, group: g, employee_id: "", license_id: "", lines: [emptyLine()] }))}
+                        className={`px-3 py-1 ${rf.group === g ? "bg-emerald-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+                        {g === "staff" ? t("rn_staff") : t("rn_company")}
+                      </button>
+                    ))}
                   </div>
-                ) : <div className="text-gray-600">{t("rn_no_last_txn")}</div>}
-                {lastTxn.open_requests.filter(o => o.id !== editReq?.id).length > 0 && (
-                  <div className="text-red-700 font-semibold mt-1">{t("rn_open_warning")}: {lastTxn.open_requests.filter(o => o.id !== editReq?.id).map(o => `${o.request_no} (${o.status})`).join(", ")}</div>
-                )}
-              </div>
-            )}
+                }>
+                <div className="grid md:grid-cols-3 gap-3">
+                  <div className="md:col-span-2">
+                    <label className="text-xs text-gray-600">{rf.group === "staff" ? t("rn_employee") : t("rn_license")}</label>
+                    {rf.group === "staff" ? (
+                      <SearchPicker disabled={!!editReq} value={rf.employee_id} onChange={v => setRf(f => ({ ...f, employee_id: v }))} placeholder={t("rn_search_employee")}
+                        items={employees.map(e => ({ id: e.id, title: ar && e.name_ar ? e.name_ar : e.name, subtitle: e.civil_id || "—", meta: bname(branches.find(b => b.id === e.branch_id)) }))} />
+                    ) : (
+                      <SearchPicker disabled={!!editReq} value={rf.license_id} onChange={v => setRf(f => ({ ...f, license_id: v }))} placeholder={t("rn_search_license")}
+                        items={licenses.map(l => ({ id: l.id, title: l.name, subtitle: l.license_no, meta: l.branch_name || "—" }))} />
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600">{t("rn_urgency")}</label>
+                    <select className={`${inp} py-2`} value={rf.urgency} onChange={e => setRf(f => ({ ...f, urgency: e.target.value }))}>
+                      <option value="normal">{t("rn_normal")}</option><option value="urgent">{t("rn_urgent")}</option>
+                    </select>
+                  </div>
+                </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-gray-600"><tr>
-                  {["#", t("rn_type"), t("rn_description"), t("rn_current_expiry"), t("rn_new_expiry"), t("rn_new_doc_no"), t("rn_fee"), t("rn_extra"), t("rn_extra_desc"), t("rn_total"), ""].map((h, i) => <th key={i} className="px-2 py-1 text-start">{h}</th>)}
-                </tr></thead>
-                <tbody>
+                {selEmp && (
+                  <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-2 bg-emerald-50/60 border border-emerald-100 rounded-lg p-3">
+                    <Field label={t("rn_name")} value={selEmp.name} />
+                    <Field label={t("rn_name_ar")} value={selEmp.name_ar} />
+                    <Field label={t("rn_civil_id")} value={selEmp.civil_id} mono />
+                    <Field label={t("branch")} value={bname(branches.find(b => b.id === selEmp.branch_id))} />
+                    <Field label={t("rn_position")} value={selEmp.position} />
+                  </div>
+                )}
+                {selLic && (
+                  <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-2 bg-emerald-50/60 border border-emerald-100 rounded-lg p-3">
+                    <Field label={t("rn_name")} value={selLic.name} />
+                    <Field label={t("rn_license_no")} value={selLic.license_no} mono />
+                    <Field label={t("branch")} value={selLic.branch_name} />
+                    <Field label={t("rn_authority")} value={selLic.authority} />
+                    <Field label={t("rn_expiry_date")} value={selLic.expiry_date} />
+                  </div>
+                )}
+
+                {(selEmp || selLic) && (
+                  <div className="mt-3 grid md:grid-cols-2 gap-3">
+                    <div className="border rounded-lg p-3">
+                      <div className="text-xs font-semibold text-gray-600 mb-2">{t("rn_documents_on_file")}</div>
+                      {selEmp && (selDocs.length ? (
+                        <div className="flex flex-wrap gap-2">
+                          {selDocs.map(d => (
+                            <div key={d.id} className="border rounded px-2 py-1 text-xs bg-white flex items-center gap-2">
+                              <span className="font-medium">{tname(typeById[d.type_id])}</span>
+                              <span className="text-gray-500">{d.expiry_date || "—"}</span>
+                              <DaysBadge d={d.days_remaining} />
+                            </div>
+                          ))}
+                        </div>
+                      ) : <div className="text-xs text-gray-400">{t("rn_no_documents")}</div>)}
+                      {selLic && (
+                        <div className="border rounded px-2 py-1 text-xs bg-white inline-flex items-center gap-2">
+                          <span className="font-medium">{selLic.type_name || selLic.name}</span>
+                          <span className="text-gray-500">{selLic.expiry_date || "—"}</span>
+                          <DaysBadge d={selLic.days_remaining} />
+                        </div>
+                      )}
+                    </div>
+                    <div className={`border rounded-lg p-3 ${openOthers.length ? "bg-red-50 border-red-200" : "bg-blue-50/50 border-blue-100"}`}>
+                      <div className="text-xs font-semibold text-gray-600 mb-2">{t("rn_last_txn")}</div>
+                      {lastTxn?.last ? (
+                        <div className="text-sm">
+                          <div className="flex flex-wrap gap-x-3 gap-y-1">
+                            <span className="font-mono text-xs bg-white border rounded px-1.5 py-0.5">{lastTxn.last.request_no}</span>
+                            <span>{lastTxn.last.paid_date}</span>
+                            <span className="font-semibold">KD {kd(lastTxn.last.paid_amount)}</span>
+                            <span className="text-gray-500">{lastTxn.last.paid_by_name}</span>
+                          </div>
+                          <ul className="mt-1 text-xs text-gray-700 space-y-0.5">
+                            {lastTxn.last.lines.map((l, i) => <li key={i}>• {l.type_name}{l.new_expiry ? ` → ${l.new_expiry}` : ""} — KD {kd(l.line_total)}</li>)}
+                          </ul>
+                        </div>
+                      ) : <div className="text-xs text-gray-500">{t("rn_no_last_txn")}</div>}
+                      {openOthers.length > 0 && (
+                        <div className="text-red-700 text-xs font-semibold mt-2">{t("rn_open_warning")}: {openOthers.map(o => `${o.request_no} (${o.status})`).join(", ")}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </Section>
+
+              <Section title={t("rn_request_lines")} icon={<FileText size={16} />}
+                extra={<button type="button" onClick={() => setRf(f => ({ ...f, lines: [...f.lines, emptyLine()] }))} className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline"><Plus size={14} />{t("rn_add_line")}</button>}>
+                <div className="space-y-3">
                   {rf.lines.map((l, i) => {
                     const valid = l.current_expiry && new Date(l.current_expiry) > new Date();
                     const dleft = valid ? Math.ceil((new Date(l.current_expiry).getTime() - Date.now()) / 86400000) : 0;
                     return (
-                      <tr key={i} className="border-t align-top">
-                        <td className="px-2 py-1">{i + 1}</td>
-                        <td className="px-2 py-1 min-w-[160px]">
-                          <select className={inp} value={l.type_id} onChange={e => onLineType(i, e.target.value)}>
-                            <option value="">—</option>{lineTypes.map(ty => <option key={ty.id} value={ty.id}>{tname(ty)}</option>)}
-                          </select>
-                          {valid && dleft > 90 && <div className="text-xs text-amber-700 mt-1">{t("rn_still_valid")} {dleft} {t("rn_days")}</div>}
-                        </td>
-                        <td className="px-2 py-1"><input className={inp} value={l.description} onChange={e => setLine(i, { description: e.target.value })} /></td>
-                        <td className="px-2 py-1"><input type="date" className={inp} value={l.current_expiry} onChange={e => setLine(i, { current_expiry: e.target.value })} /></td>
-                        <td className="px-2 py-1"><input type="date" className={inp} value={l.new_expiry} onChange={e => setLine(i, { new_expiry: e.target.value })} /></td>
-                        <td className="px-2 py-1"><input className={inp} value={l.new_doc_no} onChange={e => setLine(i, { new_doc_no: e.target.value })} /></td>
-                        <td className="px-2 py-1 w-24"><input type="number" step="0.001" className={inp} value={l.fee} onChange={e => setLine(i, { fee: Number(e.target.value) })} /></td>
-                        <td className="px-2 py-1 w-24"><input type="number" step="0.001" className={inp} value={l.extra_charges} onChange={e => setLine(i, { extra_charges: Number(e.target.value) })} /></td>
-                        <td className="px-2 py-1"><input className={inp} value={l.extra_desc} onChange={e => setLine(i, { extra_desc: e.target.value })} /></td>
-                        <td className="px-2 py-1 font-semibold whitespace-nowrap">{kd((Number(l.fee) || 0) + (Number(l.extra_charges) || 0))}</td>
-                        <td className="px-2 py-1"><button onClick={() => setRf(f => ({ ...f, lines: f.lines.filter((_, j) => j !== i) }))} className="text-red-600" disabled={rf.lines.length === 1}><Trash2 size={14} /></button></td>
-                      </tr>
+                      <div key={i} className="border rounded-lg p-3 bg-gray-50/60">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-semibold text-gray-600">{t("rn_line")} {i + 1}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-bold">{t("rn_line_total")}: KD {kd((Number(l.fee) || 0) + (Number(l.extra_charges) || 0))}</span>
+                            <button type="button" onClick={() => setRf(f => ({ ...f, lines: f.lines.filter((_, j) => j !== i) }))} className="text-red-500 hover:text-red-700 disabled:opacity-30" disabled={rf.lines.length === 1}><Trash2 size={15} /></button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <div className="md:col-span-1"><label className="text-[11px] text-gray-500">{t("rn_type")}</label>
+                            <select className={inp} value={l.type_id} onChange={e => onLineType(i, e.target.value)}>
+                              <option value="">—</option>{lineTypes.map(ty => <option key={ty.id} value={ty.id}>{tname(ty)}</option>)}
+                            </select>
+                            {valid && dleft > 90 && <div className="text-[11px] text-amber-700 mt-0.5">{t("rn_still_valid")} {dleft} {t("rn_days")}</div>}
+                          </div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_description")}</label><input className={inp} value={l.description} onChange={e => setLine(i, { description: e.target.value })} /></div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_current_expiry")}</label><input type="date" className={inp} value={l.current_expiry} onChange={e => setLine(i, { current_expiry: e.target.value })} /></div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_new_expiry")}</label><input type="date" className={inp} value={l.new_expiry} onChange={e => setLine(i, { new_expiry: e.target.value })} /></div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_new_doc_no")}</label><input className={inp} value={l.new_doc_no} onChange={e => setLine(i, { new_doc_no: e.target.value })} /></div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_fee")} (KD)</label><input type="number" step="0.001" className={inp} value={l.fee} onChange={e => setLine(i, { fee: Number(e.target.value) })} /></div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_extra")} (KD)</label><input type="number" step="0.001" className={inp} value={l.extra_charges} onChange={e => setLine(i, { extra_charges: Number(e.target.value) })} /></div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_extra_desc")}</label><input className={inp} value={l.extra_desc} onChange={e => setLine(i, { extra_desc: e.target.value })} /></div>
+                        </div>
+                      </div>
                     );
                   })}
-                </tbody>
-                <tfoot><tr className="border-t bg-gray-50 font-bold"><td colSpan={9} className="px-2 py-2 text-end">{t("rn_total")}</td><td className="px-2 py-2">KD {kd(reqTotal)}</td><td /></tr></tfoot>
-              </table>
-            </div>
-            <button onClick={() => setRf(f => ({ ...f, lines: [...f.lines, emptyLine()] }))} className={`${btn} bg-gray-100 inline-flex items-center gap-1`}><Plus size={14} />{t("rn_add_line")}</button>
+                </div>
+                <div className="flex justify-end mt-3">
+                  <div className="bg-emerald-700 text-white rounded-lg px-5 py-2 text-end">
+                    <div className="text-[11px] uppercase tracking-wide text-emerald-100">{t("rn_total")} · {rf.lines.filter(l => l.type_id).length} {t("rn_lines")}</div>
+                    <div className="text-xl font-bold">KD {kd(reqTotal)}</div>
+                  </div>
+                </div>
+              </Section>
 
-            <div className="grid md:grid-cols-2 gap-3">
-              <div><label className="text-xs text-gray-600">{t("notes")}</label><textarea className={inp} rows={2} value={rf.notes} onChange={e => setRf(f => ({ ...f, notes: e.target.value }))} /></div>
-              <FileInputs files={reqFiles} set={setReqFiles} />
+              <Section title={t("rn_notes_attachments")} icon={<Paperclip size={16} />}>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div><label className="text-xs text-gray-600">{t("notes")}</label><textarea className={inp} rows={3} value={rf.notes} onChange={e => setRf(f => ({ ...f, notes: e.target.value }))} /></div>
+                  <FileInputs files={reqFiles} set={setReqFiles} />
+                </div>
+              </Section>
             </div>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setShowReq(false)} className={`${btn} bg-gray-100`}>{t("cancel")}</button>
+
+            <div className="flex justify-end gap-2 px-5 py-3 border-t bg-gray-50">
+              <button onClick={() => setShowReq(false)} className={`${btn} bg-white border`}>{t("cancel")}</button>
               <button onClick={() => saveReq(false)} className={`${btn} bg-gray-700 text-white`}>{t("rn_save_draft")}</button>
               <button onClick={() => saveReq(true)} className={`${btn} bg-emerald-600 text-white`}>{t("rn_submit")}</button>
             </div>

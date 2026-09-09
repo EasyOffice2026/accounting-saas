@@ -134,11 +134,16 @@ export default function CashPage() {
           className={`px-4 py-2 text-sm rounded-t-lg ${tab === "summary" ? "bg-emerald-600 text-white" : "bg-gray-200"}`}>
           {t("summary")}
         </button>
-        <button onClick={() => setTab("transactions")}
+        {!readOnly && <button onClick={() => setTab("transactions")}
           className={`px-4 py-2 text-sm rounded-t-lg ${tab === "transactions" ? "bg-emerald-600 text-white" : "bg-gray-200"}`}>
           {t("transactions")}
-        </button>
+        </button>}
       </div>
+      {readOnly && (
+        <div className="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+          {t("cash_view_only")}
+        </div>
+      )}
 
       {tab === "summary" && summary && (
         <div className="bg-white rounded-xl shadow-sm border p-6">
@@ -210,19 +215,14 @@ export default function CashPage() {
         </div>
       )}
 
-      {tab === "transactions" && (
+      {tab === "transactions" && !readOnly && (
         <div>
-          {readOnly && (
-            <div className="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-              {t("cash_view_only")}
-            </div>
-          )}
-          {!readOnly && <div className="mb-4">
+          <div className="mb-4">
             <button onClick={() => setShowTxnForm(!showTxnForm)}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
               {showTxnForm ? t("cancel") : t("add_transaction")}
             </button>
-          </div>}
+          </div>
 
           {showTxnForm && (
             <form onSubmit={handleAddTxn} className="bg-white p-6 rounded-xl shadow-sm border mb-4 space-y-3">

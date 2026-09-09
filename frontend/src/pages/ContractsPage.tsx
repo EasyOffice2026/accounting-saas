@@ -124,7 +124,7 @@ export default function ContractsPage() {
           </div>
           <div>
             <label className="block text-xs mb-1">{t("payment_method")}</label>
-            <select name="payment_method" required defaultValue={payingPayment.payment_method || ""}
+            <select name="payment_method" required defaultValue={payingPayment.payment_method || "bank_transfer"}
               className="w-full border rounded px-2 py-1.5 text-sm">
               <option value="">{t("select")}</option>
               {PAYMENT_METHODS.map(m => <option key={m} value={m}>{t(m)}</option>)}
@@ -206,7 +206,7 @@ export default function ContractsPage() {
           </div>
           <div>
             <label className="block text-xs mb-1">{t("payment_method")}</label>
-            <select name="payment_method" className="w-full border rounded px-2 py-1.5 text-sm">
+            <select name="payment_method" defaultValue="bank_transfer" className="w-full border rounded px-2 py-1.5 text-sm">
               <option value="">{t("select")}</option>
               {PAYMENT_METHODS.map(m => <option key={m} value={m}>{t(m)}</option>)}
             </select>

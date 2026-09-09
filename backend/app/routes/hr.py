@@ -1711,7 +1711,7 @@ def _sync_payment_expense(db: Session, p: ContractPayment, c: Contract):
     exp.date = p.due_date
     exp.description = f"{c.name} — {p.due_date:%b %Y}"
     exp.amount = p.amount
-    exp.payment_method = p.payment_method or "cash"
+    exp.payment_method = p.payment_method or "bank_transfer"
     exp.notes = " | ".join(x for x in [p.reference, p.notes] if x) or None
 
 

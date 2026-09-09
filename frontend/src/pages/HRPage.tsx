@@ -170,6 +170,7 @@ export default function HRPage() {
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager = currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant";
+  const isPersonnel = currentUser.role === "personnel";
   const canViewSalary = ["owner", "manager", "accountant"].includes(currentUser.role);
 
   useEffect(() => {
@@ -850,7 +851,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
             {t("export_pdf")}
           </button>
-          {tab === "employees" && (
+          {tab === "employees" && !isPersonnel && (
             <button onClick={() => { setShowForm(!showForm); setEditingEmp(null); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
               {showForm ? t("cancel") : t("add_new")}
@@ -859,7 +860,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
         </div>
       </div>
 
-      {isManager && (
+      {(isManager || isPersonnel) && (
         <div className="mb-4">
           <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
             className="px-3 py-2 border rounded-lg text-sm">
@@ -1058,7 +1059,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <td className="px-3 py-3">{emp.health_card_expiry || "—"}</td>
                     <td className="px-3 py-3 text-center">
                       <div className="flex gap-2 justify-center">
-                        <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
+                        {!isPersonnel && <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>}
                         <button onClick={() => printEmployeeForm(emp)} className="text-purple-600 hover:underline text-xs">PDF</button>
                         {isManager && (
                           <button onClick={() => handleDeleteEmp(emp)} className="text-red-600 hover:underline text-xs">{t("delete")}</button>

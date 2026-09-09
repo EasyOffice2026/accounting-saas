@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_
 from datetime import date, time
@@ -12,7 +12,12 @@ from app.models.expense import Expense, ExpenseCategory
 from app.models.user import User
 from app.utils.auth import get_current_user
 
-router = APIRouter(prefix="/api/hr", tags=["hr"])
+def _personnel_read_only(request: Request, user: User = Depends(get_current_user)):
+    if user.role == "personnel" and request.method not in ("GET", "HEAD", "OPTIONS"):
+        raise HTTPException(403, "Personnel Officer has view-only access to Human Resources")
+
+
+router = APIRouter(prefix="/api/hr", tags=["hr"], dependencies=[Depends(_personnel_read_only)])
 
 SALARY_VISIBLE_ROLES = ("owner", "manager", "accountant")
 

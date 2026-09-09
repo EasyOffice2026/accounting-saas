@@ -25,7 +25,7 @@ RENEWAL_ROLES = ("owner", "manager", "accountant", PERSONNEL_ROLE)
 APPROVER_ROLES = ("owner", "manager")
 PERSONNEL_BRANCH_PREFIX = "Personnel Office"
 PERSONNEL_PAYMENT_METHOD = "personnel_petty_cash"
-PERSONNEL_TABS = ["renewals", "hr", "hr_employees", "cash", "expenses"]
+PERSONNEL_TABS = ["dashboard", "renewals", "hr", "hr_employees", "cash", "expenses"]
 
 SEED_TYPES = [
     ("staff", "Residency / Iqama", "الإقامة", 12),
@@ -605,6 +605,63 @@ def summary(brand_id: Optional[int] = None, db: Session = Depends(get_db), user:
             "approved_unpaid": approved,
             "petty_cash_branch_id": pb.id if pb else None, "petty_cash_branch_name": pb.name if pb else "",
             "petty_cash_balance": personnel_cash_balance(db, pb.id) if pb else 0}
+
+
+@router.get("/dashboard")
+def personnel_dashboard(brand_id: Optional[int] = None, db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    """Personnel Officer home: petty cash, renewals pipeline, expiries — no sales/purchases/branch expenses."""
+    _require(user)
+    _check_brand(user, brand_id)
+    today = date.today()
+    month_start = today.replace(day=1)
+    board = expiry_board(brand_id=brand_id, db=db, user=user)
+    expired = [x for x in board if x["days_remaining"] is not None and x["days_remaining"] < 0]
+    due_30 = [x for x in board if x["days_remaining"] is not None and 0 <= x["days_remaining"] <= 30]
+    due_90 = [x for x in board if x["days_remaining"] is not None and 30 < x["days_remaining"] <= 90]
+
+    rq = db.query(RenewalRequest)
+    if brand_id:
+        rq = rq.filter(RenewalRequest.brand_id == brand_id)
+    counts = {s: 0 for s in STATUS_FLOW}
+    for st, n in rq.with_entities(RenewalRequest.status, func.count(RenewalRequest.id)).group_by(RenewalRequest.status).all():
+        counts[st] = n
+    recent = [request_out(db, r) for r in rq.order_by(RenewalRequest.id.desc()).limit(8).all()]
+
+    pb = personnel_branch(db, brand_id, create=False) if brand_id else None
+    cash_in_month = cash_out_month = 0.0
+    recent_cash = []
+    if pb:
+        ctx = db.query(CashTransaction).filter(CashTransaction.branch_id == pb.id)
+        for r in ctx.filter(CashTransaction.date >= month_start).all():
+            if r.txn_type == "cash_in" and r.category != "deposit":
+                cash_in_month += r.amount
+            elif r.txn_type != "opening_balance":
+                cash_out_month += r.amount
+        recent_cash = [{"id": r.id, "date": str(r.date), "txn_type": r.txn_type, "category": r.category,
+                        "amount": r.amount, "reference": r.reference or "", "notes": r.notes or ""}
+                       for r in ctx.order_by(CashTransaction.date.desc(), CashTransaction.id.desc()).limit(8).all()]
+
+    branches = _branch_map(db)
+    ex = db.query(Expense).filter(Expense.renewal_request_id.isnot(None))
+    if brand_id:
+        ex = ex.filter(Expense.branch_id.in_([b.id for b in branches.values() if b.brand_id == brand_id]))
+    spend_month = ex.filter(Expense.date >= month_start).with_entities(func.coalesce(func.sum(Expense.amount), 0)).scalar() or 0
+    spend_by_branch = [{"branch_id": bid, "branch_name": branches[bid].name if bid in branches else "", "amount": round(float(a), 3)}
+                       for bid, a in ex.with_entities(Expense.branch_id, func.sum(Expense.amount)).group_by(Expense.branch_id).all()]
+    spend_by_branch.sort(key=lambda x: -x["amount"])
+
+    upcoming = sorted(expired + due_30 + due_90, key=lambda x: (x["days_remaining"] if x["days_remaining"] is not None else 9999))[:10]
+    return {
+        "petty_cash_branch_name": pb.name if pb else "",
+        "petty_cash_balance": personnel_cash_balance(db, pb.id) if pb else 0,
+        "cash_in_month": round(cash_in_month, 3), "cash_out_month": round(cash_out_month, 3),
+        "renewal_spend_month": round(float(spend_month), 3),
+        "expired": len(expired), "due_30": len(due_30), "due_90": len(due_90),
+        "documents_total": len(board),
+        "requests": counts, "recent_requests": recent, "upcoming": upcoming,
+        "recent_cash": recent_cash, "spend_by_branch": spend_by_branch,
+    }
 
 
 @router.get("/last-transaction")

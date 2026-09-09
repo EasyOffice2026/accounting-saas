@@ -11,11 +11,11 @@ from app.models.purchase import (
 )
 from app.models.branch import Branch
 from app.models.user import User
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, get_business_user
 from app.routes.hr import _brand_branch_ids
 from app.utils.dates import apply_date_range
 
-router = APIRouter(prefix="/api/purchases", tags=["purchases"])
+router = APIRouter(prefix="/api/purchases", tags=["purchases"], dependencies=[Depends(get_business_user)])
 
 
 # --- Purchase Categories ---

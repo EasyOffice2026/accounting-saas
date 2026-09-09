@@ -5,6 +5,7 @@ import Layout from "./components/Layout";
 import LoginPage from "./pages/LoginPage";
 import BrandSelectPage from "./pages/BrandSelectPage";
 import DashboardPage from "./pages/DashboardPage";
+import PersonnelDashboardPage from "./pages/PersonnelDashboardPage";
 import SalesPage from "./pages/SalesPage";
 import PurchasesPage from "./pages/PurchasesPage";
 import ExpensesPage from "./pages/ExpensesPage";
@@ -40,7 +41,7 @@ function ProtectedRoutes() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<DashboardPage />} />
+        <Route path="/" element={user?.role === "personnel" ? <PersonnelDashboardPage /> : <DashboardPage />} />
         <Route path="/sales" element={<SalesPage />} />
         <Route path="/purchases" element={<PurchasesPage />} />
         <Route path="/expenses" element={<ExpensesPage />} />

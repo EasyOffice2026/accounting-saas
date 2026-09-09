@@ -11,11 +11,11 @@ from app.models.hr import Employee
 from app.models.branch import Branch
 from app.models.transfer import TransferOrder, TransferOrderLine
 from app.models.user import User
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, get_business_user
 from app.routes.hr import _brand_branch_ids, _exclude_left_employees
 from app.utils.dates import apply_date_range
 
-router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(get_business_user)])
 
 SALES_CHANNELS = ["cash", "knet", "link", "wamd", "talabat", "keeta", "jahez", "other"]
 

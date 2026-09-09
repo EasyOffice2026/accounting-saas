@@ -329,8 +329,15 @@ export default function RenewalsPage() {
   const FileInputs = ({ files, set }: { files: (File | null)[]; set: (f: (File | null)[]) => void }) => (
     <div>
       <label className="text-xs text-gray-600">{t("rn_attachments")}</label>
-      <div className="grid grid-cols-3 gap-2">
-        {[0, 1, 2].map(i => <input key={i} type="file" className="text-xs" onChange={e => { const n = [...files]; n[i] = e.target.files?.[0] || null; set(n); }} />)}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-1">
+        {[0, 1, 2].map(i => (
+          <label key={i} className={`flex items-center gap-2 border rounded-lg px-3 py-2 text-xs cursor-pointer select-none ${files[i] ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-white hover:bg-gray-50 text-gray-700"}`}>
+            <Paperclip size={14} className="shrink-0" />
+            <span className="truncate flex-1">{files[i] ? files[i]!.name : `${t("rn_attach_file")} ${i + 1}`}</span>
+            {files[i] && <button type="button" className="text-gray-400 hover:text-red-600" onClick={e => { e.preventDefault(); const n = [...files]; n[i] = null; set(n); }}><X size={12} /></button>}
+            <input type="file" className="hidden" onChange={e => { const n = [...files]; n[i] = e.target.files?.[0] || null; set(n); }} />
+          </label>
+        ))}
       </div>
     </div>
   );
@@ -710,24 +717,18 @@ export default function RenewalsPage() {
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs font-semibold text-gray-600">{t("rn_line")} {i + 1}</span>
                           <div className="flex items-center gap-3">
-                            <span className="text-sm font-bold">{t("rn_line_total")}: KD {kd((Number(l.fee) || 0) + (Number(l.extra_charges) || 0))}</span>
                             <button type="button" onClick={() => setRf(f => ({ ...f, lines: f.lines.filter((_, j) => j !== i) }))} className="text-red-500 hover:text-red-700 disabled:opacity-30" disabled={rf.lines.length === 1}><Trash2 size={15} /></button>
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                          <div className="md:col-span-1"><label className="text-[11px] text-gray-500">{t("rn_type")}</label>
+                        <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr_1fr] gap-2">
+                          <div><label className="text-[11px] text-gray-500">{t("rn_type")}</label>
                             <select className={inp} value={l.type_id} onChange={e => onLineType(i, e.target.value)}>
                               <option value="">—</option>{lineTypes.map(ty => <option key={ty.id} value={ty.id}>{tname(ty)}</option>)}
                             </select>
                             {valid && dleft > 90 && <div className="text-[11px] text-amber-700 mt-0.5">{t("rn_still_valid")} {dleft} {t("rn_days")}</div>}
                           </div>
                           <div><label className="text-[11px] text-gray-500">{t("rn_description")}</label><input className={inp} value={l.description} onChange={e => setLine(i, { description: e.target.value })} /></div>
-                          <div><label className="text-[11px] text-gray-500">{t("rn_current_expiry")}</label><input type="date" className={inp} value={l.current_expiry} onChange={e => setLine(i, { current_expiry: e.target.value })} /></div>
-                          <div><label className="text-[11px] text-gray-500">{t("rn_new_expiry")}</label><input type="date" className={inp} value={l.new_expiry} onChange={e => setLine(i, { new_expiry: e.target.value })} /></div>
-                          <div><label className="text-[11px] text-gray-500">{t("rn_new_doc_no")}</label><input className={inp} value={l.new_doc_no} onChange={e => setLine(i, { new_doc_no: e.target.value })} /></div>
-                          <div><label className="text-[11px] text-gray-500">{t("rn_fee")} (KD)</label><input type="number" step="0.001" className={inp} value={l.fee} onChange={e => setLine(i, { fee: Number(e.target.value) })} /></div>
-                          <div><label className="text-[11px] text-gray-500">{t("rn_extra")} (KD)</label><input type="number" step="0.001" className={inp} value={l.extra_charges} onChange={e => setLine(i, { extra_charges: Number(e.target.value) })} /></div>
-                          <div><label className="text-[11px] text-gray-500">{t("rn_extra_desc")}</label><input className={inp} value={l.extra_desc} onChange={e => setLine(i, { extra_desc: e.target.value })} /></div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_fee")} (KD)</label><input type="number" step="0.001" className={`${inp} font-semibold text-end`} value={l.fee} onChange={e => setLine(i, { fee: Number(e.target.value) })} /></div>
                         </div>
                       </div>
                     );

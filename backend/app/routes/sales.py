@@ -9,11 +9,11 @@ from app.database import get_db, UPLOAD_DIR
 from app.models.sale import Sale, SaleReturn
 from app.models.branch import Branch
 from app.models.user import User
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, get_business_user
 from app.routes.hr import _brand_branch_ids
 from app.utils.dates import apply_date_range
 
-router = APIRouter(prefix="/api/sales", tags=["sales"])
+router = APIRouter(prefix="/api/sales", tags=["sales"], dependencies=[Depends(get_business_user)])
 
 
 @router.get("/")

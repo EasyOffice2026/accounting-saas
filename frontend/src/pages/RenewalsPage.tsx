@@ -177,7 +177,7 @@ export default function RenewalsPage() {
     { group: "staff", employee_id: "", license_id: "", urgency: "normal", notes: "", common_expense: false, lines: [emptyLine()] });
   const [lastTxn, setLastTxn] = useState<{ last: LastTxn | null; open_requests: { id: number; request_no: string; status: string }[] } | null>(null);
   const [reqFiles, setReqFiles] = useState<(File | null)[]>([null, null, null]);
-  const emptyNewEmp = { name: "", name_ar: "", civil_id: "", branch_id: "", position: "", phone: "", employer: "", join_date: "" };
+  const emptyNewEmp = { name: "", name_ar: "", civil_id: "", phone: "", employer: "", join_date: "" };
   const [empMode, setEmpMode] = useState<"existing" | "new">("existing");
   const [newEmp, setNewEmp] = useState(emptyNewEmp);
 
@@ -222,11 +222,11 @@ export default function RenewalsPage() {
   const isNewEmp = rf.group === "staff" && empMode === "new" && !editReq;
   const saveReq = async (submit: boolean) => {
     if (!brandId) return;
-    if (isNewEmp && (!newEmp.name.trim() || !newEmp.branch_id)) { alert(t("rn_new_emp_required")); return; }
+    if (isNewEmp && !newEmp.name.trim()) { alert(t("rn_new_emp_required")); return; }
     const body = {
       brand_id: brandId, group: rf.group,
       employee_id: rf.group === "staff" && !isNewEmp && rf.employee_id ? Number(rf.employee_id) : null,
-      new_employee: isNewEmp ? { ...newEmp, branch_id: Number(newEmp.branch_id) } : null,
+      new_employee: isNewEmp ? newEmp : null,
       license_id: rf.group === "company" && rf.license_id ? Number(rf.license_id) : null,
       urgency: rf.urgency, notes: rf.notes, common_expense: rf.common_expense, submit,
       lines: rf.lines.filter(l => l.type_id).map(l => ({
@@ -664,11 +664,6 @@ export default function RenewalsPage() {
                         <div className="col-span-2"><label className="text-xs text-gray-600">{t("rn_name")} *</label><input className={inp} value={newEmp.name} onChange={e => setNewEmp(n => ({ ...n, name: e.target.value }))} /></div>
                         <div className="col-span-2"><label className="text-xs text-gray-600">{t("rn_name_ar")}</label><input className={inp} dir="rtl" value={newEmp.name_ar} onChange={e => setNewEmp(n => ({ ...n, name_ar: e.target.value }))} /></div>
                         <div><label className="text-xs text-gray-600">{t("rn_civil_id")}</label><input className={`${inp} font-mono`} value={newEmp.civil_id} onChange={e => setNewEmp(n => ({ ...n, civil_id: e.target.value }))} /></div>
-                        <div><label className="text-xs text-gray-600">{t("branch")} *</label>
-                          <select className={inp} value={newEmp.branch_id} onChange={e => setNewEmp(n => ({ ...n, branch_id: e.target.value }))}>
-                            <option value="">—</option>{branches.map(b => <option key={b.id} value={b.id}>{bname(b)}</option>)}
-                          </select></div>
-                        <div><label className="text-xs text-gray-600">{t("rn_position")}</label><input className={inp} value={newEmp.position} onChange={e => setNewEmp(n => ({ ...n, position: e.target.value }))} /></div>
                         <div><label className="text-xs text-gray-600">{t("employer_label")}</label>
                           <select className={inp} value={newEmp.employer} onChange={e => setNewEmp(n => ({ ...n, employer: e.target.value }))}>
                             <option value="">—</option>{employers.map(er => <option key={er.id} value={er.name}>{ar && er.name_ar ? er.name_ar : er.name}</option>)}

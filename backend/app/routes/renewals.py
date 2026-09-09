@@ -704,8 +704,6 @@ class NewEmployeeIn(BaseModel):
     name: str
     name_ar: Optional[str] = None
     civil_id: Optional[str] = None
-    branch_id: int
-    position: Optional[str] = None
     phone: Optional[str] = None
     employer: Optional[str] = None
     join_date: Optional[str] = None
@@ -728,9 +726,9 @@ def _create_new_employee(db: Session, body: RequestIn) -> None:
     ne = body.new_employee
     if not ne.name.strip():
         raise HTTPException(400, "New employee name is required")
-    br = db.query(Branch).filter(Branch.id == ne.branch_id, Branch.brand_id == body.brand_id).first()
+    br = personnel_branch(db, body.brand_id)
     if not br:
-        raise HTTPException(400, "Branch is required for the new employee")
+        raise HTTPException(400, "Personnel Office branch not found for this brand")
     civil_id = (ne.civil_id or "").strip() or None
     if civil_id:
         dup = db.query(Employee).join(Branch, Branch.id == Employee.branch_id).filter(
@@ -738,7 +736,7 @@ def _create_new_employee(db: Session, body: RequestIn) -> None:
         if dup:
             raise HTTPException(400, f"An employee with Civil ID {civil_id} already exists: {dup.name}. Select the existing employee.")
     emp = Employee(name=ne.name.strip(), name_ar=(ne.name_ar or "").strip() or None, civil_id=civil_id,
-                   branch_id=br.id, position=(ne.position or "").strip() or None, phone=(ne.phone or "").strip() or None,
+                   branch_id=br.id, phone=(ne.phone or "").strip() or None,
                    employer=(ne.employer or "").strip() or None, join_date=_d(ne.join_date) or date.today(), is_active=True)
     db.add(emp)
     db.flush()

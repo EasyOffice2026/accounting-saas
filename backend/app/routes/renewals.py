@@ -185,7 +185,7 @@ def _license_out(l: CompanyLicense, types, branches):
     b = branches.get(l.branch_id)
     return {"id": l.id, "brand_id": l.brand_id, "branch_id": l.branch_id,
             "branch_name": b.name if b else "", "type_id": l.type_id,
-            "type_name": t.name if t else "", "name": l.name, "license_no": l.license_no,
+            "type_name": t.name if t else "", "name": l.name, "employer": l.employer or "", "license_no": l.license_no,
             "authority": l.authority or "", "issue_date": str(l.issue_date) if l.issue_date else "",
             "expiry_date": str(l.expiry_date) if l.expiry_date else "",
             "days_remaining": _days(l.expiry_date), "status": l.status,
@@ -242,6 +242,7 @@ def request_out(db: Session, r: RenewalRequest, detail: bool = False):
         "employee_id": r.employee_id, "license_id": r.license_id,
         "subject_name": emp.name if emp else (lic.name if lic else ""),
         "subject_name_ar": (emp.name_ar or "") if emp else "",
+        "subject_employer": (emp.employer or "") if emp else ((lic.employer or "") if lic else ""),
         "subject_id_no": (emp.civil_id or "") if emp else (lic.license_no if lic else ""),
         "subject_position": (emp.position or "") if emp else ((lic.authority or "") if lic else ""),
         "branch_id": branch_id, "branch_name": b.name if b else "",
@@ -392,7 +393,7 @@ def list_licenses(brand_id: Optional[int] = None, branch_id: Optional[int] = Non
 
 @router.post("/licenses")
 def create_license(brand_id: int = Form(...), branch_id: Optional[int] = Form(None), type_id: Optional[int] = Form(None),
-                   name: str = Form(...), license_no: str = Form(...), authority: str = Form(""),
+                   name: str = Form(...), license_no: str = Form(...), authority: str = Form(""), employer: str = Form(""),
                    issue_date: str = Form(""), expiry_date: str = Form(""), notes: str = Form(""),
                    file1: Optional[UploadFile] = File(None), file2: Optional[UploadFile] = File(None),
                    file3: Optional[UploadFile] = File(None),
@@ -403,7 +404,7 @@ def create_license(brand_id: int = Form(...), branch_id: Optional[int] = Form(No
     if db.query(CompanyLicense).filter(CompanyLicense.license_no == license_no).first():
         raise HTTPException(400, f"License number {license_no} already exists")
     l = CompanyLicense(brand_id=brand_id, branch_id=branch_id or None, type_id=type_id or None, name=name.strip(),
-                       license_no=license_no, authority=authority or None, issue_date=_d(issue_date),
+                       employer=employer.strip() or None, license_no=license_no, authority=authority or None, issue_date=_d(issue_date),
                        expiry_date=_d(expiry_date), notes=notes or None, status="active",
                        file1=_save_upload(file1), file2=_save_upload(file2), file3=_save_upload(file3))
     db.add(l)
@@ -414,7 +415,7 @@ def create_license(brand_id: int = Form(...), branch_id: Optional[int] = Form(No
 
 @router.put("/licenses/{license_id}")
 def update_license(license_id: int, branch_id: Optional[int] = Form(None), type_id: Optional[int] = Form(None),
-                   name: str = Form(...), license_no: str = Form(...), authority: str = Form(""),
+                   name: str = Form(...), license_no: str = Form(...), authority: str = Form(""), employer: str = Form(""),
                    issue_date: str = Form(""), expiry_date: str = Form(""), notes: str = Form(""),
                    status: str = Form("active"),
                    file1: Optional[UploadFile] = File(None), file2: Optional[UploadFile] = File(None),
@@ -431,6 +432,7 @@ def update_license(license_id: int, branch_id: Optional[int] = Form(None), type_
         raise HTTPException(400, f"License number {license_no} already exists")
     l.branch_id, l.type_id, l.name, l.license_no = branch_id or None, type_id or None, name.strip(), license_no
     l.authority, l.issue_date, l.expiry_date = authority or None, _d(issue_date), _d(expiry_date)
+    l.employer = employer.strip() or None
     l.notes, l.status = notes or None, status
     for attr, f in (("file1", file1), ("file2", file2), ("file3", file3)):
         saved = _save_upload(f)
@@ -1032,9 +1034,9 @@ def export_requests(fmt: str, brand_id: Optional[int] = None, status: Optional[s
     from app.routes.export import _respond
     rows = list_requests(brand_id=brand_id, status=status, group=group, date_from=date_from, date_to=date_to,
                          db=db, user=user)
-    header = ["Request No", "Date", "Type", "Name", "Civil ID / License No", "Branch", "Lines", "Total (KD)",
+    header = ["Request No", "Date", "Type", "Name", "Company / Employer", "Civil ID / License No", "Branch", "Lines", "Total (KD)",
               "Status", "Requested By", "Approved By", "Approved On", "Paid Date", "Paid (KD)", "Receipt"]
-    data = [[r["request_no"], r["requested_at"][:10], r["group"].title(), r["subject_name"], r["subject_id_no"],
+    data = [[r["request_no"], r["requested_at"][:10], r["group"].title(), r["subject_name"], r["subject_employer"], r["subject_id_no"],
              r["branch_name"], r["line_count"], r["total"], r["status_label"], r["requested_by_name"],
              r["approved_by_name"], r["approved_at"][:10], r["paid_date"], r["paid_amount"] or "", r["receipt_no"]]
             for r in rows]
@@ -1124,6 +1126,8 @@ def request_form_pdf(req_id: int, db: Session = Depends(get_db), user: User = De
          Paragraph(id_label, bold), Paragraph(d["subject_id_no"], normal)],
         [Paragraph("Branch", bold), Paragraph(d["branch_name"], normal),
          Paragraph("Position / Authority", bold), Paragraph(d["subject_position"], normal)],
+        [Paragraph("Company / Employer", bold), Paragraph(d["subject_employer"], normal),
+         Paragraph("", bold), Paragraph("", normal)],
     ]
     it = Table(info, colWidths=[30 * mm, 60 * mm, 35 * mm, 55 * mm])
     it.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, colors.grey),

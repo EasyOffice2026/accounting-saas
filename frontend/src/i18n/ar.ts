@@ -745,6 +745,7 @@ export default {
   rn_change: "تغيير",
   rn_no_match: "لا توجد نتائج مطابقة",
   rn_attach_file: "إرفاق ملف",
+  rn_employer_hint: "نفس قائمة الشركات في الموارد البشرية \u2190 إضافة موظف \u2190 جهة العمل",
   view_all: "عرض الكل",
   loading: "جارٍ التحميل…",
   pd_title: "لوحة شؤون الموظفين",

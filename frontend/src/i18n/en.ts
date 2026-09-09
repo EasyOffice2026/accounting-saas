@@ -745,6 +745,7 @@ export default {
   rn_change: "Change",
   rn_no_match: "No matching records",
   rn_attach_file: "Attach file",
+  rn_employer_hint: "Same company list as HR \u2192 Add Employee \u2192 Employer",
   view_all: "View all",
   loading: "Loading…",
   pd_title: "Personnel Dashboard",

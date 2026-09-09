@@ -403,6 +403,12 @@ def _migrate_columns():
                         conn.execute(text("INSERT INTO employers (name) VALUES (:n) ON CONFLICT (name) DO NOTHING"), {"n": nm})
                 conn.commit()
 
+        if "company_licenses" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("company_licenses")]
+            if "employer" not in cols:
+                conn.execute(text("ALTER TABLE company_licenses ADD COLUMN employer TEXT"))
+                conn.commit()
+
         # HR Approval workflow columns
         _approval_tables = ["salary_payments", "advance_loans", "staff_benefits_deductions", "leave_records"]
         for tbl in _approval_tables:

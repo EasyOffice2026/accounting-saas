@@ -26,6 +26,7 @@ class CompanyLicense(Base):
     branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True)
     type_id = Column(Integer, ForeignKey("renewal_types.id"), nullable=True)
     name = Column(String, nullable=False)
+    employer = Column(String, nullable=True)  # company name from the HR Employer list
     license_no = Column(String, nullable=False, unique=True)
     authority = Column(String, nullable=True)
     issue_date = Column(Date, nullable=True)

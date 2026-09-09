@@ -9,8 +9,8 @@ type Tab = "overview" | "requests" | "approvals" | "staff" | "company" | "prices
 
 interface RType { id: number; group: string; name: string; name_ar: string; default_fee: number; validity_months: number; reminder_days: number; is_active: boolean; }
 interface Branch { id: number; name: string; name_ar: string; }
-interface Emp { id: number; staff_no: string; name: string; name_ar: string; civil_id: string; branch_id: number; position: string; }
-interface License { id: number; brand_id: number; branch_id: number | null; branch_name: string; type_id: number | null; type_name: string; name: string; license_no: string; authority: string; issue_date: string; expiry_date: string; days_remaining: number | null; status: string; notes: string; file1: string | null; file2: string | null; file3: string | null; }
+interface Emp { id: number; staff_no: string; name: string; name_ar: string; civil_id: string; branch_id: number; position: string; employer: string; }
+interface License { id: number; brand_id: number; branch_id: number | null; branch_name: string; type_id: number | null; type_name: string; name: string; employer: string; license_no: string; authority: string; issue_date: string; expiry_date: string; days_remaining: number | null; status: string; notes: string; file1: string | null; file2: string | null; file3: string | null; }
 interface Doc { id: number; employee_id: number; employee_name: string; employee_name_ar: string; civil_id: string; branch_id: number | null; branch_name: string; type_id: number; type_name: string; doc_no: string; authority: string; issue_date: string; expiry_date: string; days_remaining: number | null; status: string; notes: string; file1: string | null; file2: string | null; file3: string | null; }
 interface BoardRow { kind: string; ref_id: number; employee_id: number | null; license_id: number | null; name: string; id_no: string; branch_id: number | null; branch_name: string; type_id: number | null; type_name: string; doc_no: string; expiry_date: string; days_remaining: number | null; status: string; }
 interface Summary { expired: number; due_30: number; due_90: number; pending_approval: number; approved_unpaid: number; petty_cash_branch_id: number | null; petty_cash_branch_name: string; petty_cash_balance: number; }
@@ -134,6 +134,7 @@ export default function RenewalsPage() {
   const [board, setBoard] = useState<BoardRow[]>([]);
   const [requests, setRequests] = useState<Req[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
+  const [employers, setEmployers] = useState<{ id: number; name: string; name_ar: string }[]>([]);
   const [docs, setDocs] = useState<Doc[]>([]);
   const [kindFilter, setKindFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -146,7 +147,7 @@ export default function RenewalsPage() {
 
   const load = useCallback(async () => {
     if (!brandId) return;
-    const [ty, br, em, su, bo, rq, li, dc] = await Promise.all([
+    const [ty, br, em, su, bo, rq, li, dc, er] = await Promise.all([
       apiGet(`/api/renewals/types?include_inactive=true&${bq}`),
       apiGet(`/api/branches/?scope=operating&${bq}`),
       apiGet(`/api/hr/employees?${bq}`),
@@ -155,7 +156,9 @@ export default function RenewalsPage() {
       apiGet(`/api/renewals/requests?${bq}`),
       apiGet(`/api/renewals/licenses?${bq}`),
       apiGet(`/api/renewals/documents?${bq}`),
+      apiGet("/api/hr/employers"),
     ]);
+    setEmployers(Array.isArray(er) ? er : []);
     setTypes(Array.isArray(ty) ? ty : []); setBranches(Array.isArray(br) ? br : []); setEmployees(Array.isArray(em) ? em : []);
     setSummary(su); setBoard(Array.isArray(bo) ? bo : []); setRequests(Array.isArray(rq) ? rq : []);
     setLicenses(Array.isArray(li) ? li : []); setDocs(Array.isArray(dc) ? dc : []);
@@ -298,7 +301,7 @@ export default function RenewalsPage() {
     fd.append("brand_id", String(brandId));
     if (licForm.branch_id) fd.append("branch_id", String(licForm.branch_id));
     if (licForm.type_id) fd.append("type_id", String(licForm.type_id));
-    fd.append("name", licForm.name); fd.append("license_no", licForm.license_no); fd.append("authority", licForm.authority || "");
+    fd.append("name", licForm.name); fd.append("license_no", licForm.license_no); fd.append("authority", licForm.authority || ""); fd.append("employer", licForm.employer || "");
     fd.append("issue_date", licForm.issue_date || ""); fd.append("expiry_date", licForm.expiry_date || ""); fd.append("notes", licForm.notes || "");
     if (licForm.id) fd.append("status", licForm.status || "active");
     licFiles.forEach((f, i) => { if (f) fd.append(`file${i + 1}`, f); });
@@ -533,13 +536,14 @@ export default function RenewalsPage() {
           <div className="overflow-x-auto bg-white rounded shadow">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 text-gray-600"><tr>
-                {[t("rn_name"), t("rn_license_no"), t("branch"), t("rn_type"), t("rn_authority"), t("rn_issue_date"), t("rn_expiry_date"), t("rn_days_remaining"), t("rn_status"), t("rn_attachments"), ""].map((h, i) => <th key={i} className="px-3 py-2 text-start">{h}</th>)}
+                {[t("rn_name"), t("employer_label"), t("rn_license_no"), t("branch"), t("rn_type"), t("rn_authority"), t("rn_issue_date"), t("rn_expiry_date"), t("rn_days_remaining"), t("rn_status"), t("rn_attachments"), ""].map((h, i) => <th key={i} className="px-3 py-2 text-start">{h}</th>)}
               </tr></thead>
               <tbody>
-                {licenses.length === 0 && <tr><td colSpan={11} className="px-3 py-6 text-center text-gray-400">{t("rn_no_data")}</td></tr>}
+                {licenses.length === 0 && <tr><td colSpan={12} className="px-3 py-6 text-center text-gray-400">{t("rn_no_data")}</td></tr>}
                 {licenses.map(l => (
                   <tr key={l.id} className="border-t hover:bg-gray-50">
                     <td className="px-3 py-2">{l.name}</td>
+                    <td className="px-3 py-2">{l.employer || "—"}</td>
                     <td className="px-3 py-2 font-mono text-xs">{l.license_no}</td>
                     <td className="px-3 py-2">{l.branch_name}</td>
                     <td className="px-3 py-2">{tname(typeById[l.type_id || 0])}</td>
@@ -630,7 +634,7 @@ export default function RenewalsPage() {
                         items={employees.map(e => ({ id: e.id, title: ar && e.name_ar ? e.name_ar : e.name, subtitle: e.civil_id || "—", meta: bname(branches.find(b => b.id === e.branch_id)) }))} />
                     ) : (
                       <SearchPicker disabled={!!editReq} value={rf.license_id} onChange={v => setRf(f => ({ ...f, license_id: v }))} placeholder={t("rn_search_license")}
-                        items={licenses.map(l => ({ id: l.id, title: l.name, subtitle: l.license_no, meta: l.branch_name || "—" }))} />
+                        items={licenses.map(l => ({ id: l.id, title: l.employer ? `${l.employer} — ${l.name}` : l.name, subtitle: l.license_no, meta: l.branch_name || "—" }))} />
                     )}
                   </div>
                   <div>
@@ -642,16 +646,18 @@ export default function RenewalsPage() {
                 </div>
 
                 {selEmp && (
-                  <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-2 bg-emerald-50/60 border border-emerald-100 rounded-lg p-3">
+                  <div className="mt-3 grid grid-cols-2 md:grid-cols-6 gap-2 bg-emerald-50/60 border border-emerald-100 rounded-lg p-3">
                     <Field label={t("rn_name")} value={selEmp.name} />
                     <Field label={t("rn_name_ar")} value={selEmp.name_ar} />
                     <Field label={t("rn_civil_id")} value={selEmp.civil_id} mono />
                     <Field label={t("branch")} value={bname(branches.find(b => b.id === selEmp.branch_id))} />
                     <Field label={t("rn_position")} value={selEmp.position} />
+                    <Field label={t("employer_label")} value={selEmp.employer} />
                   </div>
                 )}
                 {selLic && (
-                  <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-2 bg-emerald-50/60 border border-emerald-100 rounded-lg p-3">
+                  <div className="mt-3 grid grid-cols-2 md:grid-cols-6 gap-2 bg-emerald-50/60 border border-emerald-100 rounded-lg p-3">
+                    <Field label={t("employer_label")} value={selLic.employer} />
                     <Field label={t("rn_name")} value={selLic.name} />
                     <Field label={t("rn_license_no")} value={selLic.license_no} mono />
                     <Field label={t("branch")} value={selLic.branch_name} />
@@ -879,6 +885,9 @@ export default function RenewalsPage() {
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-5 space-y-3 my-4">
             <h2 className="font-bold">{licForm.id ? t("edit") : t("rn_add_license")}</h2>
             <div className="grid grid-cols-2 gap-2">
+              <div className="col-span-2"><label className="text-xs text-gray-600">{t("employer_label")}</label>
+                <select className={inp} value={licForm.employer || ""} onChange={e => setLicForm(f => ({ ...f, employer: e.target.value }))}><option value="">—</option>{employers.map(er => <option key={er.id} value={er.name}>{ar && er.name_ar ? er.name_ar : er.name}</option>)}</select>
+                <div className="text-[11px] text-gray-400 mt-0.5">{t("rn_employer_hint")}</div></div>
               <div className="col-span-2"><label className="text-xs text-gray-600">{t("rn_name")}</label><input className={inp} value={licForm.name || ""} onChange={e => setLicForm(f => ({ ...f, name: e.target.value }))} /></div>
               <div><label className="text-xs text-gray-600">{t("rn_license_no")}</label><input className={inp} value={licForm.license_no || ""} onChange={e => setLicForm(f => ({ ...f, license_no: e.target.value }))} /></div>
               <div><label className="text-xs text-gray-600">{t("rn_type")}</label>

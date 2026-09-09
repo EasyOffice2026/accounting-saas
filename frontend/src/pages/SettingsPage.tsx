@@ -457,7 +457,6 @@ export default function SettingsPage() {
     { key: "hr_benefits", label: "tab_hr_benefits" },
     { key: "hr_deductions", label: "tab_hr_deductions" },
     { key: "hr_leaves", label: "tab_hr_leaves" },
-    { key: "hr_resignation", label: "tab_hr_resignation" },
   ];
   const ALL_TABS = [...ALL_MAIN_TABS, ...ALL_HR_TABS];
   const ALL_TAB_KEYS = ALL_TABS.map(t => t.key);

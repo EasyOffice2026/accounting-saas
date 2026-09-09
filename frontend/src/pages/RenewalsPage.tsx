@@ -177,15 +177,18 @@ export default function RenewalsPage() {
     { group: "staff", employee_id: "", license_id: "", urgency: "normal", notes: "", common_expense: false, lines: [emptyLine()] });
   const [lastTxn, setLastTxn] = useState<{ last: LastTxn | null; open_requests: { id: number; request_no: string; status: string }[] } | null>(null);
   const [reqFiles, setReqFiles] = useState<(File | null)[]>([null, null, null]);
+  const emptyNewEmp = { name: "", name_ar: "", civil_id: "", branch_id: "", position: "", phone: "", employer: "", join_date: "" };
+  const [empMode, setEmpMode] = useState<"existing" | "new">("existing");
+  const [newEmp, setNewEmp] = useState(emptyNewEmp);
 
   const openNew = (preset?: Partial<typeof rf>) => {
-    setEditReq(null);
+    setEditReq(null); setEmpMode("existing"); setNewEmp(emptyNewEmp);
     setRf({ group: "staff", employee_id: "", license_id: "", urgency: "normal", notes: "", common_expense: false, lines: [emptyLine()], ...preset });
     setLastTxn(null); setReqFiles([null, null, null]); setShowReq(true);
   };
   const openEdit = async (r: Req) => {
     const d: Req = await apiGet(`/api/renewals/requests/${r.id}`);
-    setEditReq(d);
+    setEditReq(d); setEmpMode("existing");
     setRf({ group: d.group, employee_id: d.employee_id ? String(d.employee_id) : "", license_id: d.license_id ? String(d.license_id) : "",
       urgency: d.urgency, notes: d.notes, common_expense: !!d.common_expense, lines: (d.lines || []).map(l => ({ ...l })) });
     setReqFiles([null, null, null]); setShowReq(true);
@@ -216,11 +219,14 @@ export default function RenewalsPage() {
   const selDocs = selEmp ? docs.filter(d => d.employee_id === selEmp.id) : [];
   const openOthers = (lastTxn?.open_requests || []).filter(o => o.id !== editReq?.id);
 
+  const isNewEmp = rf.group === "staff" && empMode === "new" && !editReq;
   const saveReq = async (submit: boolean) => {
     if (!brandId) return;
+    if (isNewEmp && (!newEmp.name.trim() || !newEmp.branch_id)) { alert(t("rn_new_emp_required")); return; }
     const body = {
       brand_id: brandId, group: rf.group,
-      employee_id: rf.group === "staff" && rf.employee_id ? Number(rf.employee_id) : null,
+      employee_id: rf.group === "staff" && !isNewEmp && rf.employee_id ? Number(rf.employee_id) : null,
+      new_employee: isNewEmp ? { ...newEmp, branch_id: Number(newEmp.branch_id) } : null,
       license_id: rf.group === "company" && rf.license_id ? Number(rf.license_id) : null,
       urgency: rf.urgency, notes: rf.notes, common_expense: rf.common_expense, submit,
       lines: rf.lines.filter(l => l.type_id).map(l => ({
@@ -228,7 +234,7 @@ export default function RenewalsPage() {
         new_expiry: l.new_expiry || null, new_doc_no: l.new_doc_no || null, fee: Number(l.fee) || 0,
         extra_charges: Number(l.extra_charges) || 0, extra_desc: l.extra_desc || null })),
     };
-    if (!body.lines.length || (!body.employee_id && !body.license_id)) { alert(rf.group === "staff" ? t("rn_select_employee") : t("rn_select_license")); return; }
+    if (!body.lines.length || (!body.employee_id && !body.license_id && !body.new_employee)) { alert(rf.group === "staff" ? t("rn_select_employee") : t("rn_select_license")); return; }
     const res = await apiFetch(editReq ? `/api/renewals/requests/${editReq.id}` : "/api/renewals/requests",
       { method: editReq ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await res.json();
@@ -640,8 +646,38 @@ export default function RenewalsPage() {
                 }>
                 <div className="grid md:grid-cols-3 gap-3">
                   <div className="md:col-span-2">
-                    <label className="text-xs text-gray-600">{rf.group === "staff" ? t("rn_employee") : t("rn_license")}</label>
-                    {rf.group === "staff" ? (
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-gray-600">{rf.group === "staff" ? t("rn_employee") : t("rn_license")}</label>
+                      {rf.group === "staff" && !editReq && (
+                        <div className="inline-flex rounded overflow-hidden border text-xs">
+                          {(["existing", "new"] as const).map(m => (
+                            <button key={m} type="button" onClick={() => { setEmpMode(m); setRf(f => ({ ...f, employee_id: "" })); }}
+                              className={`px-3 py-0.5 ${empMode === m ? "bg-emerald-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+                              {m === "existing" ? t("rn_existing_employee") : t("rn_new_employee")}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {isNewEmp ? (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-1 bg-amber-50/60 border border-amber-100 rounded-lg p-3">
+                        <div className="col-span-2"><label className="text-xs text-gray-600">{t("rn_name")} *</label><input className={inp} value={newEmp.name} onChange={e => setNewEmp(n => ({ ...n, name: e.target.value }))} /></div>
+                        <div className="col-span-2"><label className="text-xs text-gray-600">{t("rn_name_ar")}</label><input className={inp} dir="rtl" value={newEmp.name_ar} onChange={e => setNewEmp(n => ({ ...n, name_ar: e.target.value }))} /></div>
+                        <div><label className="text-xs text-gray-600">{t("rn_civil_id")}</label><input className={`${inp} font-mono`} value={newEmp.civil_id} onChange={e => setNewEmp(n => ({ ...n, civil_id: e.target.value }))} /></div>
+                        <div><label className="text-xs text-gray-600">{t("branch")} *</label>
+                          <select className={inp} value={newEmp.branch_id} onChange={e => setNewEmp(n => ({ ...n, branch_id: e.target.value }))}>
+                            <option value="">—</option>{branches.map(b => <option key={b.id} value={b.id}>{bname(b)}</option>)}
+                          </select></div>
+                        <div><label className="text-xs text-gray-600">{t("rn_position")}</label><input className={inp} value={newEmp.position} onChange={e => setNewEmp(n => ({ ...n, position: e.target.value }))} /></div>
+                        <div><label className="text-xs text-gray-600">{t("employer_label")}</label>
+                          <select className={inp} value={newEmp.employer} onChange={e => setNewEmp(n => ({ ...n, employer: e.target.value }))}>
+                            <option value="">—</option>{employers.map(er => <option key={er.id} value={er.name}>{ar && er.name_ar ? er.name_ar : er.name}</option>)}
+                          </select></div>
+                        <div><label className="text-xs text-gray-600">{t("phone")}</label><input className={inp} value={newEmp.phone} onChange={e => setNewEmp(n => ({ ...n, phone: e.target.value }))} /></div>
+                        <div><label className="text-xs text-gray-600">{t("join_date")}</label><input type="date" className={inp} value={newEmp.join_date} onChange={e => setNewEmp(n => ({ ...n, join_date: e.target.value }))} /></div>
+                        <div className="col-span-2 md:col-span-4 text-[11px] text-amber-800">{t("rn_new_emp_hint")}</div>
+                      </div>
+                    ) : rf.group === "staff" ? (
                       <SearchPicker disabled={!!editReq} value={rf.employee_id} onChange={v => setRf(f => ({ ...f, employee_id: v }))} placeholder={t("rn_search_employee")}
                         items={employees.map(e => ({ id: e.id, title: ar && e.name_ar ? e.name_ar : e.name, subtitle: e.civil_id || "—", meta: bname(branches.find(b => b.id === e.branch_id)) }))} />
                     ) : (

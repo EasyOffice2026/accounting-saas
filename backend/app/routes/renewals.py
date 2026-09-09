@@ -700,10 +700,22 @@ class LineIn(BaseModel):
     extra_desc: Optional[str] = None
 
 
+class NewEmployeeIn(BaseModel):
+    name: str
+    name_ar: Optional[str] = None
+    civil_id: Optional[str] = None
+    branch_id: int
+    position: Optional[str] = None
+    phone: Optional[str] = None
+    employer: Optional[str] = None
+    join_date: Optional[str] = None
+
+
 class RequestIn(BaseModel):
     brand_id: int
     group: str
     employee_id: Optional[int] = None
+    new_employee: Optional[NewEmployeeIn] = None
     license_id: Optional[int] = None
     urgency: str = "normal"
     notes: Optional[str] = None
@@ -712,9 +724,32 @@ class RequestIn(BaseModel):
     lines: List[LineIn]
 
 
+def _create_new_employee(db: Session, body: RequestIn) -> None:
+    ne = body.new_employee
+    if not ne.name.strip():
+        raise HTTPException(400, "New employee name is required")
+    br = db.query(Branch).filter(Branch.id == ne.branch_id, Branch.brand_id == body.brand_id).first()
+    if not br:
+        raise HTTPException(400, "Branch is required for the new employee")
+    civil_id = (ne.civil_id or "").strip() or None
+    if civil_id:
+        dup = db.query(Employee).join(Branch, Branch.id == Employee.branch_id).filter(
+            Employee.civil_id == civil_id, Branch.brand_id == body.brand_id).first()
+        if dup:
+            raise HTTPException(400, f"An employee with Civil ID {civil_id} already exists: {dup.name}. Select the existing employee.")
+    emp = Employee(name=ne.name.strip(), name_ar=(ne.name_ar or "").strip() or None, civil_id=civil_id,
+                   branch_id=br.id, position=(ne.position or "").strip() or None, phone=(ne.phone or "").strip() or None,
+                   employer=(ne.employer or "").strip() or None, join_date=_d(ne.join_date) or date.today(), is_active=True)
+    db.add(emp)
+    db.flush()
+    body.employee_id = emp.id
+
+
 def _validate_request(db: Session, body: RequestIn):
     if body.group not in ("staff", "company"):
         raise HTTPException(400, "group must be staff or company")
+    if body.group == "staff" and body.new_employee and not body.employee_id:
+        _create_new_employee(db, body)
     if body.group == "staff":
         if not body.employee_id or not db.query(Employee).filter(Employee.id == body.employee_id).first():
             raise HTTPException(400, "Employee is required")

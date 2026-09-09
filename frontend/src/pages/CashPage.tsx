@@ -85,6 +85,7 @@ export default function CashPage() {
   };
 
   const isStaff = user?.role === "staff";
+  const readOnly = user?.role === "personnel";
 
   return (
     <div>
@@ -211,12 +212,17 @@ export default function CashPage() {
 
       {tab === "transactions" && (
         <div>
-          <div className="mb-4">
+          {readOnly && (
+            <div className="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+              {t("cash_view_only")}
+            </div>
+          )}
+          {!readOnly && <div className="mb-4">
             <button onClick={() => setShowTxnForm(!showTxnForm)}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
               {showTxnForm ? t("cancel") : t("add_transaction")}
             </button>
-          </div>
+          </div>}
 
           {showTxnForm && (
             <form onSubmit={handleAddTxn} className="bg-white p-6 rounded-xl shadow-sm border mb-4 space-y-3">

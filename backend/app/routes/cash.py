@@ -88,6 +88,8 @@ def create_transaction(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if user.role == "personnel":
+        raise HTTPException(403, "Personnel Officer has view-only access to petty cash")
     _guard_personnel(db, user, branch_id)
     # An "opening_balance" category anchors the running balance, so store it
     # with the special opening_balance txn_type regardless of the chosen type.
@@ -239,6 +241,9 @@ def save_balance(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if user.role == "personnel":
+        raise HTTPException(403, "Personnel Officer has view-only access to petty cash")
+    _guard_personnel(db, user, branch_id)
     existing = db.query(CashBalance).filter(
         CashBalance.branch_id == branch_id,
         CashBalance.date == balance_date,

@@ -38,19 +38,20 @@ function ProtectedRoutes() {
     return <BrandSelectPage onSelect={() => setBrandChosen(true)} />;
   }
 
+  const isPersonnel = user?.role === "personnel";
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={user?.role === "personnel" ? <PersonnelDashboardPage /> : <DashboardPage />} />
-        <Route path="/sales" element={<SalesPage />} />
-        <Route path="/purchases" element={<PurchasesPage />} />
+        <Route path="/" element={isPersonnel ? <PersonnelDashboardPage /> : <DashboardPage />} />
+        <Route path="/sales" element={isPersonnel ? <Navigate to="/" /> : <SalesPage />} />
+        <Route path="/purchases" element={isPersonnel ? <Navigate to="/" /> : <PurchasesPage />} />
         <Route path="/expenses" element={<ExpensesPage />} />
         <Route path="/hr" element={<HRPage />} />
         <Route path="/renewals" element={<RenewalsPage />} />
         <Route path="/cash" element={<CashPage />} />
-        <Route path="/transfers" element={<TransfersPage />} />
-        <Route path="/contracts" element={<ContractsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/transfers" element={isPersonnel ? <Navigate to="/" /> : <TransfersPage />} />
+        <Route path="/contracts" element={isPersonnel ? <Navigate to="/" /> : <ContractsPage />} />
+        <Route path="/settings" element={isPersonnel ? <Navigate to="/" /> : <SettingsPage />} />
         <Route path="/brands" element={<BrandSelectPage onSelect={() => setBrandChosen(true)} />} />
       </Route>
     </Routes>

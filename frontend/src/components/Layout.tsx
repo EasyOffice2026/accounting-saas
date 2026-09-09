@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+const PERSONNEL_NAV = ["dashboard", "renewals", "hr", "cash_management", "expenses"];
+
 const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles?: string[] }[] = [
   { path: "/", icon: LayoutDashboard, key: "dashboard" },
   { path: "/sales", icon: ShoppingCart, key: "sales" },
@@ -96,6 +98,7 @@ export default function Layout() {
         <nav className="mt-1">
           {navItems
             .filter(item => !item.roles || item.roles.includes(user?.role || ""))
+            .filter(item => user?.role !== "personnel" || PERSONNEL_NAV.includes(item.key))
             .filter(item => {
               if (user?.role === "owner") return true;
               if (!user?.allowed_tabs) return true;

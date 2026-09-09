@@ -409,6 +409,14 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE company_licenses ADD COLUMN employer TEXT"))
                 conn.commit()
 
+        if "renewal_requests" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("renewal_requests")]
+            for col, ddl in (("completed_by", "INTEGER"), ("completed_at", "DATETIME"),
+                             ("completed_date", "DATE"), ("common_expense", "BOOLEAN DEFAULT 0")):
+                if col not in cols:
+                    conn.execute(text(f"ALTER TABLE renewal_requests ADD COLUMN {col} {ddl}"))
+            conn.commit()
+
         # HR Approval workflow columns
         _approval_tables = ["salary_payments", "advance_loans", "staff_benefits_deductions", "leave_records"]
         for tbl in _approval_tables:

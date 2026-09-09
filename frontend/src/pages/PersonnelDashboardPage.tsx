@@ -66,7 +66,7 @@ export default function PersonnelDashboardPage() {
 
   if (!data) return <div className="p-6 text-gray-500">{t("loading")}</div>;
 
-  const openCount = (data.requests.draft || 0) + (data.requests.pending || 0) + (data.requests.approved || 0) + (data.requests.returned || 0);
+  const openCount = (data.requests.draft || 0) + (data.requests.pending || 0) + (data.requests.approved || 0) + (data.requests.completed || 0) + (data.requests.returned || 0);
   const daysCls = (d: number | null) =>
     d === null ? "bg-gray-100 text-gray-600" : d < 0 ? "bg-red-100 text-red-700" : d <= 30 ? "bg-amber-100 text-amber-800" : "bg-yellow-50 text-yellow-800";
   const daysLabel = (d: number | null) =>
@@ -91,13 +91,14 @@ export default function PersonnelDashboardPage() {
         <Card label={t("pd_spend_month")} value={kd(data.renewal_spend_month)} sub={t("pd_spend_hint")} icon={Receipt} color="bg-violet-500" />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
         {[
           { l: t("rn_expired"), v: data.expired, c: "border-red-200 bg-red-50 text-red-700" },
           { l: t("rn_due_30"), v: data.due_30, c: "border-amber-200 bg-amber-50 text-amber-800" },
           { l: t("rn_due_90"), v: data.due_90, c: "border-yellow-200 bg-yellow-50 text-yellow-800" },
           { l: t("rn_pending_approval"), v: data.requests.pending || 0, c: "border-amber-200 bg-white text-amber-800" },
           { l: t("rn_approved_unpaid"), v: data.requests.approved || 0, c: "border-blue-200 bg-white text-blue-800" },
+          { l: t("rn_completed_unpaid"), v: data.requests.completed || 0, c: "border-purple-200 bg-white text-purple-800" },
           { l: t("pd_open_requests"), v: openCount, c: "border-gray-200 bg-white text-gray-800" },
         ].map((x, i) => (
           <div key={i} className={`rounded-lg border p-3 ${x.c}`}>

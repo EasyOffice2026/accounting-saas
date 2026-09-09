@@ -23,6 +23,7 @@ router = APIRouter(prefix="/api/renewals", tags=["renewals"])
 PERSONNEL_ROLE = "personnel"
 RENEWAL_ROLES = ("owner", "manager", "accountant", PERSONNEL_ROLE)
 APPROVER_ROLES = ("owner", "manager")
+PAYER_ROLES = ("owner", "manager", "accountant")  # confirm payment / manage the petty cash
 PERSONNEL_BRANCH_PREFIX = "Personnel Office"
 PERSONNEL_PAYMENT_METHOD = "personnel_petty_cash"
 PERSONNEL_TABS = ["dashboard", "renewals", "hr", "hr_employees", "cash", "expenses"]
@@ -47,7 +48,8 @@ SEED_TYPES = [
 
 STATUS_FLOW = {
     "draft": "Draft", "pending": "Pending Approval", "approved": "Approved", "returned": "Returned",
-    "rejected": "Rejected", "paid": "Paid", "closed": "Closed", "cancelled": "Cancelled",
+    "rejected": "Rejected", "completed": "Completed - Awaiting Payment Confirmation",
+    "paid": "Payment Confirmed", "closed": "Closed", "cancelled": "Cancelled",
 }
 
 
@@ -256,6 +258,10 @@ def request_out(db: Session, r: RenewalRequest, detail: bool = False):
         "approved_amount": r.approved_amount, "approval_comment": r.approval_comment or "",
         "paid_date": str(r.paid_date) if r.paid_date else "", "paid_amount": r.paid_amount,
         "receipt_no": r.receipt_no or "", "paid_by_name": _user_name(db, r.paid_by),
+        "completed_date": str(r.completed_date) if r.completed_date else "",
+        "completed_by_name": _user_name(db, r.completed_by),
+        "completed_at": str(r.completed_at)[:16] if r.completed_at else "",
+        "common_expense": bool(r.common_expense),
         "file1": r.file1, "file2": r.file2, "file3": r.file3,
         "line_count": db.query(func.count(RenewalRequestLine.id)).filter(RenewalRequestLine.request_id == r.id).scalar() or 0,
     }
@@ -602,9 +608,10 @@ def summary(brand_id: Optional[int] = None, db: Session = Depends(get_db), user:
         rq = rq.filter(RenewalRequest.brand_id == brand_id)
     pending = rq.filter(RenewalRequest.status == "pending").count()
     approved = rq.filter(RenewalRequest.status == "approved").count()
+    completed = rq.filter(RenewalRequest.status == "completed").count()
     pb = personnel_branch(db, brand_id, create=False) if brand_id else None
     return {"expired": expired, "due_30": d30, "due_90": d90, "pending_approval": pending,
-            "approved_unpaid": approved,
+            "approved_unpaid": approved, "completed_unpaid": completed,
             "petty_cash_branch_id": pb.id if pb else None, "petty_cash_branch_name": pb.name if pb else "",
             "petty_cash_balance": personnel_cash_balance(db, pb.id) if pb else 0}
 
@@ -671,7 +678,7 @@ def get_last_transaction(group: str, employee_id: Optional[int] = None, license_
                          db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _require(user)
     lt = last_transaction(db, group, employee_id, license_id)
-    open_q = db.query(RenewalRequest).filter(RenewalRequest.status.in_(("draft", "pending", "approved", "returned")))
+    open_q = db.query(RenewalRequest).filter(RenewalRequest.status.in_(("draft", "pending", "approved", "returned", "completed")))
     if group == "staff":
         open_q = open_q.filter(RenewalRequest.employee_id == employee_id)
     else:
@@ -701,6 +708,7 @@ class RequestIn(BaseModel):
     urgency: str = "normal"
     notes: Optional[str] = None
     submit: bool = False
+    common_expense: bool = False
     lines: List[LineIn]
 
 
@@ -777,6 +785,7 @@ def create_request(body: RequestIn, db: Session = Depends(get_db), user: User = 
                        employee_id=body.employee_id if body.group == "staff" else None,
                        license_id=body.license_id if body.group == "company" else None,
                        urgency=body.urgency or "normal", notes=body.notes or None, status="draft",
+                       common_expense=bool(body.common_expense),
                        requested_by=user.id, requested_at=_now())
     db.add(r)
     db.flush()
@@ -800,6 +809,7 @@ def update_request(req_id: int, body: RequestIn, db: Session = Depends(get_db), 
         raise HTTPException(400, "Only draft or returned requests can be edited")
     _validate_request(db, body)
     r.group, r.urgency, r.notes = body.group, body.urgency or "normal", body.notes or None
+    r.common_expense = bool(body.common_expense)
     r.employee_id = body.employee_id if body.group == "staff" else None
     r.license_id = body.license_id if body.group == "company" else None
     _replace_lines(db, r, body.lines)
@@ -882,7 +892,7 @@ def cancel_request(req_id: int, comment: str = Form(""), db: Session = Depends(g
     r = _get_req(db, user, req_id)
     if r.status in ("paid", "closed"):
         raise HTTPException(400, "Paid requests cannot be cancelled")
-    if r.status == "approved" and user.role not in APPROVER_ROLES:
+    if r.status in ("approved", "completed") and user.role not in APPROVER_ROLES:
         raise HTTPException(403, "Only the Operations Manager can cancel an approved request")
     r.status = "cancelled"
     _log(db, r, "cancelled", user, comment or None)
@@ -903,30 +913,98 @@ def delete_request(req_id: int, db: Session = Depends(get_db), user: User = Depe
     return {"ok": True}
 
 
-@router.post("/requests/{req_id}/pay")
-def pay_request(req_id: int, paid_date: str = Form(...), receipt_no: str = Form(""),
-                actuals: str = Form("{}"), notes: str = Form(""),
-                file1: Optional[UploadFile] = File(None), file2: Optional[UploadFile] = File(None),
-                file3: Optional[UploadFile] = File(None),
-                db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Record actual payment: Cash Out from the brand's Personnel Office petty cash, one Expense per
-    line on the employee's / license's branch (payment method personnel_petty_cash), update registers."""
+def _parse_actuals(actuals: str) -> dict:
+    try:
+        return {int(k): float(v) for k, v in json.loads(actuals or "{}").items()}
+    except (ValueError, AttributeError):
+        raise HTTPException(400, "Invalid actual amounts")
+
+
+def _update_registers(db: Session, r: RenewalRequest, emp, lic, lines, done_date: date):
+    types = _type_map(db)
+    for ln in lines:
+        t = types.get(ln.type_id)
+        if r.group == "staff" and emp and t and t.name != "Fine":
+            if not (ln.new_expiry or ln.new_doc_no):
+                continue
+            doc = db.query(EmployeeDocument).filter(EmployeeDocument.employee_id == emp.id,
+                                                    EmployeeDocument.type_id == ln.type_id).first()
+            if not doc:
+                doc = EmployeeDocument(employee_id=emp.id, type_id=ln.type_id, status="active")
+                db.add(doc)
+            if ln.new_expiry:
+                doc.expiry_date, doc.issue_date, doc.status = ln.new_expiry, done_date, "active"
+            if ln.new_doc_no:
+                doc.doc_no = ln.new_doc_no
+            _sync_employee_legacy(db, emp, ln.type_id, ln.new_expiry)
+        elif r.group == "company" and lic:
+            if ln.new_expiry:
+                lic.expiry_date, lic.issue_date, lic.status = ln.new_expiry, done_date, "active"
+            if ln.new_doc_no:
+                lic.license_no = ln.new_doc_no
+
+
+@router.post("/requests/{req_id}/complete")
+def complete_request(req_id: int, completed_date: str = Form(...), receipt_no: str = Form(""),
+                     actuals: str = Form("{}"), notes: str = Form(""), common_expense: bool = Form(False),
+                     file1: Optional[UploadFile] = File(None), file2: Optional[UploadFile] = File(None),
+                     file3: Optional[UploadFile] = File(None),
+                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Personnel Officer reports the approved task as done (actual amounts, receipt, renewed documents).
+    No cash or expense is posted until a manager / accountant confirms the payment."""
     _require(user)
     r = _get_req(db, user, req_id)
     if r.status != "approved":
-        raise HTTPException(400, "Only approved requests can be paid")
-    pd = _d(paid_date) or date.today()
-    try:
-        actual_map = {int(k): float(v) for k, v in json.loads(actuals or "{}").items()}
-    except (ValueError, AttributeError):
-        raise HTTPException(400, "Invalid actual amounts")
+        raise HTTPException(400, "Only approved requests can be marked completed")
+    actual_map = _parse_actuals(actuals)
+    done = _d(completed_date) or date.today()
+    total = 0.0
+    lines = db.query(RenewalRequestLine).filter(RenewalRequestLine.request_id == r.id).order_by(RenewalRequestLine.id).all()
+    for ln in lines:
+        amt = actual_map.get(ln.id, round((ln.fee or 0) + (ln.extra_charges or 0), 3))
+        ln.actual_amount = round(amt, 3)
+        total += amt
+    emp = db.query(Employee).filter(Employee.id == r.employee_id).first() if r.employee_id else None
+    lic = db.query(CompanyLicense).filter(CompanyLicense.id == r.license_id).first() if r.license_id else None
+    _update_registers(db, r, emp, lic, lines, done)
+    r.status, r.completed_date, r.completed_by, r.completed_at = "completed", done, user.id, _now()
+    r.receipt_no = receipt_no or None
+    r.common_expense = bool(common_expense)
+    if notes:
+        r.notes = f"{r.notes}\n{notes}" if r.notes else notes
+    for attr, f in (("file1", file1), ("file2", file2), ("file3", file3)):
+        saved = _save_upload(f)
+        if saved:
+            setattr_file(r, attr, saved)
+    _log(db, r, "completed", user, f"KD {round(total, 3):.3f}" + (f" · receipt {receipt_no}" if receipt_no else ""))
+    db.commit()
+    return request_out(db, r, detail=True)
+
+
+@router.post("/requests/{req_id}/pay")
+def pay_request(req_id: int, paid_date: str = Form(""), receipt_no: str = Form(""),
+                actuals: str = Form("{}"), notes: str = Form(""), common_expense: Optional[bool] = Form(None),
+                file1: Optional[UploadFile] = File(None), file2: Optional[UploadFile] = File(None),
+                file3: Optional[UploadFile] = File(None),
+                db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Manager / Accountant confirms payment of a completed request: Cash Out from the brand's Personnel
+    Office petty cash, one Expense per line on the employee's / license's branch (or on the Personnel Office
+    when marked as a common expense), payment method personnel_petty_cash, registers updated."""
+    _require(user, PAYER_ROLES)
+    r = _get_req(db, user, req_id)
+    if r.status != "completed":
+        raise HTTPException(400, "Only completed requests can be confirmed as paid")
+    pd = _d(paid_date) or r.completed_date or date.today()
+    actual_map = _parse_actuals(actuals)
+    if common_expense is not None:
+        r.common_expense = bool(common_expense)
+    receipt_no = receipt_no or r.receipt_no or ""
 
     pb = personnel_branch(db, r.brand_id)
     emp = db.query(Employee).filter(Employee.id == r.employee_id).first() if r.employee_id else None
     lic = db.query(CompanyLicense).filter(CompanyLicense.id == r.license_id).first() if r.license_id else None
     exp_branch_id = emp.branch_id if emp else (lic.branch_id if lic else None)
-    if not exp_branch_id:
-        # Company license without a branch: book the expense on the Personnel Office itself
+    if r.common_expense or not exp_branch_id:
         exp_branch_id = pb.id
     subject = emp.name if emp else (lic.name if lic else "")
     types = _type_map(db)
@@ -934,7 +1012,8 @@ def pay_request(req_id: int, paid_date: str = Form(...), receipt_no: str = Form(
     total = 0.0
     lines = db.query(RenewalRequestLine).filter(RenewalRequestLine.request_id == r.id).order_by(RenewalRequestLine.id).all()
     for ln in lines:
-        amt = actual_map.get(ln.id, round((ln.fee or 0) + (ln.extra_charges or 0), 3))
+        amt = actual_map.get(ln.id, ln.actual_amount if ln.actual_amount is not None
+                             else round((ln.fee or 0) + (ln.extra_charges or 0), 3))
         ln.actual_amount = round(amt, 3)
         total += amt
         t = types.get(ln.type_id)
@@ -947,26 +1026,6 @@ def pay_request(req_id: int, paid_date: str = Form(...), receipt_no: str = Form(
             db.add(exp)
             db.flush()
             ln.expense_id = exp.id
-        # Update document register
-        if r.group == "staff" and emp and t and t.name != "Fine":
-            doc = db.query(EmployeeDocument).filter(EmployeeDocument.employee_id == emp.id,
-                                                    EmployeeDocument.type_id == ln.type_id).first()
-            if ln.new_expiry or ln.new_doc_no:
-                if not doc:
-                    doc = EmployeeDocument(employee_id=emp.id, type_id=ln.type_id, status="active")
-                    db.add(doc)
-                if ln.new_expiry:
-                    doc.expiry_date = ln.new_expiry
-                    doc.issue_date = pd
-                    doc.status = "active"
-                if ln.new_doc_no:
-                    doc.doc_no = ln.new_doc_no
-                _sync_employee_legacy(db, emp, ln.type_id, ln.new_expiry)
-        elif r.group == "company" and lic:
-            if ln.new_expiry:
-                lic.expiry_date, lic.issue_date, lic.status = ln.new_expiry, pd, "active"
-            if ln.new_doc_no:
-                lic.license_no = ln.new_doc_no
 
     total = round(total, 3)
     txn = CashTransaction(branch_id=pb.id, date=pd, txn_type="cash_out", category="expense", amount=total,

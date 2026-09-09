@@ -36,6 +36,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (t && u) {
       setToken(t);
       setUser(JSON.parse(u));
+      fetch("/api/auth/me", { headers: { Authorization: `Bearer ${t}` } })
+        .then(r => (r.ok ? r.json() : null))
+        .then((fresh: UserInfo | null) => {
+          if (fresh) {
+            setUser(fresh);
+            localStorage.setItem("user", JSON.stringify(fresh));
+          }
+        })
+        .catch(() => {});
     }
   }, []);
 

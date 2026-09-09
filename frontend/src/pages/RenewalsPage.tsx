@@ -685,12 +685,8 @@ export default function RenewalsPage() {
                         items={licenses.map(l => ({ id: l.id, title: l.employer ? `${l.employer} — ${l.name}` : l.name, subtitle: l.license_no, meta: l.branch_name || "—" }))} />
                     )}
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-600">{t("rn_urgency")}</label>
-                    <select className={`${inp} py-2`} value={rf.urgency} onChange={e => setRf(f => ({ ...f, urgency: e.target.value }))}>
-                      <option value="normal">{t("rn_normal")}</option><option value="urgent">{t("rn_urgent")}</option>
-                    </select>
-                    <label className="flex items-center gap-2 text-xs text-gray-700 mt-2">
+                  <div className="flex items-end">
+                    <label className="flex items-center gap-2 text-xs text-gray-700 mb-2">
                       <input type="checkbox" checked={rf.common_expense} onChange={e => setRf(f => ({ ...f, common_expense: e.target.checked }))} />
                       {t("rn_common_expense")}
                     </label>
@@ -778,7 +774,7 @@ export default function RenewalsPage() {
                             <button type="button" onClick={() => setRf(f => ({ ...f, lines: f.lines.filter((_, j) => j !== i) }))} className="text-red-500 hover:text-red-700 disabled:opacity-30" disabled={rf.lines.length === 1}><Trash2 size={15} /></button>
                           </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr_1fr] gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr_1.2fr_1fr] gap-2">
                           <div><label className="text-[11px] text-gray-500">{t("rn_type")}</label>
                             <select className={inp} value={l.type_id} onChange={e => onLineType(i, e.target.value)}>
                               <option value="">—</option>{lineTypes.map(ty => <option key={ty.id} value={ty.id}>{tname(ty)}</option>)}
@@ -786,6 +782,9 @@ export default function RenewalsPage() {
                             {valid && dleft > 90 && <div className="text-[11px] text-amber-700 mt-0.5">{t("rn_still_valid")} {dleft} {t("rn_days")}</div>}
                           </div>
                           <div><label className="text-[11px] text-gray-500">{t("rn_description")}</label><input className={inp} value={l.description} onChange={e => setLine(i, { description: e.target.value })} /></div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_new_expiry")}</label><input type="date" className={inp} value={l.new_expiry || ""} onChange={e => setLine(i, { new_expiry: e.target.value })} />
+                            {l.current_expiry && <div className="text-[11px] text-gray-500 mt-0.5">{t("rn_current_expiry")}: {l.current_expiry}</div>}
+                          </div>
                           <div><label className="text-[11px] text-gray-500">{t("rn_fee")} (KD)</label><input type="number" step="0.001" className={`${inp} font-semibold text-end`} value={l.fee} onChange={e => setLine(i, { fee: Number(e.target.value) })} /></div>
                         </div>
                       </div>
@@ -833,7 +832,6 @@ export default function RenewalsPage() {
               <div><b>{t("rn_name")}:</b> {detail.subject_name}</div>
               <div><b>{detail.group === "staff" ? t("rn_civil_id") : t("rn_license_no")}:</b> {detail.subject_id_no}</div>
               <div><b>{t("branch")}:</b> {detail.branch_name}</div>
-              <div><b>{t("rn_urgency")}:</b> {detail.urgency}</div>
               <div><b>{t("rn_requested_by")}:</b> {detail.requested_by_name} · {detail.requested_at}</div>
               {detail.approved_by_name && <div className="md:col-span-3"><b>{t("rn_approved_by")}:</b> {detail.approved_by_name} · {detail.approved_at} · KD {kd(detail.approved_amount)} {detail.approval_comment && `· ${detail.approval_comment}`}</div>}
               {detail.completed_date && <div className="md:col-span-3"><b>{t("rn_completed_by")}:</b> {detail.completed_by_name} · {detail.completed_date}</div>}

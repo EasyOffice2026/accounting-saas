@@ -28,6 +28,7 @@ APPROVER_ROLES = ("owner", "manager", PERSONNEL_MANAGER_ROLE)
 PAYER_ROLES = ("owner", "manager", "accountant", PERSONNEL_MANAGER_ROLE)  # confirm payment / manage the petty cash
 PERSONNEL_BRANCH_PREFIX = "Personnel Office"
 PERSONNEL_PAYMENT_METHOD = "personnel_petty_cash"
+PERSONNEL_PAYMENT_METHODS = (PERSONNEL_PAYMENT_METHOD, "personnel_bank_transfer", "personnel_knet")  # never branch cash
 PERSONNEL_TABS = ["dashboard", "renewals", "hr", "hr_employees", "cash", "expenses"]
 
 SEED_TYPES = [
@@ -277,6 +278,7 @@ def request_out(db: Session, r: RenewalRequest, detail: bool = False):
         "approved_amount": r.approved_amount, "approval_comment": r.approval_comment or "",
         "paid_date": str(r.paid_date) if r.paid_date else "", "paid_amount": r.paid_amount,
         "receipt_no": r.receipt_no or "", "paid_by_name": _user_name(db, r.paid_by),
+        "payment_method": r.payment_method or PERSONNEL_PAYMENT_METHOD,
         "completed_date": str(r.completed_date) if r.completed_date else "",
         "completed_by_name": _user_name(db, r.completed_by),
         "completed_at": str(r.completed_at)[:16] if r.completed_at else "",
@@ -1040,6 +1042,7 @@ def complete_request(req_id: int, completed_date: str = Form(...), receipt_no: s
 @router.post("/requests/{req_id}/pay")
 def pay_request(req_id: int, paid_date: str = Form(""), receipt_no: str = Form(""),
                 actuals: str = Form("{}"), notes: str = Form(""), common_expense: Optional[bool] = Form(None),
+                payment_method: str = Form(PERSONNEL_PAYMENT_METHOD),
                 file1: Optional[UploadFile] = File(None), file2: Optional[UploadFile] = File(None),
                 file3: Optional[UploadFile] = File(None),
                 db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -1055,6 +1058,9 @@ def pay_request(req_id: int, paid_date: str = Form(""), receipt_no: str = Form("
     if common_expense is not None:
         r.common_expense = bool(common_expense)
     receipt_no = receipt_no or r.receipt_no or ""
+    if payment_method not in PERSONNEL_PAYMENT_METHODS:
+        raise HTTPException(400, "Invalid payment method")
+    r.payment_method = payment_method
 
     pb = personnel_branch(db, r.brand_id)
     emp = db.query(Employee).filter(Employee.id == r.employee_id).first() if r.employee_id else None
@@ -1076,19 +1082,20 @@ def pay_request(req_id: int, paid_date: str = Form(""), receipt_no: str = Form("
             cat = _renewal_category(db, t)
             exp = Expense(branch_id=exp_branch_id, category_id=cat.id, date=pd,
                           description=f"{r.request_no} · {t.name if t else 'Renewal'} · {subject}",
-                          amount=round(amt, 3), payment_method=PERSONNEL_PAYMENT_METHOD,
+                          amount=round(amt, 3), payment_method=payment_method,
                           notes=(ln.description or None), created_by=user.id, renewal_request_id=r.id)
             db.add(exp)
             db.flush()
             ln.expense_id = exp.id
 
     total = round(total, 3)
-    txn = CashTransaction(branch_id=pb.id, date=pd, txn_type="cash_out", category="expense", amount=total,
-                          reference=r.request_no, notes=f"{subject}{' · ' + receipt_no if receipt_no else ''}",
-                          created_by=user.id)
-    db.add(txn)
-    db.flush()
-    r.cash_txn_id = txn.id
+    if payment_method == PERSONNEL_PAYMENT_METHOD:
+        txn = CashTransaction(branch_id=pb.id, date=pd, txn_type="cash_out", category="expense", amount=total,
+                              reference=r.request_no, notes=f"{subject}{' · ' + receipt_no if receipt_no else ''}",
+                              created_by=user.id)
+        db.add(txn)
+        db.flush()
+        r.cash_txn_id = txn.id
     r.status, r.paid_date, r.paid_amount, r.receipt_no, r.paid_by = "paid", pd, total, receipt_no or None, user.id
     if notes:
         r.notes = f"{r.notes}\n{notes}" if r.notes else notes
@@ -1096,7 +1103,7 @@ def pay_request(req_id: int, paid_date: str = Form(""), receipt_no: str = Form("
         saved = _save_upload(f)
         if saved:
             setattr_file(r, attr, saved)
-    _log(db, r, "paid", user, f"KD {total:.3f}" + (f" · receipt {receipt_no}" if receipt_no else ""))
+    _log(db, r, "paid", user, f"KD {total:.3f} · {payment_method}" + (f" · receipt {receipt_no}" if receipt_no else ""))
     db.commit()
     return request_out(db, r, detail=True)
 

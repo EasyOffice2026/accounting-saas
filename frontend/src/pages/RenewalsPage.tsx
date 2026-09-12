@@ -21,7 +21,7 @@ interface Req {
   subject_name: string; subject_name_ar: string; subject_id_no: string; subject_position: string; branch_id: number | null; branch_name: string;
   urgency: string; notes: string; status: string; status_label: string; total: number;
   requested_by_name: string; requested_at: string; submitted_at: string; approved_by_name: string; approved_at: string;
-  approved_amount: number | null; approval_comment: string; paid_date: string; paid_amount: number | null; receipt_no: string; paid_by_name: string;
+  approved_amount: number | null; approval_comment: string; paid_date: string; paid_amount: number | null; receipt_no: string; paid_by_name: string; payment_method?: string;
   completed_date: string; completed_by_name: string; completed_at: string; common_expense: boolean;
   file1: string | null; file2: string | null; file3: string | null; line_count: number;
   lines?: Line[]; logs?: { status: string; label: string; comment: string; user_name: string; at: string }[]; last_transaction?: LastTxn | null;
@@ -275,14 +275,14 @@ export default function RenewalsPage() {
   // manager / accountant then confirms the payment which posts petty cash + expense.
   const [payReq, setPayReq] = useState<Req | null>(null);
   const [payMode, setPayMode] = useState<"complete" | "pay">("complete");
-  const [pay, setPay] = useState<{ paid_date: string; receipt_no: string; notes: string; common_expense: boolean; actuals: Record<number, string>; files: (File | null)[] }>(
-    { paid_date: "", receipt_no: "", notes: "", common_expense: false, actuals: {}, files: [null, null, null] });
+  const [pay, setPay] = useState<{ paid_date: string; receipt_no: string; notes: string; common_expense: boolean; payment_method: string; actuals: Record<number, string>; files: (File | null)[] }>(
+    { paid_date: "", receipt_no: "", notes: "", common_expense: false, payment_method: "personnel_petty_cash", actuals: {}, files: [null, null, null] });
   const openPay = async (r: Req, mode: "complete" | "pay") => {
     const d: Req = await apiGet(`/api/renewals/requests/${r.id}`);
     const actuals: Record<number, string> = {};
     (d.lines || []).forEach(l => { if (l.id) actuals[l.id] = String(l.actual_amount ?? l.line_total ?? 0); });
     setPayMode(mode);
-    setPay({ paid_date: d.completed_date || new Date().toISOString().slice(0, 10), receipt_no: d.receipt_no || "", notes: "",
+    setPay({ paid_date: d.completed_date || new Date().toISOString().slice(0, 10), receipt_no: d.receipt_no || "", notes: "", payment_method: "personnel_petty_cash",
       common_expense: !!d.common_expense, actuals, files: [null, null, null] });
     setPayReq(d);
   };
@@ -290,6 +290,7 @@ export default function RenewalsPage() {
     if (!payReq) return;
     const fd = new FormData();
     fd.append(payMode === "pay" ? "paid_date" : "completed_date", pay.paid_date);
+    if (payMode === "pay") fd.append("payment_method", pay.payment_method);
     fd.append("receipt_no", pay.receipt_no); fd.append("notes", pay.notes);
     fd.append("common_expense", pay.common_expense ? "true" : "false");
     fd.append("actuals", JSON.stringify(Object.fromEntries(Object.entries(pay.actuals).map(([k, v]) => [k, Number(v) || 0]))));
@@ -844,7 +845,7 @@ export default function RenewalsPage() {
               {detail.approved_by_name && <div className="md:col-span-3"><b>{t("rn_approved_by")}:</b> {detail.approved_by_name} · {detail.approved_at} · KD {kd(detail.approved_amount)} {detail.approval_comment && `· ${detail.approval_comment}`}</div>}
               {detail.completed_date && <div className="md:col-span-3"><b>{t("rn_completed_by")}:</b> {detail.completed_by_name} · {detail.completed_date}</div>}
               {detail.common_expense && <div className="md:col-span-3 text-purple-800"><b>{t("rn_common_expense")}</b> — {t("rn_common_expense_hint")}</div>}
-              {detail.paid_date && <div className="md:col-span-3"><b>{t("rn_paid_by")}:</b> {detail.paid_by_name} · {detail.paid_date} · KD {kd(detail.paid_amount)} {detail.receipt_no && `· ${t("rn_receipt_no")} ${detail.receipt_no}`}</div>}
+              {detail.paid_date && <div className="md:col-span-3"><b>{t("rn_paid_by")}:</b> {detail.paid_by_name} · {detail.paid_date} · KD {kd(detail.paid_amount)} · {t(detail.payment_method || "personnel_petty_cash")} {detail.receipt_no && `· ${t("rn_receipt_no")} ${detail.receipt_no}`}</div>}
               <div className="md:col-span-3"><b>{t("rn_attachments")}:</b> <Files f1={detail.file1} f2={detail.file2} f3={detail.file3} /></div>
               {detail.notes && <div className="md:col-span-3"><b>{t("notes")}:</b> {detail.notes}</div>}
             </div>
@@ -915,6 +916,17 @@ export default function RenewalsPage() {
               <div><label className="text-xs text-gray-600">{t("rn_receipt_no")}</label><input className={inp} value={pay.receipt_no} onChange={e => setPay(p => ({ ...p, receipt_no: e.target.value }))} /></div>
               <div><label className="text-xs text-gray-600">{t("notes")}</label><input className={inp} value={pay.notes} onChange={e => setPay(p => ({ ...p, notes: e.target.value }))} /></div>
             </div>
+            {payMode === "pay" && (
+              <div>
+                <label className="text-xs text-gray-600">{t("rn_payment_method")}</label>
+                <select className={inp} value={pay.payment_method} onChange={e => setPay(p => ({ ...p, payment_method: e.target.value }))}>
+                  <option value="personnel_petty_cash">{t("personnel_petty_cash")}</option>
+                  <option value="personnel_bank_transfer">{t("personnel_bank_transfer")}</option>
+                  <option value="personnel_knet">{t("personnel_knet")}</option>
+                </select>
+                <div className="text-[11px] text-gray-500 mt-0.5">{t("rn_payment_method_hint")}</div>
+              </div>
+            )}
             <label className="flex items-start gap-2 text-sm">
               <input type="checkbox" className="mt-1" checked={pay.common_expense} onChange={e => setPay(p => ({ ...p, common_expense: e.target.checked }))} />
               <span><b>{t("rn_common_expense")}</b><span className="block text-xs text-gray-500">{t("rn_common_expense_hint")}</span></span>

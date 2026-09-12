@@ -88,6 +88,7 @@ class RenewalRequest(Base):
     completed_at = Column(DateTime, nullable=True)
     completed_date = Column(Date, nullable=True)
     common_expense = Column(Boolean, default=False)
+    payment_method = Column(String, default="personnel_petty_cash")
     # Prospective employee not yet in HR (staff requests without employee_id)
     new_emp_name = Column(String, nullable=True)
     new_emp_name_ar = Column(String, nullable=True)

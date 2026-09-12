@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import date
+from datetime import date as date_cls
 from app.database import get_db
 from app.models.cash import CashTransaction, CashBalance
 from app.models.sale import Sale
@@ -9,36 +9,73 @@ from app.models.purchase import PurchaseOrder
 from app.models.expense import Expense
 from app.utils.auth import get_current_user
 from app.models.user import User
+from app.routes.hr import _brand_branch_ids
+
+PERSONNEL_ROLES = ("personnel", "personnel_manager")
 
 router = APIRouter(prefix="/api/cash", tags=["cash"])
+
+
+def _personnel_branch_ids(db: Session, user: User) -> list:
+    from app.models.branch import Branch
+    from app.routes.renewals import PERSONNEL_BRANCH_PREFIX
+    q = db.query(Branch.id).filter(Branch.name.like(f"{PERSONNEL_BRANCH_PREFIX}%"))
+    allowed = user.get_allowed_brands()
+    if allowed is not None:
+        q = q.filter(Branch.brand_id.in_(allowed))
+    return [b.id for b in q.all()]
+
+
+def _guard_personnel(db: Session, user: User, branch_id: int):
+    """The Personnel Officer can only operate the Personnel Office cash boxes."""
+    if user.role in PERSONNEL_ROLES and branch_id not in _personnel_branch_ids(db, user):
+        raise HTTPException(403, "Personnel Officer can only access the Personnel Office petty cash")
 
 
 @router.get("/transactions")
 def list_transactions(
     branch_id: int = Query(None),
+    brand_id: int = Query(None),
     date_from: str = Query(None),
     date_to: str = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     q = db.query(CashTransaction)
-    if user.role == "staff" and user.branch_id:
+    bb_ids = _brand_branch_ids(db, brand_id)
+    if user.role in PERSONNEL_ROLES:
+        pids = _personnel_branch_ids(db, user)
+        q = q.filter(CashTransaction.branch_id.in_([branch_id] if branch_id in pids else pids))
+    elif user.role == "staff" and user.branch_id:
         q = q.filter(CashTransaction.branch_id == user.branch_id)
     elif branch_id:
         q = q.filter(CashTransaction.branch_id == branch_id)
+    elif bb_ids is not None:
+        q = q.filter(CashTransaction.branch_id.in_(bb_ids))
     if date_from:
         q = q.filter(CashTransaction.date >= date_from)
     if date_to:
         q = q.filter(CashTransaction.date <= date_to)
-    rows = q.order_by(CashTransaction.date.desc()).all()
-    return [
-        {
+    rows = q.order_by(CashTransaction.date.asc(), CashTransaction.id.asc()).all()
+    # Calculate running balance
+    balance = 0.0
+    result = []
+    for r in rows:
+        if r.txn_type == "opening_balance":
+            balance = r.amount
+        elif r.category == "deposit":
+            balance -= r.amount  # deposit to bank reduces cash on hand
+        elif r.txn_type == "cash_in":
+            balance += r.amount
+        else:  # cash_out
+            balance -= r.amount
+        result.append({
             "id": r.id, "branch_id": r.branch_id, "date": str(r.date),
             "txn_type": r.txn_type, "category": r.category,
             "amount": r.amount, "reference": r.reference, "notes": r.notes,
-        }
-        for r in rows
-    ]
+            "balance": round(balance, 3),
+        })
+    return result
 
 
 @router.post("/transactions")
@@ -53,8 +90,15 @@ def create_transaction(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if user.role == "personnel":
+        raise HTTPException(403, "Personnel Officer has view-only access to petty cash")
+    _guard_personnel(db, user, branch_id)
+    # An "opening_balance" category anchors the running balance, so store it
+    # with the special opening_balance txn_type regardless of the chosen type.
+    if category == "opening_balance":
+        txn_type = "opening_balance"
     t = CashTransaction(
-        branch_id=branch_id, date=txn_date, txn_type=txn_type,
+        branch_id=branch_id, date=date_cls.fromisoformat(txn_date), txn_type=txn_type,
         category=category, amount=amount, reference=reference,
         notes=notes, created_by=user.id,
     )
@@ -71,7 +115,8 @@ def cash_summary(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    target_date = date.fromisoformat(summary_date) if summary_date else date.today()
+    _guard_personnel(db, user, branch_id)
+    target_date = date_cls.fromisoformat(summary_date) if summary_date else date_cls.today()
 
     # Cash sales for this branch on this date
     cash_sales = db.query(func.coalesce(func.sum(Sale.physical_cash), 0)).filter(
@@ -92,17 +137,19 @@ def cash_summary(
         Expense.payment_method == "cash",
     ).scalar()
 
-    # Manual transactions
+    # Manual transactions (deposits are tracked separately below to avoid double counting)
     cash_in_manual = db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
         CashTransaction.branch_id == branch_id,
         CashTransaction.date == target_date,
         CashTransaction.txn_type == "cash_in",
+        CashTransaction.category != "deposit",
     ).scalar()
 
     cash_out_manual = db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
         CashTransaction.branch_id == branch_id,
         CashTransaction.date == target_date,
         CashTransaction.txn_type == "cash_out",
+        CashTransaction.category != "deposit",
     ).scalar()
 
     deposits = db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
@@ -111,16 +158,65 @@ def cash_summary(
         CashTransaction.category == "deposit",
     ).scalar()
 
-    # Get previous day's closing balance as opening
-    bal = db.query(CashBalance).filter(
-        CashBalance.branch_id == branch_id,
-        CashBalance.date < target_date,
-    ).order_by(CashBalance.date.desc()).first()
-    opening_balance = bal.closing_balance if bal else 0
+    # Opening balance = sum of ALL prior cash activity before target_date
+    # If an opening_balance transaction exists, use it as the starting point
+    ob_txn = db.query(CashTransaction).filter(
+        CashTransaction.branch_id == branch_id,
+        CashTransaction.date < target_date,
+        CashTransaction.txn_type == "opening_balance",
+    ).order_by(CashTransaction.date.desc(), CashTransaction.id.desc()).first()
 
-    total_in = float(cash_sales) + float(cash_in_manual)
+    ob_start = ob_txn.amount if ob_txn else 0
+    ob_date = ob_txn.date if ob_txn else None
+
+    # Sum ALL prior-day cash flows before target_date (from ob_date if set, otherwise all time)
+    date_filter_sales = Sale.date < target_date
+    date_filter_po = PurchaseOrder.date < target_date
+    date_filter_exp = Expense.date < target_date
+    date_filter_txn = CashTransaction.date < target_date
+    if ob_date:
+        date_filter_sales = (Sale.date >= ob_date) & (Sale.date < target_date)
+        date_filter_po = (PurchaseOrder.date >= ob_date) & (PurchaseOrder.date < target_date)
+        date_filter_exp = (Expense.date >= ob_date) & (Expense.date < target_date)
+        date_filter_txn = (CashTransaction.date >= ob_date) & (CashTransaction.date < target_date)
+
+    # Prior days' cash sales
+    prior_sales = float(db.query(func.coalesce(func.sum(Sale.physical_cash), 0)).filter(
+        Sale.branch_id == branch_id, date_filter_sales,
+    ).scalar())
+    # Prior days' cash purchases
+    prior_purchases = float(db.query(func.coalesce(func.sum(PurchaseOrder.total_amount), 0)).filter(
+        PurchaseOrder.branch_id == branch_id, date_filter_po,
+        PurchaseOrder.payment_type == "cash",
+    ).scalar())
+    # Prior days' cash expenses
+    prior_expenses = float(db.query(func.coalesce(func.sum(Expense.amount), 0)).filter(
+        Expense.branch_id == branch_id, date_filter_exp,
+        Expense.payment_method == "cash",
+    ).scalar())
+    # Prior days' manual cash_in (excluding deposits, tracked separately)
+    prior_cash_in = float(db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
+        CashTransaction.branch_id == branch_id, date_filter_txn,
+        CashTransaction.txn_type == "cash_in",
+        CashTransaction.category != "deposit",
+    ).scalar())
+    # Prior days' manual cash_out (excluding deposits, tracked separately)
+    prior_cash_out = float(db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
+        CashTransaction.branch_id == branch_id, date_filter_txn,
+        CashTransaction.txn_type == "cash_out",
+        CashTransaction.category != "deposit",
+    ).scalar())
+    # Prior days' deposits (money moved to bank, reduces cash on hand)
+    prior_deposits = float(db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
+        CashTransaction.branch_id == branch_id, date_filter_txn,
+        CashTransaction.category == "deposit",
+    ).scalar())
+
+    opening_balance = ob_start + (prior_sales + prior_cash_in) - (prior_purchases + prior_expenses + prior_cash_out + prior_deposits)
+
+    total_in = float(opening_balance) + float(cash_sales) + float(cash_in_manual)
     total_out = float(cash_purchases) + float(cash_expenses) + float(cash_out_manual) + float(deposits)
-    closing_balance = float(opening_balance) + total_in - total_out
+    closing_balance = total_in - total_out
 
     return {
         "date": str(target_date),
@@ -147,6 +243,9 @@ def save_balance(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if user.role == "personnel":
+        raise HTTPException(403, "Personnel Officer has view-only access to petty cash")
+    _guard_personnel(db, user, branch_id)
     existing = db.query(CashBalance).filter(
         CashBalance.branch_id == branch_id,
         CashBalance.date == balance_date,

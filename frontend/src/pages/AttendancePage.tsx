@@ -18,6 +18,7 @@ export default function AttendancePage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     await apiPost("/api/hr/attendance", fd);
     setShowForm(false);

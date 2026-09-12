@@ -13,7 +13,7 @@ from app.models.user import User
 from app.utils.auth import get_current_user
 
 def _personnel_read_only(request: Request, user: User = Depends(get_current_user)):
-    if user.role == "personnel" and request.method not in ("GET", "HEAD", "OPTIONS"):
+    if user.role in ("personnel", "personnel_manager") and request.method not in ("GET", "HEAD", "OPTIONS"):
         raise HTTPException(403, "Personnel Officer has view-only access to Human Resources")
 
 

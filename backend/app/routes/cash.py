@@ -11,6 +11,8 @@ from app.utils.auth import get_current_user
 from app.models.user import User
 from app.routes.hr import _brand_branch_ids
 
+PERSONNEL_ROLES = ("personnel", "personnel_manager")
+
 router = APIRouter(prefix="/api/cash", tags=["cash"])
 
 
@@ -26,7 +28,7 @@ def _personnel_branch_ids(db: Session, user: User) -> list:
 
 def _guard_personnel(db: Session, user: User, branch_id: int):
     """The Personnel Officer can only operate the Personnel Office cash boxes."""
-    if user.role == "personnel" and branch_id not in _personnel_branch_ids(db, user):
+    if user.role in PERSONNEL_ROLES and branch_id not in _personnel_branch_ids(db, user):
         raise HTTPException(403, "Personnel Officer can only access the Personnel Office petty cash")
 
 
@@ -41,7 +43,7 @@ def list_transactions(
 ):
     q = db.query(CashTransaction)
     bb_ids = _brand_branch_ids(db, brand_id)
-    if user.role == "personnel":
+    if user.role in PERSONNEL_ROLES:
         pids = _personnel_branch_ids(db, user)
         q = q.filter(CashTransaction.branch_id.in_([branch_id] if branch_id in pids else pids))
     elif user.role == "staff" and user.branch_id:

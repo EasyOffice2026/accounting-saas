@@ -122,7 +122,7 @@ export default function RenewalsPage() {
   const { user } = useAuth();
   const { selectedBrand, brands } = useBrand();
   const ar = i18n.language === "ar";
-  const isApprover = ["owner", "manager"].includes(user?.role || "");
+  const isApprover = ["owner", "manager", "personnel_manager"].includes(user?.role || "");
   const canPay = isApprover || user?.role === "accountant";
   const canComplete = user?.role === "personnel" || canPay;
 

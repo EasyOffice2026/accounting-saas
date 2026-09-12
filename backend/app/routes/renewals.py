@@ -21,9 +21,11 @@ from app.routes.hr import _exclude_left_employees
 router = APIRouter(prefix="/api/renewals", tags=["renewals"])
 
 PERSONNEL_ROLE = "personnel"
-RENEWAL_ROLES = ("owner", "manager", "accountant", PERSONNEL_ROLE)
-APPROVER_ROLES = ("owner", "manager")
-PAYER_ROLES = ("owner", "manager", "accountant")  # confirm payment / manage the petty cash
+PERSONNEL_MANAGER_ROLE = "personnel_manager"
+PERSONNEL_ROLES = (PERSONNEL_ROLE, PERSONNEL_MANAGER_ROLE)  # restricted to the personnel module
+RENEWAL_ROLES = ("owner", "manager", "accountant", PERSONNEL_ROLE, PERSONNEL_MANAGER_ROLE)
+APPROVER_ROLES = ("owner", "manager", PERSONNEL_MANAGER_ROLE)
+PAYER_ROLES = ("owner", "manager", "accountant", PERSONNEL_MANAGER_ROLE)  # confirm payment / manage the petty cash
 PERSONNEL_BRANCH_PREFIX = "Personnel Office"
 PERSONNEL_PAYMENT_METHOD = "personnel_petty_cash"
 PERSONNEL_TABS = ["dashboard", "renewals", "hr", "hr_employees", "cash", "expenses"]
@@ -125,14 +127,18 @@ def seed_renewals(db: Session):
     for br in brands:
         personnel_branch(db, br.id)
 
-    u = db.query(User).filter(User.username == "mandoob").first()
-    if not u:
-        u = User(username="mandoob", password_hash=hash_password("Mandoob@2026"),
-                 full_name="Mandoob - Personnel Officer", role=PERSONNEL_ROLE, branch_id=None)
-        u.set_allowed_brands([b.id for b in brands] or None)
-        db.add(u)
-    if set(PERSONNEL_TABS) - set(u.get_allowed_tabs() or []):
-        u.set_allowed_tabs(sorted(set(u.get_allowed_tabs() or []) | set(PERSONNEL_TABS)))
+    for username, password, full_name, role in (
+        ("mandoob", "Mandoob@2026", "Mandoob - Personnel Officer", PERSONNEL_ROLE),
+        ("personnel.manager", "PManager@2026", "Personnel Manager", PERSONNEL_MANAGER_ROLE),
+    ):
+        u = db.query(User).filter(User.username == username).first()
+        if not u:
+            u = User(username=username, password_hash=hash_password(password),
+                     full_name=full_name, role=role, branch_id=None)
+            u.set_allowed_brands([b.id for b in brands] or None)
+            db.add(u)
+        if set(PERSONNEL_TABS) - set(u.get_allowed_tabs() or []):
+            u.set_allowed_tabs(sorted(set(u.get_allowed_tabs() or []) | set(PERSONNEL_TABS)))
     db.commit()
 
     # Migrate legacy expiry columns into the document register (once per employee/type)

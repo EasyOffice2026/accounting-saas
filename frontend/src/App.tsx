@@ -38,7 +38,7 @@ function ProtectedRoutes() {
     return <BrandSelectPage onSelect={() => setBrandChosen(true)} />;
   }
 
-  const isPersonnel = user?.role === "personnel";
+  const isPersonnel = ["personnel", "personnel_manager"].includes(user?.role || "");
   return (
     <Routes>
       <Route element={<Layout />}>

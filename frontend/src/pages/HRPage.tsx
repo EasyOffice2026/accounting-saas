@@ -170,7 +170,7 @@ export default function HRPage() {
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager = currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant";
-  const isPersonnel = currentUser.role === "personnel";
+  const isPersonnel = ["personnel", "personnel_manager"].includes(currentUser.role);
   const canViewSalary = ["owner", "manager", "accountant"].includes(currentUser.role);
 
   useEffect(() => {

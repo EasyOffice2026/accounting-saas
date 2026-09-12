@@ -328,6 +328,8 @@ export default {
   manager: "مدير",
   accountant: "محاسب",
   staff: "موظف",
+  personnel: "مسؤول شؤون الموظفين",
+  personnel_manager: "مدير شؤون الموظفين",
   active: "نشط",
   inactive: "غير نشط",
   no_branch: "جميع الفروع",

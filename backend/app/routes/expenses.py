@@ -58,7 +58,7 @@ def list_expenses(branch_id: Optional[int] = None, brand_id: Optional[int] = Non
         q = q.filter(Expense.branch_id == branch_id)
     elif bb_ids is not None:
         q = q.filter(Expense.branch_id.in_(bb_ids))
-    if user.role == "personnel":
+    if user.role in ("personnel", "personnel_manager"):
         q = q.filter(Expense.renewal_request_id.isnot(None))
     q = apply_date_range(q, Expense.date, date_from, date_to)
     return q.order_by(Expense.date.desc()).all()

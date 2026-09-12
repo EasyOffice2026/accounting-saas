@@ -50,6 +50,6 @@ def get_current_user(
 
 def get_business_user(user: User = Depends(get_current_user)) -> User:
     """Sales / purchases / operating dashboard are not available to the Personnel Officer."""
-    if user.role == "personnel":
+    if user.role in ("personnel", "personnel_manager"):
         raise HTTPException(status_code=403, detail="Not available for this role")
     return user

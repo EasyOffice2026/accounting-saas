@@ -17,7 +17,7 @@ const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles
   { path: "/purchases", icon: Package, key: "purchases" },
   { path: "/expenses", icon: Receipt, key: "expenses" },
   { path: "/hr", icon: Users, key: "hr" },
-  { path: "/renewals", icon: IdCard, key: "renewals", roles: ["owner", "manager", "accountant", "personnel"] },
+  { path: "/renewals", icon: IdCard, key: "renewals", roles: ["owner", "manager", "accountant", "personnel", "personnel_manager"] },
 
   { path: "/cash", icon: Banknote, key: "cash_management" },
   { path: "/transfers", icon: ArrowLeftRight, key: "internal_transfer" },
@@ -98,7 +98,7 @@ export default function Layout() {
         <nav className="mt-1">
           {navItems
             .filter(item => !item.roles || item.roles.includes(user?.role || ""))
-            .filter(item => user?.role !== "personnel" || PERSONNEL_NAV.includes(item.key))
+            .filter(item => !["personnel", "personnel_manager"].includes(user?.role || "") || PERSONNEL_NAV.includes(item.key))
             .filter(item => {
               if (user?.role === "owner") return true;
               if (!user?.allowed_tabs) return true;

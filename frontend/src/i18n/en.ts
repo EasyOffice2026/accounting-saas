@@ -328,6 +328,8 @@ export default {
   manager: "Manager",
   accountant: "Accountant",
   staff: "Staff",
+  personnel: "Personnel Officer",
+  personnel_manager: "Personnel Manager",
   active: "Active",
   inactive: "Inactive",
   no_branch: "All Branches",

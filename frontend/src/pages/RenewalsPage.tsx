@@ -14,7 +14,7 @@ interface License { id: number; brand_id: number; branch_id: number | null; bran
 interface Doc { id: number; employee_id: number; employee_name: string; employee_name_ar: string; civil_id: string; branch_id: number | null; branch_name: string; type_id: number; type_name: string; doc_no: string; authority: string; issue_date: string; expiry_date: string; days_remaining: number | null; status: string; notes: string; file1: string | null; file2: string | null; file3: string | null; }
 interface BoardRow { kind: string; ref_id: number; employee_id: number | null; license_id: number | null; name: string; id_no: string; branch_id: number | null; branch_name: string; type_id: number | null; type_name: string; doc_no: string; expiry_date: string; days_remaining: number | null; status: string; }
 interface Summary { expired: number; due_30: number; due_90: number; pending_approval: number; approved_unpaid: number; completed_unpaid: number; petty_cash_branch_id: number | null; petty_cash_branch_name: string; petty_cash_balance: number; }
-interface Line { id?: number; type_id: number | ""; type_name?: string; type_name_ar?: string; description: string; current_expiry: string; new_expiry: string; new_doc_no: string; fee: number; extra_charges: number; extra_desc: string; line_total?: number; actual_amount?: number | null; }
+interface Line { id?: number; type_id: number | ""; type_name?: string; type_name_ar?: string; description: string; current_expiry: string; new_expiry: string; new_doc_no: string; qty: number; fee: number; extra_charges: number; extra_desc: string; line_total?: number; actual_amount?: number | null; }
 interface LastTxn { request_no: string; paid_date: string; paid_amount: number; lines: Line[]; paid_by_name: string; }
 interface Req {
   id: number; request_no: string; brand_id: number; group: string; employee_id: number | null; license_id: number | null;
@@ -36,7 +36,7 @@ const STATUS_CLS: Record<string, string> = {
 const inp = "border rounded px-2 py-1.5 text-sm w-full";
 const btn = "px-3 py-1.5 rounded text-sm font-medium";
 const kd = (v: number | null | undefined) => (v || 0).toFixed(3);
-const emptyLine = (): Line => ({ type_id: "", description: "", current_expiry: "", new_expiry: "", new_doc_no: "", fee: 0, extra_charges: 0, extra_desc: "" });
+const emptyLine = (): Line => ({ type_id: "", description: "", current_expiry: "", new_expiry: "", new_doc_no: "", qty: 1, fee: 0, extra_charges: 0, extra_desc: "" });
 
 function DaysBadge({ d }: { d: number | null }) {
   const { t } = useTranslation();
@@ -177,7 +177,7 @@ export default function RenewalsPage() {
     { group: "staff", employee_id: "", license_id: "", urgency: "normal", notes: "", common_expense: false, lines: [emptyLine()] });
   const [lastTxn, setLastTxn] = useState<{ last: LastTxn | null; open_requests: { id: number; request_no: string; status: string }[] } | null>(null);
   const [reqFiles, setReqFiles] = useState<(File | null)[]>([null, null, null]);
-  const emptyNewEmp = { name: "", name_ar: "", civil_id: "", phone: "", employer: "", join_date: "" };
+  const emptyNewEmp = { name: "", name_ar: "", civil_id: "", phone: "", join_date: "" };
   const [empMode, setEmpMode] = useState<"existing" | "new">("existing");
   const [newEmp, setNewEmp] = useState(emptyNewEmp);
 
@@ -213,7 +213,7 @@ export default function RenewalsPage() {
     }
     setLine(i, { type_id: tid ? Number(tid) : "", fee: ty?.default_fee || 0, current_expiry });
   };
-  const reqTotal = rf.lines.reduce((s, l) => s + (Number(l.fee) || 0) + (Number(l.extra_charges) || 0), 0);
+  const reqTotal = rf.lines.reduce((s, l) => s + (Number(l.qty) || 1) * (Number(l.fee) || 0) + (Number(l.extra_charges) || 0), 0);
   const selEmp = rf.group === "staff" && rf.employee_id ? employees.find(e => e.id === Number(rf.employee_id)) : undefined;
   const selLic = rf.group === "company" && rf.license_id ? licenses.find(l => l.id === Number(rf.license_id)) : undefined;
   const selDocs = selEmp ? docs.filter(d => d.employee_id === selEmp.id) : [];
@@ -231,7 +231,7 @@ export default function RenewalsPage() {
       urgency: rf.urgency, notes: rf.notes, common_expense: rf.common_expense, submit,
       lines: rf.lines.filter(l => l.type_id).map(l => ({
         type_id: Number(l.type_id), description: l.description || null, current_expiry: l.current_expiry || null,
-        new_expiry: l.new_expiry || null, new_doc_no: l.new_doc_no || null, fee: Number(l.fee) || 0,
+        new_expiry: l.new_expiry || null, new_doc_no: l.new_doc_no || null, qty: Number(l.qty) || 1, fee: Number(l.fee) || 0,
         extra_charges: Number(l.extra_charges) || 0, extra_desc: l.extra_desc || null })),
     };
     if (!body.lines.length || (!body.employee_id && !body.license_id && !body.new_employee)) { alert(rf.group === "staff" ? t("rn_select_employee") : t("rn_select_license")); return; }
@@ -664,10 +664,6 @@ export default function RenewalsPage() {
                         <div className="col-span-2"><label className="text-xs text-gray-600">{t("rn_name")} *</label><input className={inp} value={newEmp.name} onChange={e => setNewEmp(n => ({ ...n, name: e.target.value }))} /></div>
                         <div className="col-span-2"><label className="text-xs text-gray-600">{t("rn_name_ar")}</label><input className={inp} dir="rtl" value={newEmp.name_ar} onChange={e => setNewEmp(n => ({ ...n, name_ar: e.target.value }))} /></div>
                         <div><label className="text-xs text-gray-600">{t("rn_civil_id")}</label><input className={`${inp} font-mono`} value={newEmp.civil_id} onChange={e => setNewEmp(n => ({ ...n, civil_id: e.target.value }))} /></div>
-                        <div><label className="text-xs text-gray-600">{t("employer_label")}</label>
-                          <select className={inp} value={newEmp.employer} onChange={e => setNewEmp(n => ({ ...n, employer: e.target.value }))}>
-                            <option value="">—</option>{employers.map(er => <option key={er.id} value={er.name}>{ar && er.name_ar ? er.name_ar : er.name}</option>)}
-                          </select></div>
                         <div><label className="text-xs text-gray-600">{t("phone")}</label><input className={inp} value={newEmp.phone} onChange={e => setNewEmp(n => ({ ...n, phone: e.target.value }))} /></div>
                         <div><label className="text-xs text-gray-600">{t("join_date")}</label><input type="date" className={inp} value={newEmp.join_date} onChange={e => setNewEmp(n => ({ ...n, join_date: e.target.value }))} /></div>
                         <div className="col-span-2 md:col-span-4 text-[11px] text-amber-800">{t("rn_new_emp_hint")}</div>
@@ -769,7 +765,7 @@ export default function RenewalsPage() {
                             <button type="button" onClick={() => setRf(f => ({ ...f, lines: f.lines.filter((_, j) => j !== i) }))} className="text-red-500 hover:text-red-700 disabled:opacity-30" disabled={rf.lines.length === 1}><Trash2 size={15} /></button>
                           </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr_1.2fr_1fr] gap-2">
+                        <div className="grid grid-cols-2 md:grid-cols-[2fr_3fr_0.6fr_1.2fr_1.2fr_1fr_1fr] gap-2">
                           <div><label className="text-[11px] text-gray-500">{t("rn_type")}</label>
                             <select className={inp} value={l.type_id} onChange={e => onLineType(i, e.target.value)}>
                               <option value="">—</option>{lineTypes.map(ty => <option key={ty.id} value={ty.id}>{tname(ty)}</option>)}
@@ -777,10 +773,11 @@ export default function RenewalsPage() {
                             {valid && dleft > 90 && <div className="text-[11px] text-amber-700 mt-0.5">{t("rn_still_valid")} {dleft} {t("rn_days")}</div>}
                           </div>
                           <div><label className="text-[11px] text-gray-500">{t("rn_description")}</label><input className={inp} value={l.description} onChange={e => setLine(i, { description: e.target.value })} /></div>
-                          <div><label className="text-[11px] text-gray-500">{t("rn_new_expiry")}</label><input type="date" className={inp} value={l.new_expiry || ""} onChange={e => setLine(i, { new_expiry: e.target.value })} />
-                            {l.current_expiry && <div className="text-[11px] text-gray-500 mt-0.5">{t("rn_current_expiry")}: {l.current_expiry}</div>}
-                          </div>
-                          <div><label className="text-[11px] text-gray-500">{t("rn_fee")} (KD)</label><input type="number" step="0.001" className={`${inp} font-semibold text-end`} value={l.fee} onChange={e => setLine(i, { fee: Number(e.target.value) })} /></div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_qty")}</label><input type="number" min="1" step="1" className={`${inp} text-end`} value={l.qty} onChange={e => setLine(i, { qty: Number(e.target.value) })} /></div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_old_expiry")}</label><input type="date" className={inp} value={l.current_expiry || ""} onChange={e => setLine(i, { current_expiry: e.target.value })} /></div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_new_expiry")}</label><input type="date" className={inp} value={l.new_expiry || ""} onChange={e => setLine(i, { new_expiry: e.target.value })} /></div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_fee")} (KD)</label><input type="number" step="0.001" className={`${inp} text-end`} value={l.fee} onChange={e => setLine(i, { fee: Number(e.target.value) })} /></div>
+                          <div><label className="text-[11px] text-gray-500">{t("rn_line_total")}</label><div className={`${inp} bg-gray-100 font-semibold text-end`}>{kd((Number(l.qty) || 1) * (Number(l.fee) || 0) + (Number(l.extra_charges) || 0))}</div></div>
                         </div>
                       </div>
                     );
@@ -836,11 +833,11 @@ export default function RenewalsPage() {
               {detail.notes && <div className="md:col-span-3"><b>{t("notes")}:</b> {detail.notes}</div>}
             </div>
             <table className="min-w-full">
-              <thead className="bg-gray-50 text-gray-600"><tr>{["#", t("rn_type"), t("rn_description"), t("rn_current_expiry"), t("rn_new_expiry"), t("rn_new_doc_no"), t("rn_fee"), t("rn_extra"), t("rn_total"), t("rn_actual")].map((h, i) => <th key={i} className="px-2 py-1 text-start">{h}</th>)}</tr></thead>
+              <thead className="bg-gray-50 text-gray-600"><tr>{["#", t("rn_type"), t("rn_description"), t("rn_old_expiry"), t("rn_new_expiry"), t("rn_qty"), t("rn_fee"), t("rn_extra"), t("rn_total"), t("rn_actual")].map((h, i) => <th key={i} className="px-2 py-1 text-start">{h}</th>)}</tr></thead>
               <tbody>{(detail.lines || []).map((l, i) => (
                 <tr key={i} className="border-t"><td className="px-2 py-1">{i + 1}</td><td className="px-2 py-1">{l.type_name}{l.type_name_ar && <span className="text-gray-500"> / {l.type_name_ar}</span>}</td>
                   <td className="px-2 py-1">{l.description}{l.extra_desc && <span className="text-gray-500"> ({l.extra_desc})</span>}</td><td className="px-2 py-1">{l.current_expiry || "—"}</td><td className="px-2 py-1">{l.new_expiry || "—"}</td>
-                  <td className="px-2 py-1">{l.new_doc_no || "—"}</td><td className="px-2 py-1">{kd(l.fee)}</td><td className="px-2 py-1">{kd(l.extra_charges)}</td>
+                  <td className="px-2 py-1">{l.qty ?? 1}</td><td className="px-2 py-1">{kd(l.fee)}</td><td className="px-2 py-1">{kd(l.extra_charges)}</td>
                   <td className="px-2 py-1 font-semibold">{kd(l.line_total)}</td><td className="px-2 py-1">{l.actual_amount != null ? kd(l.actual_amount) : "—"}</td></tr>
               ))}</tbody>
               <tfoot><tr className="border-t font-bold bg-gray-50"><td colSpan={8} className="px-2 py-1 text-end">{t("rn_total")}</td><td className="px-2 py-1">KD {kd(detail.total)}</td><td className="px-2 py-1">{detail.paid_amount != null ? `KD ${kd(detail.paid_amount)}` : ""}</td></tr></tfoot>

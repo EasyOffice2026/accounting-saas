@@ -412,10 +412,17 @@ def _migrate_columns():
         if "renewal_requests" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("renewal_requests")]
             for col, ddl in (("completed_by", "INTEGER"), ("completed_at", "DATETIME"),
-                             ("completed_date", "DATE"), ("common_expense", "BOOLEAN DEFAULT 0")):
+                             ("completed_date", "DATE"), ("common_expense", "BOOLEAN DEFAULT 0"),
+                             ("new_emp_name", "TEXT"), ("new_emp_name_ar", "TEXT"), ("new_emp_civil_id", "TEXT"),
+                             ("new_emp_phone", "TEXT"), ("new_emp_join_date", "DATE")):
                 if col not in cols:
                     conn.execute(text(f"ALTER TABLE renewal_requests ADD COLUMN {col} {ddl}"))
             conn.commit()
+        if "renewal_request_lines" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("renewal_request_lines")]
+            if "qty" not in cols:
+                conn.execute(text("ALTER TABLE renewal_request_lines ADD COLUMN qty FLOAT DEFAULT 1"))
+                conn.commit()
 
         # HR Approval workflow columns
         _approval_tables = ["salary_payments", "advance_loans", "staff_benefits_deductions", "leave_records"]

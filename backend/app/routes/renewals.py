@@ -224,12 +224,18 @@ def _lines_out(db: Session, req_id: int, types):
             "description": ln.description or "",
             "current_expiry": str(ln.current_expiry) if ln.current_expiry else "",
             "new_expiry": str(ln.new_expiry) if ln.new_expiry else "",
-            "new_doc_no": ln.new_doc_no or "", "fee": ln.fee or 0, "extra_charges": ln.extra_charges or 0,
+            "new_doc_no": ln.new_doc_no or "", "qty": ln.qty if ln.qty is not None else 1,
+            "fee": ln.fee or 0, "extra_charges": ln.extra_charges or 0,
             "extra_desc": ln.extra_desc or "",
-            "line_total": round((ln.fee or 0) + (ln.extra_charges or 0), 3),
+            "line_total": _line_total(ln),
             "actual_amount": ln.actual_amount, "expense_id": ln.expense_id,
         })
     return out
+
+
+def _line_total(ln: RenewalRequestLine) -> float:
+    qty = ln.qty if ln.qty is not None else 1
+    return round(qty * (ln.fee or 0) + (ln.extra_charges or 0), 3)
 
 
 def request_out(db: Session, r: RenewalRequest, detail: bool = False):
@@ -237,16 +243,23 @@ def request_out(db: Session, r: RenewalRequest, detail: bool = False):
     branches = _branch_map(db)
     emp = db.query(Employee).filter(Employee.id == r.employee_id).first() if r.employee_id else None
     lic = db.query(CompanyLicense).filter(CompanyLicense.id == r.license_id).first() if r.license_id else None
+    is_new_emp = r.group == "staff" and not emp and bool(r.new_emp_name)
     branch_id = emp.branch_id if emp else (lic.branch_id if lic else None)
+    if is_new_emp and not branch_id and r.brand_id:
+        pb = personnel_branch(db, r.brand_id, create=False)
+        branch_id = pb.id if pb else None
     b = branches.get(branch_id)
     d = {
         "id": r.id, "request_no": r.request_no, "brand_id": r.brand_id, "group": r.group,
         "employee_id": r.employee_id, "license_id": r.license_id,
-        "subject_name": emp.name if emp else (lic.name if lic else ""),
-        "subject_name_ar": (emp.name_ar or "") if emp else "",
+        "is_new_employee": is_new_emp,
+        "subject_name": emp.name if emp else (lic.name if lic else (r.new_emp_name or "")),
+        "subject_name_ar": (emp.name_ar or "") if emp else ((r.new_emp_name_ar or "") if is_new_emp else ""),
         "subject_employer": (emp.employer or "") if emp else ((lic.employer or "") if lic else ""),
-        "subject_id_no": (emp.civil_id or "") if emp else (lic.license_no if lic else ""),
+        "subject_id_no": (emp.civil_id or "") if emp else (lic.license_no if lic else (r.new_emp_civil_id or "")),
         "subject_position": (emp.position or "") if emp else ((lic.authority or "") if lic else ""),
+        "subject_phone": (emp.phone or "") if emp else ((r.new_emp_phone or "") if is_new_emp else ""),
+        "new_emp_join_date": str(r.new_emp_join_date) if is_new_emp and r.new_emp_join_date else "",
         "branch_id": branch_id, "branch_name": b.name if b else "",
         "urgency": r.urgency or "normal", "notes": r.notes or "", "status": r.status,
         "status_label": STATUS_FLOW.get(r.status, r.status), "total": r.total or 0,
@@ -695,17 +708,18 @@ class LineIn(BaseModel):
     current_expiry: Optional[str] = None
     new_expiry: Optional[str] = None
     new_doc_no: Optional[str] = None
+    qty: float = 1
     fee: float = 0
     extra_charges: float = 0
     extra_desc: Optional[str] = None
 
 
 class NewEmployeeIn(BaseModel):
+    """Prospective employee not yet in HR; stored on the request only."""
     name: str
     name_ar: Optional[str] = None
     civil_id: Optional[str] = None
     phone: Optional[str] = None
-    employer: Optional[str] = None
     join_date: Optional[str] = None
 
 
@@ -722,34 +736,34 @@ class RequestIn(BaseModel):
     lines: List[LineIn]
 
 
-def _create_new_employee(db: Session, body: RequestIn) -> None:
+def _validate_new_employee(db: Session, body: RequestIn) -> None:
     ne = body.new_employee
     if not ne.name.strip():
         raise HTTPException(400, "New employee name is required")
-    br = personnel_branch(db, body.brand_id)
-    if not br:
-        raise HTTPException(400, "Personnel Office branch not found for this brand")
     civil_id = (ne.civil_id or "").strip() or None
     if civil_id:
         dup = db.query(Employee).join(Branch, Branch.id == Employee.branch_id).filter(
             Employee.civil_id == civil_id, Branch.brand_id == body.brand_id).first()
         if dup:
             raise HTTPException(400, f"An employee with Civil ID {civil_id} already exists: {dup.name}. Select the existing employee.")
-    emp = Employee(name=ne.name.strip(), name_ar=(ne.name_ar or "").strip() or None, civil_id=civil_id,
-                   branch_id=br.id, phone=(ne.phone or "").strip() or None,
-                   employer=(ne.employer or "").strip() or None, join_date=_d(ne.join_date) or date.today(), is_active=True)
-    db.add(emp)
-    db.flush()
-    body.employee_id = emp.id
+
+
+def _apply_new_employee(r: RenewalRequest, body: RequestIn) -> None:
+    ne = body.new_employee if body.group == "staff" and not body.employee_id else None
+    r.new_emp_name = ne.name.strip() if ne else None
+    r.new_emp_name_ar = ((ne.name_ar or "").strip() or None) if ne else None
+    r.new_emp_civil_id = ((ne.civil_id or "").strip() or None) if ne else None
+    r.new_emp_phone = ((ne.phone or "").strip() or None) if ne else None
+    r.new_emp_join_date = _d(ne.join_date) if ne else None
 
 
 def _validate_request(db: Session, body: RequestIn):
     if body.group not in ("staff", "company"):
         raise HTTPException(400, "group must be staff or company")
-    if body.group == "staff" and body.new_employee and not body.employee_id:
-        _create_new_employee(db, body)
     if body.group == "staff":
-        if not body.employee_id or not db.query(Employee).filter(Employee.id == body.employee_id).first():
+        if body.new_employee and not body.employee_id:
+            _validate_new_employee(db, body)
+        elif not body.employee_id or not db.query(Employee).filter(Employee.id == body.employee_id).first():
             raise HTTPException(400, "Employee is required")
     else:
         if not body.license_id or not db.query(CompanyLicense).filter(CompanyLicense.id == body.license_id).first():
@@ -769,10 +783,11 @@ def _replace_lines(db: Session, req: RenewalRequest, lines: List[LineIn]):
     db.query(RenewalRequestLine).filter(RenewalRequestLine.request_id == req.id).delete()
     total = 0.0
     for ln in lines:
-        total += (ln.fee or 0) + (ln.extra_charges or 0)
+        qty = ln.qty if ln.qty and ln.qty > 0 else 1
+        total += qty * (ln.fee or 0) + (ln.extra_charges or 0)
         db.add(RenewalRequestLine(request_id=req.id, type_id=ln.type_id, description=ln.description or None,
                                   current_expiry=_d(ln.current_expiry), new_expiry=_d(ln.new_expiry),
-                                  new_doc_no=ln.new_doc_no or None, fee=ln.fee or 0,
+                                  new_doc_no=ln.new_doc_no or None, qty=qty, fee=ln.fee or 0,
                                   extra_charges=ln.extra_charges or 0, extra_desc=ln.extra_desc or None))
     req.total = round(total, 3)
 
@@ -820,6 +835,7 @@ def create_request(body: RequestIn, db: Session = Depends(get_db), user: User = 
                        urgency=body.urgency or "normal", notes=body.notes or None, status="draft",
                        common_expense=bool(body.common_expense),
                        requested_by=user.id, requested_at=_now())
+    _apply_new_employee(r, body)
     db.add(r)
     db.flush()
     _replace_lines(db, r, body.lines)
@@ -845,6 +861,7 @@ def update_request(req_id: int, body: RequestIn, db: Session = Depends(get_db), 
     r.common_expense = bool(body.common_expense)
     r.employee_id = body.employee_id if body.group == "staff" else None
     r.license_id = body.license_id if body.group == "company" else None
+    _apply_new_employee(r, body)
     _replace_lines(db, r, body.lines)
     if body.submit:
         r.status, r.submitted_at = "pending", _now()
@@ -994,7 +1011,7 @@ def complete_request(req_id: int, completed_date: str = Form(...), receipt_no: s
     total = 0.0
     lines = db.query(RenewalRequestLine).filter(RenewalRequestLine.request_id == r.id).order_by(RenewalRequestLine.id).all()
     for ln in lines:
-        amt = actual_map.get(ln.id, round((ln.fee or 0) + (ln.extra_charges or 0), 3))
+        amt = actual_map.get(ln.id, _line_total(ln))
         ln.actual_amount = round(amt, 3)
         total += amt
     emp = db.query(Employee).filter(Employee.id == r.employee_id).first() if r.employee_id else None
@@ -1039,14 +1056,13 @@ def pay_request(req_id: int, paid_date: str = Form(""), receipt_no: str = Form("
     exp_branch_id = emp.branch_id if emp else (lic.branch_id if lic else None)
     if r.common_expense or not exp_branch_id:
         exp_branch_id = pb.id
-    subject = emp.name if emp else (lic.name if lic else "")
+    subject = emp.name if emp else (lic.name if lic else (r.new_emp_name or ""))
     types = _type_map(db)
 
     total = 0.0
     lines = db.query(RenewalRequestLine).filter(RenewalRequestLine.request_id == r.id).order_by(RenewalRequestLine.id).all()
     for ln in lines:
-        amt = actual_map.get(ln.id, ln.actual_amount if ln.actual_amount is not None
-                             else round((ln.fee or 0) + (ln.extra_charges or 0), 3))
+        amt = actual_map.get(ln.id, ln.actual_amount if ln.actual_amount is not None else _line_total(ln))
         ln.actual_amount = round(amt, 3)
         total += amt
         t = types.get(ln.type_id)
@@ -1230,22 +1246,23 @@ def request_form_pdf(req_id: int, db: Session = Depends(get_db), user: User = De
     el.append(Spacer(1, 5 * mm))
 
     el.append(Paragraph("Request Lines", bold))
-    lines = [["#", "Type", "Description", "Current Expiry", "New Expiry", "New Doc No", "Fee", "Extra", "Total", "Actual"]]
+    lines = [["#", "Type", "Description", "Old Expiry", "New Expiry", "Qty", "Fee", "Extra", "Total", "Actual"]]
     for i, ln in enumerate(d["lines"], 1):
+        qty = ln.get("qty", 1) or 1
         lines.append([str(i), f"{ln['type_name']}\n{ar(ln['type_name_ar'])}", ln["description"] or "",
-                      ln["current_expiry"], ln["new_expiry"], ln["new_doc_no"], _fmt_amt(ln["fee"]),
+                      ln["current_expiry"], ln["new_expiry"], f"{qty:g}", _fmt_amt(ln["fee"]),
                       _fmt_amt(ln["extra_charges"]) + (f"\n{ln['extra_desc']}" if ln["extra_desc"] else ""),
                       _fmt_amt(ln["line_total"]),
                       _fmt_amt(ln["actual_amount"]) if ln["actual_amount"] is not None else ""])
     lines.append(["", "", "", "", "", "", "", "Total", _fmt_amt(d["total"]),
                   _fmt_amt(d["paid_amount"]) if d["paid_amount"] is not None else ""])
-    lt = Table(lines, colWidths=[7 * mm, 32 * mm, 30 * mm, 20 * mm, 20 * mm, 20 * mm, 15 * mm, 16 * mm, 15 * mm, 15 * mm],
+    lt = Table(lines, colWidths=[7 * mm, 32 * mm, 36 * mm, 20 * mm, 20 * mm, 10 * mm, 16 * mm, 16 * mm, 16 * mm, 16 * mm],
                repeatRows=1)
     lt.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), "DejaVuSans"), ("FONTSIZE", (0, 0), (-1, -1), 7.5),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2E7D32")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.grey), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (6, 1), (-1, -1), "RIGHT"), ("FONTNAME", (0, -1), (-1, -1), "DejaVuSans-Bold"),
+        ("ALIGN", (5, 1), (-1, -1), "RIGHT"), ("FONTNAME", (0, -1), (-1, -1), "DejaVuSans-Bold"),
         ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E8F5E9")),
     ]))
     el.append(lt)

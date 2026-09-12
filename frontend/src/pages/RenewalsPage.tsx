@@ -178,17 +178,20 @@ export default function RenewalsPage() {
   const [lastTxn, setLastTxn] = useState<{ last: LastTxn | null; open_requests: { id: number; request_no: string; status: string }[] } | null>(null);
   const [reqFiles, setReqFiles] = useState<(File | null)[]>([null, null, null]);
   const emptyNewEmp = { name: "", name_ar: "", civil_id: "", phone: "", join_date: "" };
+  const [reqEmployer, setReqEmployer] = useState("");
   const [empMode, setEmpMode] = useState<"existing" | "new">("existing");
   const [newEmp, setNewEmp] = useState(emptyNewEmp);
 
   const openNew = (preset?: Partial<typeof rf>) => {
     setEditReq(null); setEmpMode("existing"); setNewEmp(emptyNewEmp);
+    setReqEmployer(preset?.license_id ? (licenses.find(l => l.id === Number(preset.license_id))?.employer || "") : "");
     setRf({ group: "staff", employee_id: "", license_id: "", urgency: "normal", notes: "", common_expense: false, lines: [emptyLine()], ...preset });
     setLastTxn(null); setReqFiles([null, null, null]); setShowReq(true);
   };
   const openEdit = async (r: Req) => {
     const d: Req = await apiGet(`/api/renewals/requests/${r.id}`);
     setEditReq(d); setEmpMode("existing");
+    setReqEmployer(d.license_id ? (licenses.find(l => l.id === d.license_id)?.employer || "") : "");
     setRf({ group: d.group, employee_id: d.employee_id ? String(d.employee_id) : "", license_id: d.license_id ? String(d.license_id) : "",
       urgency: d.urgency, notes: d.notes, common_expense: !!d.common_expense, lines: (d.lines || []).map(l => ({ ...l })) });
     setReqFiles([null, null, null]); setShowReq(true);
@@ -647,7 +650,7 @@ export default function RenewalsPage() {
                 <div className="grid md:grid-cols-3 gap-3">
                   <div className="md:col-span-2">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs text-gray-600">{rf.group === "staff" ? t("rn_employee") : t("rn_license")}</label>
+                      <label className="text-xs text-gray-600">{rf.group === "staff" ? t("rn_employee") : t("rn_company")}</label>
                       {rf.group === "staff" && !editReq && (
                         <div className="inline-flex rounded overflow-hidden border text-xs">
                           {(["existing", "new"] as const).map(m => (
@@ -672,8 +675,21 @@ export default function RenewalsPage() {
                       <SearchPicker disabled={!!editReq} value={rf.employee_id} onChange={v => setRf(f => ({ ...f, employee_id: v }))} placeholder={t("rn_search_employee")}
                         items={employees.map(e => ({ id: e.id, title: ar && e.name_ar ? e.name_ar : e.name, subtitle: e.civil_id || "—", meta: bname(branches.find(b => b.id === e.branch_id)) }))} />
                     ) : (
-                      <SearchPicker disabled={!!editReq} value={rf.license_id} onChange={v => setRf(f => ({ ...f, license_id: v }))} placeholder={t("rn_search_license")}
-                        items={licenses.map(l => ({ id: l.id, title: l.employer ? `${l.employer} — ${l.name}` : l.name, subtitle: l.license_no, meta: l.branch_name || "—" }))} />
+                      <div className="grid md:grid-cols-[1fr_2fr] gap-2">
+                        <div>
+                          <label className="text-[11px] text-gray-500">{t("rn_company_name")}</label>
+                          <select className={inp} disabled={!!editReq} value={reqEmployer} onChange={e => { setReqEmployer(e.target.value); setRf(f => ({ ...f, license_id: "" })); }}>
+                            <option value="">{t("rn_all_companies")}</option>
+                            {employers.map(er => <option key={er.id} value={er.name}>{ar && er.name_ar ? er.name_ar : er.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[11px] text-gray-500">{t("rn_license")}</label>
+                          <SearchPicker disabled={!!editReq} value={rf.license_id} onChange={v => setRf(f => ({ ...f, license_id: v }))} placeholder={t("rn_search_license")}
+                            items={licenses.filter(l => !reqEmployer || l.employer === reqEmployer).map(l => ({ id: l.id, title: reqEmployer ? l.name : (l.employer ? `${l.employer} — ${l.name}` : l.name), subtitle: l.license_no, meta: l.branch_name || "—" }))} />
+                          {reqEmployer && !licenses.some(l => l.employer === reqEmployer) && <div className="text-[11px] text-amber-700 mt-0.5">{t("rn_no_licenses_for_company")}</div>}
+                        </div>
+                      </div>
                     )}
                   </div>
                   <div className="flex items-end">

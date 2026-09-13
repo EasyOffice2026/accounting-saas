@@ -5,16 +5,18 @@ import { useBrand } from "../contexts/BrandContext";
 import {
   LayoutDashboard, ShoppingCart, Package, Receipt,
   Users, LogOut, Menu, X, Banknote, Settings, ArrowLeftRight, FileText,
-  Building2, ChevronDown, Globe, IdCard,
+  Building2, ChevronDown, Globe, IdCard, ClipboardList,
 } from "lucide-react";
 import { useState } from "react";
 
 const PERSONNEL_NAV = ["dashboard", "renewals", "hr", "cash_management", "expenses"];
+const PURCHASE_NAV = ["dashboard", "procurement", "cash_management"];
 
 const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles?: string[] }[] = [
   { path: "/", icon: LayoutDashboard, key: "dashboard" },
   { path: "/sales", icon: ShoppingCart, key: "sales" },
   { path: "/purchases", icon: Package, key: "purchases" },
+  { path: "/procurement", icon: ClipboardList, key: "procurement", roles: ["owner", "manager", "accountant", "purchase_officer", "purchase_manager"] },
   { path: "/expenses", icon: Receipt, key: "expenses" },
   { path: "/hr", icon: Users, key: "hr" },
   { path: "/renewals", icon: IdCard, key: "renewals", roles: ["owner", "manager", "accountant", "personnel", "personnel_manager"] },
@@ -99,6 +101,7 @@ export default function Layout() {
           {navItems
             .filter(item => !item.roles || item.roles.includes(user?.role || ""))
             .filter(item => !["personnel", "personnel_manager"].includes(user?.role || "") || PERSONNEL_NAV.includes(item.key))
+            .filter(item => !["purchase_officer", "purchase_manager"].includes(user?.role || "") || PURCHASE_NAV.includes(item.key))
             .filter(item => {
               if (user?.role === "owner") return true;
               if (!user?.allowed_tabs) return true;

@@ -481,6 +481,11 @@ def export_hr(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[int]
 @router.get("/cash/{fmt}")
 def export_cash(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[int] = None,
                 db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    from app.routes.cash import PERSONNEL_ROLES, _guard_personnel
+    if user.role in PERSONNEL_ROLES:
+        if not branch_id:
+            raise HTTPException(400, "branch_id required")
+        _guard_personnel(db, user, branch_id)
     header, data = _cash_data(db, user, branch_id, brand_id=brand_id)
     return _respond(fmt, header, data, "cash_management", "Cash Management Report")
 

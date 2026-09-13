@@ -35,6 +35,7 @@ export default function CashPage() {
 
   useEffect(() => {
     const scope = ["personnel", "personnel_manager"].includes(user?.role || "") ? "?scope=personnel"
+      : ["purchase_officer", "purchase_manager"].includes(user?.role || "") ? "?scope=purchase"
       : ["owner", "manager", "accountant"].includes(user?.role || "") ? "" : "?scope=operating";
     apiGet(`/api/branches/${scope}`).then((bs: Branch[]) => {
       setBranches(bs.filter(b => !b.name.includes("Central")));
@@ -85,7 +86,7 @@ export default function CashPage() {
   };
 
   const isStaff = user?.role === "staff";
-  const readOnly = user?.role === "personnel";
+  const readOnly = user?.role === "personnel" || user?.role === "purchase_officer";
 
   return (
     <div>
@@ -141,7 +142,7 @@ export default function CashPage() {
       </div>
       {readOnly && (
         <div className="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-          {t("cash_view_only")}
+          {t(user?.role === "purchase_officer" ? "po_view_only_cash" : "cash_view_only")}
         </div>
       )}
 

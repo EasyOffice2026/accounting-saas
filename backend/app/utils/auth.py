@@ -54,7 +54,7 @@ PURCHASE_ROLES = ("purchase_officer", "purchase_manager")
 MODULE_RESTRICTED_ROLES = ("personnel", "personnel_manager") + PURCHASE_ROLES
 
 # API prefixes the Purchase Office roles may call; everything else under /api is refused server-side.
-PURCHASE_ALLOWED_PREFIXES = ("/api/auth/", "/api/procurement/", "/api/cash/", "/api/branches/", "/api/hr/brands")
+PURCHASE_ALLOWED_PREFIXES = ("/api/auth/", "/api/procurement/", "/api/cash/", "/api/branches/", "/api/hr/brands", "/api/export/cash/")
 
 
 def get_business_user(user: User = Depends(get_current_user)) -> User:

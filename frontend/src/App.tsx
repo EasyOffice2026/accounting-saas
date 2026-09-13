@@ -15,6 +15,8 @@ import SettingsPage from "./pages/SettingsPage";
 import TransfersPage from "./pages/TransfersPage";
 import ContractsPage from "./pages/ContractsPage";
 import RenewalsPage from "./pages/RenewalsPage";
+import PurchaseDashboardPage from "./pages/PurchaseDashboardPage";
+import ProcurementPage from "./pages/ProcurementPage";
 import { useState, useEffect } from "react";
 import "./i18n";
 
@@ -39,19 +41,22 @@ function ProtectedRoutes() {
   }
 
   const isPersonnel = ["personnel", "personnel_manager"].includes(user?.role || "");
+  const isPurchase = ["purchase_officer", "purchase_manager"].includes(user?.role || "");
+  const restricted = isPersonnel || isPurchase;
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={isPersonnel ? <PersonnelDashboardPage /> : <DashboardPage />} />
-        <Route path="/sales" element={isPersonnel ? <Navigate to="/" /> : <SalesPage />} />
-        <Route path="/purchases" element={isPersonnel ? <Navigate to="/" /> : <PurchasesPage />} />
-        <Route path="/expenses" element={<ExpensesPage />} />
-        <Route path="/hr" element={<HRPage />} />
-        <Route path="/renewals" element={<RenewalsPage />} />
+        <Route path="/" element={isPersonnel ? <PersonnelDashboardPage /> : isPurchase ? <PurchaseDashboardPage /> : <DashboardPage />} />
+        <Route path="/sales" element={restricted ? <Navigate to="/" /> : <SalesPage />} />
+        <Route path="/purchases" element={restricted ? <Navigate to="/" /> : <PurchasesPage />} />
+        <Route path="/procurement" element={isPersonnel || user?.role === "staff" ? <Navigate to="/" /> : <ProcurementPage />} />
+        <Route path="/expenses" element={isPurchase ? <Navigate to="/" /> : <ExpensesPage />} />
+        <Route path="/hr" element={isPurchase ? <Navigate to="/" /> : <HRPage />} />
+        <Route path="/renewals" element={isPurchase ? <Navigate to="/" /> : <RenewalsPage />} />
         <Route path="/cash" element={<CashPage />} />
-        <Route path="/transfers" element={isPersonnel ? <Navigate to="/" /> : <TransfersPage />} />
-        <Route path="/contracts" element={isPersonnel ? <Navigate to="/" /> : <ContractsPage />} />
-        <Route path="/settings" element={isPersonnel ? <Navigate to="/" /> : <SettingsPage />} />
+        <Route path="/transfers" element={restricted ? <Navigate to="/" /> : <TransfersPage />} />
+        <Route path="/contracts" element={restricted ? <Navigate to="/" /> : <ContractsPage />} />
+        <Route path="/settings" element={restricted ? <Navigate to="/" /> : <SettingsPage />} />
         <Route path="/brands" element={<BrandSelectPage onSelect={() => setBrandChosen(true)} />} />
       </Route>
     </Routes>

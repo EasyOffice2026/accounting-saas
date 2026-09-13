@@ -688,6 +688,8 @@ export default function SettingsPage() {
                   <option value="staff">{t("staff")}</option>
                   <option value="personnel">{t("personnel")}</option>
                   <option value="personnel_manager">{t("personnel_manager")}</option>
+                  <option value="purchase_officer">{t("purchase_officer")}</option>
+                  <option value="purchase_manager">{t("purchase_manager")}</option>
                 </select>
               </div>
               {uRole === "staff" && (

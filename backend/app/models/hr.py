@@ -3,6 +3,16 @@ from datetime import datetime, timezone
 from app.database import Base
 
 
+class Brand(Base):
+    __tablename__ = "brands"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name_en = Column(String, nullable=False)
+    name_ar = Column(String, nullable=True)
+    status = Column(String, default="active")  # active, inactive
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class Employee(Base):
     __tablename__ = "employees"
 
@@ -20,9 +30,12 @@ class Employee(Base):
     iban = Column(String, nullable=True)
     bank_name = Column(String, nullable=True)
     salary_transfer_method = Column(String, default="cash")  # cash, bank
-    employer = Column(String, default="mudawwarah")  # mudawwarah, other
+    employer = Column(String, nullable=True)  # free-text, unique list for dropdown
     join_date = Column(Date, nullable=True)
-    termination_date = Column(Date, nullable=True)
+    termination_date = Column(Date, nullable=True)  # resignation/termination date
+    last_working_date = Column(Date, nullable=True)  # actual last day of work
+    residency_expiry = Column(Date, nullable=True)
+    health_card_expiry = Column(Date, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -75,6 +88,9 @@ class SalaryPayment(Base):
     net_salary = Column(Float, default=0)
     payment_method = Column(String, default="cash")  # cash, bank_transfer
     status = Column(String, default="pending")  # pending, paid
+    approval_status = Column(String, default="pending_approval")  # pending_approval, approved, rejected
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approval_date = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
     paid_date = Column(Date, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -108,6 +124,21 @@ class AdvanceLoan(Base):
     date = Column(Date, nullable=False)
     notes = Column(Text, nullable=True)
     status = Column(String, default="active")  # active, paid_off
+    approval_status = Column(String, default="pending_approval")  # pending_approval, approved, rejected
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approval_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class LoanRepayment(Base):
+    __tablename__ = "loan_repayments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    loan_id = Column(Integer, ForeignKey("advance_loans.id"), nullable=False)
+    amount = Column(Float, nullable=False)
+    date = Column(Date, nullable=False)
+    month = Column(String, nullable=True)  # YYYY-MM (optional, for reference)
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -118,9 +149,14 @@ class StaffBenefitDeduction(Base):
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
     category = Column(String, nullable=False)  # incentive, bonus, leave_salary, ticket, fine, penalty, other_benefit, other_deduction
     amount = Column(Float, nullable=False)
+    frequency = Column(String, default="one_time")  # one_time, monthly (recurring until end_month)
     date = Column(Date, nullable=False)
-    month = Column(String, nullable=True)  # YYYY-MM to link to salary period
+    month = Column(String, nullable=True)  # YYYY-MM; for monthly = start month
+    end_month = Column(String, nullable=True)  # YYYY-MM; optional stop month for recurring
     notes = Column(Text, nullable=True)
+    approval_status = Column(String, default="pending_approval")  # pending_approval, approved, rejected
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approval_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -136,6 +172,9 @@ class LeaveRecord(Base):
     is_paid = Column(Boolean, default=False)  # paid leave = no deduction
     month = Column(String, nullable=True)  # YYYY-MM to link to salary period
     notes = Column(Text, nullable=True)
+    approval_status = Column(String, default="pending_approval")  # pending_approval, approved, rejected
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approval_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -178,9 +217,57 @@ class Resignation(Base):
     last_salary_paid_amount = Column(Float, default=0)
     end_of_service = Column(Float, default=0)
     leave_encashment = Column(Float, default=0)
+    other_earnings = Column(Float, default=0)
     deductions_amount = Column(Float, default=0)
+    other_deductions = Column(Float, default=0)
     final_settlement_amount = Column(Float, default=0)
     finance_date = Column(Date, nullable=True)
+    # Dues clearance consent
+    dues_cleared_consent = Column(Boolean, default=False)
+    consent_date = Column(Date, nullable=True)
     # Status
     status = Column(String, default="draft")  # draft, submitted, approved, rejected, completed
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class Contract(Base):
+    __tablename__ = "contracts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    brand_id = Column(Integer, ForeignKey("brands.id"), nullable=True)
+    branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True)
+    name = Column(String, nullable=False)
+    kind = Column(String, nullable=True)
+    place = Column(String, nullable=True)
+    period = Column(String, nullable=True)  # weekly, monthly, quarterly, half_yearly, yearly
+    value = Column(Float, default=0)
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    monthly_payment = Column(Float, default=0)
+    payment_day = Column(Integer, default=1)  # day of month for reminder
+    notes = Column(Text, nullable=True)
+    status = Column(String, default="active")  # active, expired, cancelled
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class Employer(Base):
+    __tablename__ = "employers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True)
+    name_ar = Column(String, nullable=True)
+
+
+class ContractPayment(Base):
+    __tablename__ = "contract_payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False)
+    due_date = Column(Date, nullable=False)
+    amount = Column(Float, nullable=False)
+    status = Column(String, default="pending")  # pending, paid, overdue
+    paid_date = Column(Date, nullable=True)
+    payment_method = Column(String, nullable=True)  # cash, bank_transfer, cheque
+    reference = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

@@ -8,7 +8,8 @@ interface Employee {
   civil_id: string; position: string; phone: string; salary: number;
   work_permit_salary: number; actual_salary: number;
   iban: string; bank_name: string; salary_transfer_method: string; employer: string;
-  join_date: string; termination_date: string | null; is_active: boolean;
+  join_date: string; termination_date: string | null; last_working_date: string | null;
+  residency_expiry: string | null; health_card_expiry: string | null; is_active: boolean;
 }
 interface SalaryRecord {
   id: number; employee_id: number; staff_no: string; name: string; name_ar: string;
@@ -24,6 +25,7 @@ interface SalaryRecord {
   other_deduction: number; loan_deduction: number; penalty: number;
   deductions: number; advance: number; net_salary: number;
   payment_method: string; status: string; notes: string | null; paid_date: string | null;
+  approval_status?: string;
 }
 interface Transfer {
   id: number; employee_id: number; from_branch_id: number; to_branch_id: number;
@@ -35,38 +37,36 @@ interface Loan {
   amount: number; balance: number; monthly_deduction: number;
   deduction_month: string | null;
   date: string; notes: string | null; status: string;
+  approval_status?: string;
 }
 interface BenefitDeduction {
   id: number; employee_id: number; category: string;
   amount: number; date: string; month: string | null; notes: string | null;
+  frequency?: string; end_month?: string | null;
+  approval_status?: string;
 }
-interface ResignationRecord {
-  id: number; ref_no: string; employee_id: number;
-  name_en: string; name_ar: string; civil_id: string; nationality: string;
-  job_title: string; department_branch: string;
-  date_of_joining: string; last_working_day: string;
-  mobile: string; email: string;
-  reason: string; resignation_date: string;
-  company_id_returned: boolean; uniform_returned: boolean;
-  locker_keys_handed: boolean; equipment_returned: boolean;
-  loans_cleared: boolean; handover_completed: boolean;
-  final_settlement_calculated: boolean; final_salary_paid: boolean;
-  ops_manager_name: string; ops_manager_status: string; ops_manager_date: string;
-  gm_name: string; gm_status: string; gm_date: string;
-  finance_manager_name: string;
-  last_salary_paid_amount: number; end_of_service: number;
-  leave_encashment: number; deductions_amount: number; final_settlement_amount: number;
-  finance_date: string;
-  status: string; created_at: string;
+interface LoanTxn {
+  id: number;
+  kind: "disbursement" | "repayment";
+  type: string; loan_id: number; date: string;
+  amount: number; notes: string; status: string;
+  running_balance: number;
+}
+interface LoanStatement {
+  employee: { id: number; name: string; name_ar: string; staff_no: string };
+  totals: { total_taken: number; total_repaid: number; outstanding: number; loan_count: number };
+  transactions: LoanTxn[];
 }
 
 interface LeaveRec {
   id: number; employee_id: number; leave_type: string;
   start_date: string; end_date: string; days: number;
   is_paid: boolean; month: string; notes: string;
+  approval_status?: string;
 }
+interface BrandItem { id: number; name_en: string; name_ar: string; }
 
-type Tab = "employees" | "salary" | "transfers" | "loans" | "benefits" | "deductions" | "leaves" | "resignation";
+type Tab = "employees" | "salary" | "transfers" | "loans" | "benefits" | "deductions" | "leaves";
 
 export default function HRPage() {
   const { t, i18n } = useTranslation();
@@ -128,35 +128,61 @@ export default function HRPage() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [showLoanForm, setShowLoanForm] = useState(false);
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
+  const [payingLoan, setPayingLoan] = useState<Loan | null>(null);
+  const [statementEmpId, setStatementEmpId] = useState<string>("");
+  const [statement, setStatement] = useState<LoanStatement | null>(null);
 
   // Benefits state (incentive, bonus, leave_salary, ticket)
   const [benefits, setBenefits] = useState<BenefitDeduction[]>([]);
   const [showBenefitForm, setShowBenefitForm] = useState(false);
   const [editingBenefit, setEditingBenefit] = useState<BenefitDeduction | null>(null);
+  const [benefitFreq, setBenefitFreq] = useState("one_time");
 
   // Deductions state (fine, penalty)
   const [deductionItems, setDeductionItems] = useState<BenefitDeduction[]>([]);
   const [showDeductionForm, setShowDeductionForm] = useState(false);
   const [editingDeduction, setEditingDeduction] = useState<BenefitDeduction | null>(null);
+  const [dedSelectedEmpId, setDedSelectedEmpId] = useState<number | null>(null);
+  const [dedDays, setDedDays] = useState<number>(0);
+  const [dedAmount, setDedAmount] = useState<number>(0);
 
   // Leave/Absence state
   const [leaveRecords, setLeaveRecords] = useState<LeaveRec[]>([]);
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [editingLeave, setEditingLeave] = useState<LeaveRec | null>(null);
 
-  // Resignation state
-  const [resignations, setResignations] = useState<ResignationRecord[]>([]);
-  const [showResignationForm, setShowResignationForm] = useState(false);
-  const [editingResignation, setEditingResignation] = useState<ResignationRecord | null>(null);
-  const [resEmpId, setResEmpId] = useState<number | null>(null);
+  // Employer list (unique, no duplicates)
+  const [employers, setEmployers] = useState<{ id: number; name: string; name_ar: string }[]>([]);
+  const [showEmployerMgr, setShowEmployerMgr] = useState(false);
+  const [newEmployerName, setNewEmployerName] = useState("");
+  const [newEmployerNameAr, setNewEmployerNameAr] = useState("");
+
+  const loadEmployers = () => apiGet("/api/hr/employers").then(setEmployers);
+  const loadEmployees = () => apiGet(`/api/hr/employees${showLeft ? "?include_left=true" : ""}`).then(setEmployees);
+
+  // Brands for cross-brand transfers
+  const [brands, setBrands] = useState<BrandItem[]>([]);
+  const [transferToBrandId, setTransferToBrandId] = useState<number | null>(null);
+  const [allBranches, setAllBranches] = useState<(Branch & { brand_id?: number })[]>([]);
+
+  const [branchFilter, setBranchFilter] = useState<string>("");
+  const [showLeft, setShowLeft] = useState(false);
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-  const isManager = currentUser.role === "owner" || currentUser.role === "manager";
+  const isManager = currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant";
+  const isPersonnel = ["personnel", "personnel_manager"].includes(currentUser.role);
+  const canViewSalary = ["owner", "manager", "accountant"].includes(currentUser.role);
 
   useEffect(() => {
-    apiGet("/api/branches/").then(setBranches);
-    apiGet("/api/hr/employees").then(setEmployees);
+    apiGet("/api/branches/").then((b: any[]) => setBranches(b));
+    // Fetch ALL branches (no brand filter) for cross-brand transfers
+    fetch("/api/branches/", { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } })
+      .then(r => r.json()).then((b: any[]) => setAllBranches(b));
+    loadEmployers();
+    apiGet("/api/hr/brands?all=1").then(setBrands);
   }, []);
+
+  useEffect(() => { loadEmployees(); }, [showLeft]);
 
   useEffect(() => {
     if (tab === "salary") loadSalary();
@@ -169,7 +195,6 @@ export default function HRPage() {
       setDeductionItems(data.filter(d => ["fine", "penalty", "other_deduction"].includes(d.category)));
     });
     if (tab === "leaves") apiGet("/api/hr/leaves").then(setLeaveRecords);
-    if (tab === "resignation") apiGet("/api/hr/resignations").then(setResignations);
   }, [tab, salaryMonth]);
 
   const loadSalary = () => {
@@ -178,8 +203,58 @@ export default function HRPage() {
     });
   };
 
+  // Approval workflow helper
+  const handleApproval = async (txnType: string, txnId: number, action: "approve" | "reject") => {
+    if (action === "reject" && !confirm(t("confirm_reject"))) return;
+    const res = await apiFetch(`/api/hr/${action}/${txnType}/${txnId}`, { method: "POST" });
+    if (res.ok) {
+      // Reload the relevant tab data
+      if (tab === "salary") loadSalary();
+      if (tab === "loans") apiGet("/api/hr/loans").then(setLoans);
+      if (tab === "benefits") apiGet("/api/hr/benefits-deductions").then((data: BenefitDeduction[]) => {
+        setBenefits(data.filter(d => ["incentive", "bonus", "leave_salary", "ticket", "other_benefit"].includes(d.category)));
+      });
+      if (tab === "deductions") apiGet("/api/hr/benefits-deductions").then((data: BenefitDeduction[]) => {
+        setDeductionItems(data.filter(d => ["fine", "penalty", "other_deduction"].includes(d.category)));
+      });
+      if (tab === "leaves") apiGet("/api/hr/leaves").then(setLeaveRecords);
+    } else {
+      const d = await res.json();
+      alert(d.detail || "Error");
+    }
+  };
+
+  // Approval badge component
+  const ApprovalBadge = ({ status, type, id }: { status?: string; type: string; id: number }) => {
+    const s = status || "approved";
+    const badge = s === "approved" ? "bg-green-100 text-green-700"
+      : s === "rejected" ? "bg-red-100 text-red-700"
+      : "bg-amber-100 text-amber-700";
+    return (
+      <div className="flex items-center gap-2">
+        <span className={`px-2 py-0.5 rounded text-xs font-medium ${badge}`}>
+          {s === "pending_approval" ? t("pending_approval") : t(s)}
+        </span>
+        {isManager && s === "pending_approval" && (
+          <div className="flex gap-1">
+            <button onClick={() => handleApproval(type, id, "approve")}
+              className="px-2 py-0.5 bg-green-500 text-white rounded text-xs hover:bg-green-600">{t("approve")}</button>
+            <button onClick={() => handleApproval(type, id, "reject")}
+              className="px-2 py-0.5 bg-red-500 text-white rounded text-xs hover:bg-red-600">{t("reject")}</button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Filter branches by brand for transfer form
+  const toBranches = transferToBrandId
+    ? allBranches.filter((b: any) => b.brand_id === transferToBrandId)
+    : allBranches;
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     try {
       if (editingEmp) {
@@ -191,7 +266,8 @@ export default function HRPage() {
       }
       setShowForm(false);
       setEditingEmp(null);
-      apiGet("/api/hr/employees").then(setEmployees);
+      loadEmployees();
+      loadEmployers();
     } catch (err: unknown) { alert((err as Error).message); }
   };
 
@@ -205,13 +281,24 @@ export default function HRPage() {
     try {
       const res = await apiFetch(`/api/hr/employees/${emp.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Error");
-      apiGet("/api/hr/employees").then(setEmployees);
+      loadEmployees();
     } catch (err: unknown) { alert((err as Error).message); }
   };
 
-  const branchName = (id: number) => { const b = branches.find(x => x.id === id); return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : ""; };
+  const branchName = (id: number) => { const b = allBranches.find(x => x.id === id) || branches.find(x => x.id === id); return b ? (i18n.language === "ar" ? (b.name_ar || b.name) : b.name) : ""; };
   const empName = (id: number) => { const e = employees.find(x => x.id === id); return e ? (e.name_ar || e.name) : "-"; };
   const empStaffNo = (id: number) => employees.find(e => e.id === id)?.staff_no || "";
+
+  const inBranchFilter = (emp: { branch_id: number }) =>
+    !branchFilter || emp.branch_id === Number(branchFilter);
+  const inEmpBranchFilter = (rec: { employee_id: number }) =>
+    !branchFilter || employees.find(e => e.id === rec.employee_id)?.branch_id === Number(branchFilter);
+
+  const exportData = (fmt: string) => {
+    const params = branchFilter ? `?branch_id=${branchFilter}` : "";
+    const ext = fmt === "excel" ? "xlsx" : fmt;
+    apiDownload(`/api/export/hr/${fmt}${params}`, `employees.${ext}`);
+  };
 
   const showSalaryMsg = (text: string, type: "success" | "error") => {
     setSalaryMsg(text);
@@ -220,6 +307,7 @@ export default function HRPage() {
   };
 
   const handleGeneratePayroll = async () => {
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new URLSearchParams();
     fd.append("month", salaryMonth);
     try {
@@ -284,6 +372,7 @@ export default function HRPage() {
 
   const handleSaveSalary = async () => {
     if (!editingRecord) return;
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new URLSearchParams();
     fd.append("basic_salary", editBasicSalary);
     fd.append("total_days", editTotalDays);
@@ -407,9 +496,12 @@ export default function HRPage() {
         <div class="fields">
           <div class="field"><span class="field-label">المسمى الوظيفي / Position:</span><span class="field-value">${emp.position || "—"}</span></div>
           <div class="field"><span class="field-label">الفرع / Branch:</span><span class="field-value">${branch}</span></div>
-          <div class="field"><span class="field-label">جهة العمل / Employer:</span><span class="field-value">${emp.employer === "mudawwarah" ? "واحد مدوره / Mudawwarah" : "أخرى / Other"}</span></div>
+          <div class="field"><span class="field-label">جهة العمل / Employer:</span><span class="field-value">${emp.employer || "—"}</span></div>
           <div class="field"><span class="field-label">تاريخ الالتحاق / Join Date:</span><span class="field-value">${emp.join_date || "—"}</span></div>
-          <div class="field"><span class="field-label">تاريخ الانتهاء / Termination Date:</span><span class="field-value">${emp.termination_date || "—"}</span></div>
+          <div class="field"><span class="field-label">تاريخ الاستقالة / Resignation Date:</span><span class="field-value">${emp.termination_date || "—"}</span></div>
+          <div class="field"><span class="field-label">آخر يوم عمل / Last Working Date:</span><span class="field-value">${emp.last_working_date || "—"}</span></div>
+          <div class="field"><span class="field-label">انتهاء الإقامة / Residency Expiry:</span><span class="field-value">${emp.residency_expiry || "—"}</span></div>
+          <div class="field"><span class="field-label">انتهاء البطاقة الصحية / Health Card Expiry:</span><span class="field-value">${emp.health_card_expiry || "—"}</span></div>
         </div>
       </div>
       <div class="section">
@@ -629,6 +721,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
   // Transfer handlers
   const handleTransferSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     await apiPost("/api/hr/transfers", fd);
     setShowTransferForm(false);
@@ -637,12 +730,13 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
   const handleTransferAction = async (id: number, action: "approve" | "reject") => {
     await apiFetch(`/api/hr/transfers/${id}/${action}`, { method: "POST" });
     apiGet("/api/hr/transfers").then(setTransfers);
-    apiGet("/api/hr/employees").then(setEmployees);
+    loadEmployees();
   };
 
   // Loan handlers
   const handleLoanSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     if (editingLoan) {
       await apiFetch(`/api/hr/loans/${editingLoan.id}`, { method: "PUT", body: fd });
@@ -651,13 +745,39 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       await apiPost("/api/hr/loans", fd);
     }
     setShowLoanForm(false);
+    refreshLoans();
+  };
+
+  const loadStatement = (empId: string) => {
+    if (!empId) { setStatement(null); return; }
+    apiGet(`/api/hr/loans/statement?employee_id=${empId}`).then(setStatement);
+  };
+
+  const refreshLoans = () => {
     apiGet("/api/hr/loans").then(setLoans);
+    if (statementEmpId) loadStatement(statementEmpId);
   };
 
   const handleDeleteLoan = async (id: number) => {
     if (!confirm(t("confirm_delete"))) return;
     await apiFetch(`/api/hr/loans/${id}`, { method: "DELETE" });
-    apiGet("/api/hr/loans").then(setLoans);
+    refreshLoans();
+  };
+
+  const handleRepaymentSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!payingLoan) return;
+    if (!window.confirm(t("confirm_transaction"))) return;
+    const fd = new FormData(e.currentTarget);
+    await apiPost(`/api/hr/loans/${payingLoan.id}/repayments`, fd);
+    setPayingLoan(null);
+    refreshLoans();
+  };
+
+  const handleDeleteRepayment = async (repId: number) => {
+    if (!confirm(t("confirm_delete"))) return;
+    await apiFetch(`/api/hr/loans/repayments/${repId}`, { method: "DELETE" });
+    refreshLoans();
   };
 
   // Benefit handlers
@@ -669,6 +789,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
 
   const handleBenefitSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     if (editingBenefit) {
       await apiFetch(`/api/hr/benefits-deductions/${editingBenefit.id}`, { method: "PUT", body: fd });
@@ -695,6 +816,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
 
   const handleDeductionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     const fd = new FormData(e.currentTarget);
     if (editingDeduction) {
       await apiFetch(`/api/hr/benefits-deductions/${editingDeduction.id}`, { method: "PUT", body: fd });
@@ -717,19 +839,19 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("hr")}</h2>
         <div className="flex gap-2">
-          <button onClick={() => apiDownload("/api/export/hr/csv", "employees.csv")}
+          <button onClick={() => exportData("csv")}
             className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
             {t("export_csv")}
           </button>
-          <button onClick={() => apiDownload("/api/export/hr/excel", "employees.xlsx")}
+          <button onClick={() => exportData("excel")}
             className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
             {t("export_excel")}
           </button>
-          <button onClick={() => apiDownload("/api/export/hr/pdf", "employees.pdf")}
+          <button onClick={() => exportData("pdf")}
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
             {t("export_pdf")}
           </button>
-          {tab === "employees" && (
+          {tab === "employees" && !isPersonnel && (
             <button onClick={() => { setShowForm(!showForm); setEditingEmp(null); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
               {showForm ? t("cancel") : t("add_new")}
@@ -738,9 +860,40 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
         </div>
       </div>
 
+      {(isManager || isPersonnel) && (
+        <div className="mb-4">
+          <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
+            className="px-3 py-2 border rounded-lg text-sm">
+            <option value="">{t("all_branches")}</option>
+            {branches.map(b => (
+              <option key={b.id} value={b.id}>
+                {i18n.language === "ar" ? (b.name_ar || b.name) : b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {isManager && tab === "employees" && (
+        <label className="flex items-center gap-2 mb-4 text-sm text-gray-700 w-fit">
+          <input type="checkbox" checked={showLeft} onChange={e => setShowLeft(e.target.checked)} />
+          {t("show_left_staff")}
+        </label>
+      )}
+
       {/* Tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
-        {(["employees", "salary", "transfers", "loans", "benefits", "deductions", "leaves", "resignation"] as Tab[]).map(tb => {
+        {(["employees", "salary", "transfers", "loans", "benefits", "deductions", "leaves"] as Tab[]).filter(tb => {
+          if (currentUser.role === "owner") return true;
+          const restrictedTabs: Tab[] = ["salary", "loans", "deductions"];
+          if (restrictedTabs.includes(tb) && !canViewSalary) return false;
+          const userTabs: string[] | null = currentUser.allowed_tabs || null;
+          if (userTabs) {
+            const hrSubKey = "hr_" + tb;
+            if (!userTabs.includes(hrSubKey)) return false;
+          }
+          return true;
+        }).map(tb => {
           const label = tb === "benefits" ? "benefits_tab" : tb === "deductions" ? "deductions_tab" : tb === "loans" ? "advance_loan" : tb === "transfers" ? "staff_transfers" : tb === "leaves" ? "leaves_absences" : tb;
           return (
             <button key={tb} onClick={() => setTab(tb)}
@@ -763,12 +916,16 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <input name="staff_no" readOnly value={editingEmp?.staff_no || ""} className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-100" />
                 </div>
                 )}
+                {isManager ? (
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("branch")}</label>
                   <select name="branch_id" required defaultValue={editingEmp?.branch_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                     {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
                   </select>
                 </div>
+                ) : (
+                  <input type="hidden" name="branch_id" value={currentUser.branch_id || editingEmp?.branch_id || ""} />
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("name")} (EN)</label>
                   <input name="name" required defaultValue={editingEmp?.name || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
@@ -795,10 +952,12 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <label className="block text-sm font-medium mb-1">{t("work_permit_salary")}</label>
                   <input type="number" step="0.001" name="work_permit_salary" defaultValue={editingEmp?.work_permit_salary || 0} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
+                {canViewSalary && (
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("actual_salary")}</label>
                   <input type="number" step="0.001" name="actual_salary" defaultValue={editingEmp?.actual_salary || 0} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("iban_no")}</label>
                   <input name="iban" defaultValue={editingEmp?.iban || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
@@ -815,10 +974,16 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t("employer_label")}</label>
-                  <select name="employer" defaultValue={editingEmp?.employer || "mudawwarah"} className="w-full px-3 py-2 border rounded-lg text-sm">
-                    <option value="mudawwarah">Mudawwarah</option>
-                    <option value="other">{t("other")}</option>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium">{t("employer_label")}</label>
+                    {canViewSalary && (
+                    <button type="button" onClick={() => setShowEmployerMgr(true)}
+                      className="text-emerald-600 hover:underline text-xs">{t("manage")}</button>
+                    )}
+                  </div>
+                  <select name="employer" defaultValue={editingEmp?.employer || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">{t("select")}</option>
+                    {employers.map(e => <option key={e.id} value={e.name}>{i18n.language === "ar" ? (e.name_ar || e.name) : e.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -828,6 +993,18 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("termination_date")}</label>
                   <input type="date" name="termination_date" defaultValue={editingEmp?.termination_date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("last_working_date")}</label>
+                  <input type="date" name="last_working_date" defaultValue={editingEmp?.last_working_date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("residency_expiry")}</label>
+                  <input type="date" name="residency_expiry" defaultValue={editingEmp?.residency_expiry || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("health_card_expiry")}</label>
+                  <input type="date" name="health_card_expiry" defaultValue={editingEmp?.health_card_expiry || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
               </div>
               <button type="submit"
@@ -848,18 +1025,20 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 <tr>
                   <th className="px-3 py-3 text-left">{t("staff_no")}</th>
                   <th className="px-3 py-3 text-left">{t("name")}</th>
-                  <th className="px-3 py-3 text-left">{t("branch")}</th>
+                  {isManager && <th className="px-3 py-3 text-left">{t("branch")}</th>}
                   <th className="px-3 py-3 text-left">{t("position")}</th>
                   <th className="px-3 py-3 text-left">{t("civil_id")}</th>
-                  <th className="px-3 py-3 text-left">{t("phone")}</th>
+                  {isManager && <th className="px-3 py-3 text-left">{t("phone")}</th>}
                   <th className="px-3 py-3 text-left">{t("employer_label")}</th>
-                  {isManager && <th className="px-3 py-3 text-center">{t("actions")}</th>}
+                  <th className="px-3 py-3 text-left">{t("residency_expiry")}</th>
+                  <th className="px-3 py-3 text-left">{t("health_card_expiry")}</th>
+                  <th className="px-3 py-3 text-center">{t("actions")}</th>
                 </tr>
               </thead>
               <tbody>
                 {employees.length === 0 ? (
-                  <tr><td colSpan={isManager ? 8 : 7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : employees.filter(emp => {
+                  <tr><td colSpan={isManager ? 10 : 8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                ) : employees.filter(inBranchFilter).filter(emp => {
                   if (!empSearch) return true;
                   const q = empSearch.toLowerCase();
                   return (emp.name_ar || "").includes(q) || (emp.name || "").toLowerCase().includes(q) || (emp.staff_no || "").includes(q) || (emp.civil_id || "").includes(q);
@@ -867,26 +1046,76 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <tr key={emp.id} className="border-b hover:bg-gray-50">
                     <td className="px-3 py-3">{emp.staff_no || "—"}</td>
                     <td className="px-3 py-3" dir="rtl">{emp.name_ar || emp.name}</td>
-                    <td className="px-3 py-3">{branchName(emp.branch_id)}</td>
+                    {isManager && <td className="px-3 py-3">{branchName(emp.branch_id)}</td>}
                     <td className="px-3 py-3">{emp.position}</td>
                     <td className="px-3 py-3">{emp.civil_id}</td>
-                    <td className="px-3 py-3">{emp.phone}</td>
-                    <td className="px-3 py-3">{emp.employer === "mudawwarah" ? "Mudawwarah" : t("other")}</td>
-                    {isManager && (
-                      <td className="px-3 py-3 text-center">
-                        <div className="flex gap-2 justify-center">
-                          <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
-                          <button onClick={() => printEmployeeForm(emp)} className="text-purple-600 hover:underline text-xs">PDF</button>
+                    {isManager && <td className="px-3 py-3">{emp.phone}</td>}
+                    <td className="px-3 py-3">{(() => {
+                      if (!emp.employer) return "—";
+                      const match = employers.find(e => e.name === emp.employer);
+                      return i18n.language === "ar" && match?.name_ar ? match.name_ar : emp.employer;
+                    })()}</td>
+                    <td className="px-3 py-3">{emp.residency_expiry || "—"}</td>
+                    <td className="px-3 py-3">{emp.health_card_expiry || "—"}</td>
+                    <td className="px-3 py-3 text-center">
+                      <div className="flex gap-2 justify-center">
+                        {!isPersonnel && <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>}
+                        <button onClick={() => printEmployeeForm(emp)} className="text-purple-600 hover:underline text-xs">PDF</button>
+                        {isManager && (
                           <button onClick={() => handleDeleteEmp(emp)} className="text-red-600 hover:underline text-xs">{t("delete")}</button>
-                        </div>
-                      </td>
-                    )}
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </>
+      )}
+
+      {/* Employer Manager Modal */}
+      {showEmployerMgr && (
+        <div className="fixed inset-0 bg-black/40 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto" onClick={() => setShowEmployerMgr(false)}>
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6 max-h-[90vh] overflow-y-auto my-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">{t("employer_label")}</h3>
+              <button onClick={() => setShowEmployerMgr(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <input value={newEmployerName} onChange={e => setNewEmployerName(e.target.value)}
+                placeholder={t("name") + " (EN)"} className="px-3 py-2 border rounded-lg text-sm" />
+              <input value={newEmployerNameAr} onChange={e => setNewEmployerNameAr(e.target.value)}
+                placeholder={t("name") + " (AR)"} dir="rtl" className="px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <button onClick={async () => {
+              if (!newEmployerName.trim()) return;
+              const fd = new FormData();
+              fd.append("name", newEmployerName.trim());
+              fd.append("name_ar", newEmployerNameAr.trim());
+              const res = await apiFetch("/api/hr/employers", { method: "POST", body: fd });
+              if (!res.ok) { const d = await res.json(); alert(d.detail || "Error"); return; }
+              setNewEmployerName(""); setNewEmployerNameAr("");
+              loadEmployers();
+            }} className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
+              {t("add")}
+            </button>
+            <div className="border rounded-lg divide-y max-h-72 overflow-y-auto">
+              {employers.length === 0 ? (
+                <div className="px-3 py-3 text-sm text-gray-400 text-center">{t("no_data")}</div>
+              ) : employers.map(e => (
+                <div key={e.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                  <span>{e.name}{e.name_ar ? <span className="text-gray-400" dir="rtl"> — {e.name_ar}</span> : null}</span>
+                  <button onClick={async () => {
+                    if (!confirm(t("confirm_delete"))) return;
+                    await apiFetch(`/api/hr/employers/${e.id}`, { method: "DELETE" });
+                    loadEmployers();
+                  }} className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Salary Management Tab */}
@@ -905,21 +1134,25 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mt-5">
                   {t("generate_payroll")}
                 </button>
-                <button onClick={() => apiDownload(`/api/export/salary/csv?month=${salaryMonth}`, `salary_${salaryMonth}.csv`)}
+                <button onClick={() => apiDownload(`/api/export/salary/csv?month=${salaryMonth}&lang=${i18n.language}`, `salary_${salaryMonth}.csv`)}
                   className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm mt-5">
                   {t("export_csv")}
                 </button>
-                <button onClick={() => apiDownload(`/api/export/salary/excel?month=${salaryMonth}`, `salary_${salaryMonth}.xlsx`)}
+                <button onClick={() => apiDownload(`/api/export/salary/excel?month=${salaryMonth}&lang=${i18n.language}`, `salary_${salaryMonth}.xlsx`)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm mt-5">
                   {t("export_excel")}
                 </button>
-                <button onClick={() => apiDownload(`/api/export/salary/pdf?month=${salaryMonth}`, `salary_${salaryMonth}.pdf`)}
+                <button onClick={() => apiDownload(`/api/export/salary/pdf?month=${salaryMonth}&lang=${i18n.language}`, `salary_${salaryMonth}.pdf`)}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm mt-5">
                   {t("export_pdf")}
                 </button>
                 <button onClick={handlePrintAllPayslips}
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm mt-5">
                   {t("print_all_payslips")}
+                </button>
+                <button onClick={() => apiDownload(`/api/export/salary/slips/pdf?month=${salaryMonth}&lang=${i18n.language}`, `payslips_${salaryMonth}.pdf`)}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm mt-5">
+                  {t("download_payslips_pdf")}
                 </button>
               </>
             )}
@@ -1211,16 +1444,17 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-3 py-3 text-right text-green-600">{t("total_allowances")}</th>
                   <th className="px-3 py-3 text-right text-red-600">{t("total_deductions")}</th>
                   <th className="px-3 py-3 text-right font-bold">{t("net_salary")}</th>
+                  <th className="px-3 py-3 text-left">{t("approval")}</th>
                   <th className="px-3 py-3 text-left">{t("status")}</th>
                   {isManager && <th className="px-3 py-3 text-left">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {salaryRecords.length === 0 ? (
-                  <tr><td colSpan={isManager ? 10 : 9} className="px-4 py-8 text-center text-gray-400">
+                  <tr><td colSpan={isManager ? 11 : 10} className="px-4 py-8 text-center text-gray-400">
                     {t("no_data")} — {t("generate_payroll")}
                   </td></tr>
-                ) : salaryRecords.filter(r => {
+                ) : salaryRecords.filter(inEmpBranchFilter).filter(r => {
                   if (!salarySearch) return true;
                   const q = salarySearch.toLowerCase();
                   const name = r.name_ar || r.name || empName(r.employee_id);
@@ -1246,6 +1480,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                         {totalDeductions > 0 ? `-${totalDeductions.toFixed(3)}` : "—"}
                       </td>
                       <td className="px-3 py-3 text-right font-mono font-bold">{r.net_salary.toFixed(3)}</td>
+                      <td className="px-3 py-3">
+                        <ApprovalBadge status={r.approval_status} type="salary" id={r.id} />
+                      </td>
                       <td className="px-3 py-3">
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                           r.status === "paid" ? "bg-green-100 text-green-700"
@@ -1284,8 +1521,8 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
 
           {/* Pay Slip Modal */}
           {showPayslip && payslipData && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+              <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 my-auto">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold">{t("pay_slip")} — {payslipData.employee?.name}</h3>
                   <div className="flex gap-2">
@@ -1366,16 +1603,14 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       {/* Staff Transfers Tab */}
       {tab === "transfers" && (
         <div>
-          {isManager && (
-            <button onClick={() => setShowTransferForm(!showTransferForm)}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
-              {showTransferForm ? t("cancel") : t("new_transfer")}
-            </button>
-          )}
+          <button onClick={() => setShowTransferForm(!showTransferForm)}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
+            {showTransferForm ? t("cancel") : (isManager ? t("new_transfer") : t("request_transfer"))}
+          </button>
 
           {showTransferForm && (
             <form onSubmit={handleTransferSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("employee")}</label>
                   <select name="employee_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
@@ -1386,18 +1621,30 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("from_branch")}</label>
                   <select name="from_branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
-                    {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">{t("to_branch")}</label>
-                  <select name="to_branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
-                    {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
+                    {allBranches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("transfer_date")}</label>
                   <input type="date" name="transfer_date" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("to_brand")}</label>
+                  <select className="w-full px-3 py-2 border rounded-lg text-sm"
+                    value={transferToBrandId || ""}
+                    onChange={e => setTransferToBrandId(e.target.value ? parseInt(e.target.value) : null)}>
+                    <option value="">{t("all_brands")}</option>
+                    {brands.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name_en) : b.name_en}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("to_branch")}</label>
+                  <select name="to_branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">{t("select_branch")}</option>
+                    {toBranches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
+                  </select>
                 </div>
               </div>
               <div>
@@ -1427,7 +1674,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
               <tbody>
                 {transfers.length === 0 ? (
                   <tr><td colSpan={isManager ? 7 : 6} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : transfers.map(tr => (
+                ) : transfers.filter(inEmpBranchFilter).map(tr => (
                   <tr key={tr.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(tr.employee_id) || "—"}</td>
                     <td className="px-4 py-3">{empName(tr.employee_id)}</td>
@@ -1499,24 +1746,15 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   </div>
                 )}
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t("monthly_deduction")}</label>
-                  <input type="number" step="0.001" name="monthly_deduction" defaultValue={editingLoan?.monthly_deduction || 0} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                </div>
-                <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
                   <input type="date" name="loan_date" required defaultValue={editingLoan?.date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">{t("salary_month")} ({t("for_deduction")})</label>
-                  <input type="month" name="deduction_month" defaultValue={editingLoan?.deduction_month || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  <p className="text-xs text-gray-400 mt-1">{t("no_month_no_deduction")}</p>
                 </div>
                 {editingLoan && (
                   <div>
                     <label className="block text-sm font-medium mb-1">{t("status")}</label>
                     <select name="status" defaultValue={editingLoan.status} className="w-full px-3 py-2 border rounded-lg text-sm">
                       <option value="active">{t("active")}</option>
-                      <option value="paid_off">{t("paid")}</option>
+                      <option value="paid_off">{t("paid_off")}</option>
                     </select>
                   </div>
                 )}
@@ -1540,34 +1778,42 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-4 py-3 text-left">{t("employee")}</th>
                   <th className="px-4 py-3 text-left">{t("loan_type_label")}</th>
                   <th className="px-4 py-3 text-right">{t("amount")}</th>
+                  <th className="px-4 py-3 text-right">{t("paid")}</th>
                   <th className="px-4 py-3 text-right">{t("balance")}</th>
-                  <th className="px-4 py-3 text-right">{t("monthly_deduction")}</th>
-                  <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("date")}</th>
                   <th className="px-4 py-3 text-left">{t("status")}</th>
+                  <th className="px-4 py-3 text-left">{t("approval")}</th>
                   {isManager && <th className="px-4 py-3">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {loans.length === 0 ? (
                   <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : loans.map(l => (
+                ) : loans.filter(inEmpBranchFilter).map(l => {
+                  const paid = Math.max(0, l.amount - l.balance);
+                  return (
                   <tr key={l.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(l.employee_id) || "—"}</td>
                     <td className="px-4 py-3">{empName(l.employee_id)}</td>
                     <td className="px-4 py-3">{t(l.loan_type === "loan" ? "loan_label" : "advance")}</td>
                     <td className="px-4 py-3 text-right font-mono">KD {l.amount.toFixed(3)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-green-700">{paid > 0 ? `KD ${paid.toFixed(3)}` : "—"}</td>
                     <td className="px-4 py-3 text-right font-mono font-bold">{l.balance > 0 ? `KD ${l.balance.toFixed(3)}` : "—"}</td>
-                    <td className="px-4 py-3 text-right font-mono">{l.monthly_deduction > 0 ? `KD ${l.monthly_deduction.toFixed(3)}` : "—"}</td>
-                    <td className="px-4 py-3">{l.deduction_month || "—"}</td>
                     <td className="px-4 py-3">{l.date}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                         l.status === "paid_off" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                      }`}>{l.status === "paid_off" ? t("paid") : t("active")}</span>
+                      }`}>{l.status === "paid_off" ? t("paid_off") : t("active")}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <ApprovalBadge status={l.approval_status} type="advance_loan" id={l.id} />
                     </td>
                     {isManager && (
-                      <td className="px-4 py-3 space-x-2">
+                      <td className="px-4 py-3 space-x-2 whitespace-nowrap">
+                        {l.balance > 0 && (
+                          <button onClick={() => setPayingLoan(l)}
+                            className="text-emerald-600 hover:underline text-xs font-medium">{t("record_payment")}</button>
+                        )}
                         <button onClick={() => { setEditingLoan(l); setShowLoanForm(true); }}
                           className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
                         <button onClick={() => handleDeleteLoan(l.id)}
@@ -1575,22 +1821,144 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       </td>
                     )}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
+
+          {/* Transaction statement — pick any staff with advances/loans */}
+          <div className="bg-white rounded-xl shadow-sm border mt-6 p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+              <label className="text-sm font-semibold">{t("loan_statement")}</label>
+              <select value={statementEmpId}
+                onChange={e => { setStatementEmpId(e.target.value); loadStatement(e.target.value); }}
+                className="px-3 py-2 border rounded-lg text-sm sm:w-80">
+                <option value="">{t("select_employee")}</option>
+                {Array.from(new Set(loans.map(l => l.employee_id))).map(eid => (
+                  <option key={eid} value={eid}>{empStaffNo(eid) ? `${empStaffNo(eid)} — ` : ""}{empName(eid)}</option>
+                ))}
+              </select>
+            </div>
+
+            {statement && (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">{t("total_taken")}</div>
+                    <div className="font-mono font-bold">KD {statement.totals.total_taken.toFixed(3)}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">{t("total_repaid")}</div>
+                    <div className="font-mono font-bold text-green-700">KD {statement.totals.total_repaid.toFixed(3)}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">{t("outstanding")}</div>
+                    <div className="font-mono font-bold text-amber-700">KD {statement.totals.outstanding.toFixed(3)}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">{t("advance_loan")}</div>
+                    <div className="font-mono font-bold">{statement.totals.loan_count}</div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-3 py-2 text-left">{t("date")}</th>
+                        <th className="px-3 py-2 text-left">{t("type")}</th>
+                        <th className="px-3 py-2 text-right">{t("amount")}</th>
+                        <th className="px-3 py-2 text-right">{t("balance")}</th>
+                        <th className="px-3 py-2 text-left">{t("notes")}</th>
+                        {isManager && <th className="px-3 py-2"></th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statement.transactions.length === 0 ? (
+                        <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">{t("no_data")}</td></tr>
+                      ) : statement.transactions.map((tx, i) => (
+                        <tr key={i} className="border-b">
+                          <td className="px-3 py-2">{tx.date}</td>
+                          <td className="px-3 py-2">
+                            {tx.kind === "repayment" ? (
+                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">{t("repayment")}</span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                                {t(tx.type === "loan" ? "loan_label" : "advance")}
+                              </span>
+                            )}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-mono ${tx.kind === "repayment" ? "text-green-700" : "text-blue-700"}`}>
+                            {tx.kind === "repayment" ? "-" : "+"}KD {tx.amount.toFixed(3)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-bold">KD {tx.running_balance.toFixed(3)}</td>
+                          <td className="px-3 py-2 text-gray-600">{tx.notes || "—"}</td>
+                          {isManager && (
+                            <td className="px-3 py-2 text-right">
+                              {tx.kind === "repayment" && (
+                                <button onClick={() => handleDeleteRepayment(tx.id)}
+                                  className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+
+          {payingLoan && (
+            <div className="fixed inset-0 bg-black/40 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+              <form onSubmit={handleRepaymentSubmit} className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto my-auto">
+                <h3 className="font-semibold">{t("record_payment")} — {empName(payingLoan.employee_id)}</h3>
+                <div className="text-xs text-gray-500">
+                  {t("balance")}: <span className="font-mono font-bold">KD {payingLoan.balance.toFixed(3)}</span>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("amount")}</label>
+                  <input type="number" step="0.001" min="0.001" max={payingLoan.balance} name="amount" required
+                    defaultValue={payingLoan.balance}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("date")}</label>
+                  <input type="date" name="repayment_date" required
+                    defaultValue={new Date().toISOString().slice(0, 10)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("payroll_month")}</label>
+                  <input type="month" name="month" defaultValue={new Date().toISOString().slice(0, 7)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <p className="text-xs text-gray-500 mt-1">{t("payroll_month_hint")}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("notes")}</label>
+                  <input name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button type="button" onClick={() => setPayingLoan(null)}
+                    className="px-4 py-2 bg-gray-200 rounded-lg text-sm">{t("cancel")}</button>
+                  <button type="submit"
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm">{t("save")}</button>
+                </div>
+              </form>
+            </div>
+          )}
         </div>
       )}
 
       {/* Benefits Tab (Incentive, Bonus, Leave Salary, Ticket) */}
       {tab === "benefits" && (
         <div>
-          {isManager && (
-            <button onClick={() => { setShowBenefitForm(!showBenefitForm); setEditingBenefit(null); }}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
-              {showBenefitForm ? t("cancel") : t("add_new")}
-            </button>
-          )}
+          <button onClick={() => { setShowBenefitForm(!showBenefitForm); setEditingBenefit(null); setBenefitFreq("one_time"); }}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
+            {showBenefitForm ? t("cancel") : (isManager ? t("add_new") : t("request_new"))}
+          </button>
 
           {showBenefitForm && (
             <form onSubmit={handleBenefitSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
@@ -1617,13 +1985,28 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <input type="number" step="0.001" name="amount" required defaultValue={editingBenefit?.amount || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium mb-1">{t("frequency")}</label>
+                  <select name="frequency" value={benefitFreq} onChange={e => setBenefitFreq(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="one_time">{t("one_time")}</option>
+                    <option value="monthly">{t("monthly_recurring")}</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
                   <input type="date" name="bd_date" required defaultValue={editingBenefit?.date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t("salary_month")}</label>
+                  <label className="block text-sm font-medium mb-1">{benefitFreq === "monthly" ? t("start_month") : t("salary_month")}</label>
                   <input type="month" name="month" defaultValue={editingBenefit?.month || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
+                {benefitFreq === "monthly" && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("end_month")} ({t("optional")})</label>
+                    <input type="month" name="end_month" defaultValue={editingBenefit?.end_month || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    <p className="text-xs text-gray-400 mt-1">{t("end_month_hint")}</p>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">{t("notes")}</label>
@@ -1644,16 +2027,17 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-4 py-3 text-left">{t("employee")}</th>
                   <th className="px-4 py-3 text-left">{t("category")}</th>
                   <th className="px-4 py-3 text-right">{t("amount")}</th>
-                  <th className="px-4 py-3 text-left">{t("date")}</th>
+                  <th className="px-4 py-3 text-left">{t("frequency")}</th>
                   <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("notes")}</th>
+                  <th className="px-4 py-3 text-left">{t("approval")}</th>
                   {isManager && <th className="px-4 py-3">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {benefits.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : benefits.map(b => (
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                ) : benefits.filter(inEmpBranchFilter).map(b => (
                   <tr key={b.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(b.employee_id) || "—"}</td>
                     <td className="px-4 py-3">{empName(b.employee_id)}</td>
@@ -1663,12 +2047,23 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right font-mono">KD {b.amount.toFixed(3)}</td>
-                    <td className="px-4 py-3">{b.date}</td>
-                    <td className="px-4 py-3">{b.month || "—"}</td>
+                    <td className="px-4 py-3">
+                      {b.frequency === "monthly" ? (
+                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                          {t("monthly_recurring")}{b.end_month ? ` → ${b.end_month}` : ""}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-500">{t("one_time")}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">{b.month || "—"}{b.frequency === "monthly" && b.month ? "+" : ""}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{b.notes || "—"}</td>
+                    <td className="px-4 py-3">
+                      <ApprovalBadge status={b.approval_status} type="benefit_deduction" id={b.id} />
+                    </td>
                     {isManager && (
                       <td className="px-4 py-3 space-x-2">
-                        <button onClick={() => { setEditingBenefit(b); setShowBenefitForm(true); }}
+                        <button onClick={() => { setEditingBenefit(b); setBenefitFreq(b.frequency || "one_time"); setShowBenefitForm(true); }}
                           className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
                         <button onClick={() => handleDeleteBenefit(b.id)}
                           className="text-red-600 hover:underline text-xs">{t("delete")}</button>
@@ -1686,18 +2081,29 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       {tab === "deductions" && (
         <div>
           {isManager && (
-            <button onClick={() => { setShowDeductionForm(!showDeductionForm); setEditingDeduction(null); }}
+            <button onClick={() => { setShowDeductionForm(!showDeductionForm); setEditingDeduction(null); setDedSelectedEmpId(null); setDedDays(0); setDedAmount(0); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
               {showDeductionForm ? t("cancel") : t("add_new")}
             </button>
           )}
 
-          {showDeductionForm && (
+          {showDeductionForm && (() => {
+            const dedEmp = employees.find(e => e.id === dedSelectedEmpId);
+            const dedSalary = dedEmp?.actual_salary || 0;
+            const dedDailyRate = dedSalary / 30;
+            return (
             <form onSubmit={handleDeductionSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("employee")}</label>
-                  <select name="employee_id" required defaultValue={editingDeduction?.employee_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="employee_id" required defaultValue={editingDeduction?.employee_id || ""}
+                    onChange={(e) => {
+                      const empId = Number(e.target.value);
+                      setDedSelectedEmpId(empId || null);
+                      setDedDays(0);
+                      setDedAmount(0);
+                    }}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select_employee")}</option>
                     {employees.map(e => <option key={e.id} value={e.id}>{e.name_ar || e.name}</option>)}
                   </select>
@@ -1710,9 +2116,30 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <option value="other_deduction">{t("other_deduction")}</option>
                   </select>
                 </div>
+                {dedSelectedEmpId && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("salary")}</label>
+                    <input type="text" readOnly value={`KD ${dedSalary.toFixed(3)}`}
+                      className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-100 font-mono" />
+                    <span className="text-xs text-gray-500">{t("daily_rate")}: KD {dedDailyRate.toFixed(3)}</span>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("days")}</label>
+                  <input type="number" min="0" max="30" step="1" value={dedDays}
+                    onChange={(e) => {
+                      const d = Number(e.target.value) || 0;
+                      setDedDays(d);
+                      setDedAmount(Number((dedDailyRate * d).toFixed(3)));
+                    }}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <span className="text-xs text-gray-500">{t("salary")} / 30 × {t("days")}</span>
+                </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("amount")}</label>
-                  <input type="number" step="0.001" name="amount" required defaultValue={editingDeduction?.amount || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="number" step="0.001" name="amount" required value={dedAmount}
+                    onChange={(e) => setDedAmount(Number(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
@@ -1732,7 +2159,8 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 {editingDeduction ? t("update") : t("save")}
               </button>
             </form>
-          )}
+            );
+          })()}
 
           <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
             <table className="w-full text-sm">
@@ -1745,13 +2173,14 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-4 py-3 text-left">{t("date")}</th>
                   <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("notes")}</th>
+                  <th className="px-4 py-3 text-left">{t("approval")}</th>
                   {isManager && <th className="px-4 py-3">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {deductionItems.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : deductionItems.map(d => (
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                ) : deductionItems.filter(inEmpBranchFilter).map(d => (
                   <tr key={d.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(d.employee_id) || "—"}</td>
                     <td className="px-4 py-3">{empName(d.employee_id)}</td>
@@ -1764,9 +2193,12 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <td className="px-4 py-3">{d.date}</td>
                     <td className="px-4 py-3">{d.month || "—"}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{d.notes || "—"}</td>
+                    <td className="px-4 py-3">
+                      <ApprovalBadge status={d.approval_status} type="benefit_deduction" id={d.id} />
+                    </td>
                     {isManager && (
                       <td className="px-4 py-3 space-x-2">
-                        <button onClick={() => { setEditingDeduction(d); setShowDeductionForm(true); }}
+                        <button onClick={() => { setEditingDeduction(d); setShowDeductionForm(true); setDedSelectedEmpId(d.employee_id); setDedAmount(d.amount); setDedDays(0); }}
                           className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
                         <button onClick={() => handleDeleteDeduction(d.id)}
                           className="text-red-600 hover:underline text-xs">{t("delete")}</button>
@@ -1783,17 +2215,16 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       {/* Leave / Absence Tab */}
       {tab === "leaves" && (
         <div>
-          {isManager && (
-            <button onClick={() => { setShowLeaveForm(!showLeaveForm); setEditingLeave(null); }}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
-              {showLeaveForm ? t("cancel") : t("add_leave")}
-            </button>
-          )}
+          <button onClick={() => { setShowLeaveForm(!showLeaveForm); setEditingLeave(null); }}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
+            {showLeaveForm ? t("cancel") : (isManager ? t("add_leave") : t("request_leave"))}
+          </button>
 
           {showLeaveForm && (
             <form className="bg-white rounded-xl shadow p-4 mb-4 grid grid-cols-2 md:grid-cols-3 gap-3"
               onSubmit={async (e) => {
                 e.preventDefault();
+                if (!window.confirm(t("confirm_transaction"))) return;
                 const fd = new FormData(e.currentTarget);
                 if (editingLeave) {
                   await apiFetch(`/api/hr/leaves/${editingLeave.id}`, { method: "PUT", body: fd });
@@ -1862,11 +2293,12 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                   <th className="px-4 py-3 text-left">{t("paid_unpaid")}</th>
                   <th className="px-4 py-3 text-left">{t("salary_month")}</th>
                   <th className="px-4 py-3 text-left">{t("notes")}</th>
+                  <th className="px-4 py-3 text-left">{t("approval")}</th>
                   {isManager && <th className="px-4 py-3">{t("actions")}</th>}
                 </tr>
               </thead>
               <tbody>
-                {leaveRecords.map(lr => {
+                {leaveRecords.filter(inEmpBranchFilter).map(lr => {
                   const empStaff = employees.find(e => e.id === lr.employee_id);
                   const leaveLabel = lr.leave_type === "annual_leave" ? t("annual_leave")
                     : lr.leave_type === "sick_leave" ? t("sick_leave") : t("absent");
@@ -1890,6 +2322,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       </td>
                       <td className="px-4 py-3">{lr.month || "—"}</td>
                       <td className="px-4 py-3 text-xs text-gray-500">{lr.notes || "—"}</td>
+                      <td className="px-4 py-3">
+                        <ApprovalBadge status={lr.approval_status} type="leave" id={lr.id} />
+                      </td>
                       {isManager && (
                         <td className="px-4 py-3 space-x-2">
                           <button onClick={() => { setEditingLeave(lr); setShowLeaveForm(true); }}
@@ -1910,426 +2345,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
         </div>
       )}
 
-      {/* Resignation Tab */}
-      {tab === "resignation" && (
-        <div>
-          {isManager && !editingResignation && (
-            <button onClick={() => { setShowResignationForm(!showResignationForm); setResEmpId(null); }}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
-              {showResignationForm ? t("cancel") : t("new_resignation")}
-            </button>
-          )}
 
-          {/* New Resignation - Select Employee */}
-          {showResignationForm && !editingResignation && (
-            <div className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
-              <h3 className="font-semibold text-lg">{t("new_resignation")}</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">{t("select_employee")}</label>
-                  <select value={resEmpId || ""} onChange={e => setResEmpId(Number(e.target.value) || null)}
-                    className="w-full px-3 py-2 border rounded-lg text-sm">
-                    <option value="">{t("select_employee")}</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.name_ar || e.name}</option>)}
-                  </select>
-                </div>
-              </div>
-              {resEmpId && (
-                <button onClick={async () => {
-                  const emp = employees.find(e => e.id === resEmpId);
-                  if (!emp) return;
-                  const fd = new FormData();
-                  fd.append("employee_id", String(emp.id));
-                  fd.append("name_en", emp.name);
-                  fd.append("name_ar", emp.name_ar || emp.name);
-                  fd.append("civil_id", emp.civil_id || "");
-                  fd.append("job_title", emp.position || "");
-                  fd.append("department_branch", branchName(emp.branch_id));
-                  fd.append("date_of_joining", emp.join_date || "");
-                  fd.append("mobile", emp.phone || "");
-                  fd.append("resignation_date", new Date().toISOString().slice(0, 10));
-                  const res = await apiPost("/api/hr/resignations", fd);
-                  setShowResignationForm(false);
-                  setEditingResignation(res);
-                  apiGet("/api/hr/resignations").then(setResignations);
-                }} className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
-                  {t("save")}
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Edit/View Resignation Form */}
-          {editingResignation && (
-            <div className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-6">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold">{t("resignation_form")}</h2>
-                <div className="flex gap-2">
-                  <button onClick={() => {
-                    const printContent = document.getElementById("resignation-print");
-                    if (!printContent) return;
-                    const w = window.open("", "_blank");
-                    if (!w) return;
-                    w.document.write(`<html><head><title>${t("resignation_form")}</title>
-                      <style>
-                        body { font-family: Arial, sans-serif; padding: 20px; direction: ltr; }
-                        .header { text-align: center; margin-bottom: 20px; }
-                        .header h1 { font-size: 18px; margin: 4px 0; }
-                        .header h2 { font-size: 14px; margin: 4px 0; color: #666; }
-                        .section { margin: 16px 0; }
-                        .section h3 { font-size: 14px; font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 8px; }
-                        .field { display: flex; border-bottom: 1px solid #eee; padding: 4px 0; font-size: 13px; }
-                        .field-label { width: 200px; font-weight: bold; }
-                        .field-value { flex: 1; }
-                        .checklist { list-style: none; padding: 0; }
-                        .checklist li { padding: 3px 0; font-size: 13px; }
-                        .approval-box { border: 1px solid #ccc; padding: 10px; margin: 8px 0; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-                        td, th { border: 1px solid #ccc; padding: 6px; font-size: 12px; text-align: left; }
-                        @media print { body { padding: 0; } }
-                      </style></head><body>`);
-                    w.document.write(printContent.innerHTML);
-                    w.document.write("</body></html>");
-                    w.document.close();
-                    w.print();
-                  }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
-                    {t("print_form")}
-                  </button>
-                  <button onClick={() => setEditingResignation(null)}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm">
-                    {t("close")}
-                  </button>
-                </div>
-              </div>
-
-              <div id="resignation-print">
-                <div className="header text-center mb-4">
-                  <p className="text-sm text-gray-500">Wahid Mudawwarah Restaurant &middot; مطعم واحد مدوّرة</p>
-                  <h1 className="text-lg font-bold">RESIGNATION FORM &middot; نموذج استقالة</h1>
-                  <p className="text-sm">Ref: HR-RES-{editingResignation.id.toString().padStart(4, "0")} &nbsp;&nbsp; {t("date")}: {editingResignation.resignation_date || "—"}</p>
-                </div>
-
-                {/* Section 1: Employee Info */}
-                <div className="section border rounded-lg p-4 mb-4">
-                  <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("employee_info")}</h3>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    {[
-                      [t("name_en"), "name_en"], [t("name_ar_label"), "name_ar"],
-                      [t("civil_id"), "civil_id"], [t("nationality"), "nationality"],
-                      [t("job_title"), "job_title"], [t("department_branch"), "department_branch"],
-                      [t("date_of_joining"), "date_of_joining"], [t("last_working_day"), "last_working_day"],
-                      [t("mobile_label"), "mobile"], [t("email_label"), "email"],
-                    ].map(([label, key]) => (
-                      <div key={key} className="flex border-b py-1">
-                        <span className="w-40 font-medium text-gray-600">{label}</span>
-                        <span>{(editingResignation as unknown as Record<string, string>)[key] || "—"}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Section 2: Reason */}
-                <div className="section border rounded-lg p-4 mb-4">
-                  <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("reason_for_resignation")}</h3>
-                  <p className="text-sm min-h-[40px]">{editingResignation.reason || "—"}</p>
-                </div>
-
-                {/* Section 3: Clearance */}
-                <div className="section border rounded-lg p-4 mb-4">
-                  <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("clearance_checklist")}</h3>
-                  <div className="grid grid-cols-2 gap-1 text-sm">
-                    {[
-                      ["company_id_returned", t("company_id_returned")],
-                      ["uniform_returned", t("uniform_returned")],
-                      ["locker_keys_handed", t("locker_keys_handed")],
-                      ["equipment_returned", t("equipment_returned")],
-                      ["loans_cleared", t("loans_advances_cleared")],
-                      ["handover_completed", t("handover_completed")],
-                      ["final_settlement_calculated", t("final_settlement_calc")],
-                      ["final_salary_paid", t("final_salary_eos_paid")],
-                    ].map(([key, label]) => (
-                      <div key={key} className="flex items-center gap-2 py-1">
-                        <span>{(editingResignation as unknown as Record<string, boolean>)[key] ? "☑" : "☐"}</span>
-                        <span>{label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Section 4: Declaration */}
-                <div className="section border rounded-lg p-4 mb-4">
-                  <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("employee_declaration")}</h3>
-                  <p className="text-xs text-gray-600 mb-2">{t("declaration_text")}</p>
-                  <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
-                    <div className="border-b pb-1">Employee Signature / توقيع الموظف: _______________</div>
-                    <div className="border-b pb-1">{t("date")}: _______________</div>
-                  </div>
-                </div>
-
-                {/* Section 5: Approvals & Finance */}
-                <div className="section border rounded-lg p-4 mb-4">
-                  <h3 className="font-semibold text-sm mb-3 border-b pb-1">{t("management_approvals")}</h3>
-                  <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                    <div className="border p-3 rounded">
-                      <p className="font-medium mb-1">{t("ops_manager")} / مدير العمليات</p>
-                      <p>{t("name")}: {editingResignation.ops_manager_name || "_______________"}</p>
-                      <p>{t("status")}: {editingResignation.ops_manager_status === "approved" ? "☑ " + t("approved") : editingResignation.ops_manager_status === "rejected" ? "☑ " + t("rejected") : "☐ " + t("pending")}</p>
-                      <p>{t("date")}: {editingResignation.ops_manager_date || "_______________"}</p>
-                    </div>
-                    <div className="border p-3 rounded">
-                      <p className="font-medium mb-1">{t("general_manager")} / المدير العام</p>
-                      <p>{t("name")}: {editingResignation.gm_name || "_______________"}</p>
-                      <p>{t("status")}: {editingResignation.gm_status === "approved" ? "☑ " + t("approved") : editingResignation.gm_status === "rejected" ? "☑ " + t("rejected") : "☐ " + t("pending")}</p>
-                      <p>{t("date")}: {editingResignation.gm_date || "_______________"}</p>
-                    </div>
-                  </div>
-                  <div className="border p-3 rounded text-sm">
-                    <p className="font-medium mb-2">{t("finance_settlement")}</p>
-                    <p>{t("name")}: {editingResignation.finance_manager_name || "_______________"}</p>
-                    <table className="w-full mt-2 border-collapse">
-                      <tbody>
-                        {[
-                          [t("last_salary_paid_amount"), editingResignation.last_salary_paid_amount],
-                          [t("end_of_service"), editingResignation.end_of_service],
-                          [t("leave_encashment"), editingResignation.leave_encashment],
-                          [t("deductions_loans"), editingResignation.deductions_amount],
-                          [t("final_settlement_amount"), editingResignation.final_settlement_amount],
-                        ].map(([label, val]) => (
-                          <tr key={label as string} className="border-b">
-                            <td className="py-1 font-medium">{label}</td>
-                            <td className="py-1 text-right">KWD {(val as number || 0).toFixed(3)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <p className="mt-2">{t("date")}: {editingResignation.finance_date || "_______________"}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Edit Form */}
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget);
-                // Checkboxes need explicit handling
-                const checkboxes = ["company_id_returned", "uniform_returned", "locker_keys_handed",
-                  "equipment_returned", "loans_cleared", "handover_completed",
-                  "final_settlement_calculated", "final_salary_paid"];
-                checkboxes.forEach(cb => {
-                  if (!fd.has(cb)) fd.set(cb, "false");
-                });
-                await apiFetch(`/api/hr/resignations/${editingResignation.id}`, { method: "PUT", body: fd });
-                const updated = await apiGet("/api/hr/resignations");
-                setResignations(updated);
-                const found = updated.find((r: ResignationRecord) => r.id === editingResignation.id);
-                if (found) setEditingResignation(found);
-              }} className="border-t pt-4 space-y-4">
-                <h3 className="font-semibold">{t("edit")}</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("name_en")}</label>
-                    <input name="name_en" defaultValue={editingResignation.name_en} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("name_ar_label")}</label>
-                    <input name="name_ar" defaultValue={editingResignation.name_ar} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("civil_id")}</label>
-                    <input name="civil_id" defaultValue={editingResignation.civil_id} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("nationality")}</label>
-                    <input name="nationality" defaultValue={editingResignation.nationality} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("job_title")}</label>
-                    <input name="job_title" defaultValue={editingResignation.job_title} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("department_branch")}</label>
-                    <input name="department_branch" defaultValue={editingResignation.department_branch} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("date_of_joining")}</label>
-                    <input type="date" name="date_of_joining" defaultValue={editingResignation.date_of_joining} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("last_working_day")}</label>
-                    <input type="date" name="last_working_day" defaultValue={editingResignation.last_working_day} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("mobile_label")}</label>
-                    <input name="mobile" defaultValue={editingResignation.mobile} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("email_label")}</label>
-                    <input name="email" defaultValue={editingResignation.email} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("resignation_date")}</label>
-                    <input type="date" name="resignation_date" defaultValue={editingResignation.resignation_date} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">{t("reason_for_resignation")}</label>
-                  <textarea name="reason" defaultValue={editingResignation.reason} className="w-full px-3 py-2 border rounded-lg text-sm" rows={3} />
-                </div>
-
-                {/* Clearance checkboxes */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">{t("clearance_checklist")}</label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    {[
-                      ["company_id_returned", t("company_id_returned")],
-                      ["uniform_returned", t("uniform_returned")],
-                      ["locker_keys_handed", t("locker_keys_handed")],
-                      ["equipment_returned", t("equipment_returned")],
-                      ["loans_cleared", t("loans_advances_cleared")],
-                      ["handover_completed", t("handover_completed")],
-                      ["final_settlement_calculated", t("final_settlement_calc")],
-                      ["final_salary_paid", t("final_salary_eos_paid")],
-                    ].map(([key, label]) => (
-                      <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="checkbox" name={key} value="true"
-                          defaultChecked={(editingResignation as unknown as Record<string, boolean>)[key]}
-                          className="rounded" />
-                        <span>{label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Management approvals */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="border rounded-lg p-3">
-                    <h4 className="font-medium text-sm mb-2">{t("ops_manager")}</h4>
-                    <input name="ops_manager_name" placeholder={t("name")} defaultValue={editingResignation.ops_manager_name} className="w-full px-3 py-1.5 border rounded text-sm mb-2" />
-                    <select name="ops_manager_status" defaultValue={editingResignation.ops_manager_status} className="w-full px-3 py-1.5 border rounded text-sm mb-2">
-                      <option value="pending">{t("pending")}</option>
-                      <option value="approved">{t("approved")}</option>
-                      <option value="rejected">{t("rejected")}</option>
-                    </select>
-                    <input type="date" name="ops_manager_date" defaultValue={editingResignation.ops_manager_date} className="w-full px-3 py-1.5 border rounded text-sm" />
-                  </div>
-                  <div className="border rounded-lg p-3">
-                    <h4 className="font-medium text-sm mb-2">{t("general_manager")}</h4>
-                    <input name="gm_name" placeholder={t("name")} defaultValue={editingResignation.gm_name} className="w-full px-3 py-1.5 border rounded text-sm mb-2" />
-                    <select name="gm_status" defaultValue={editingResignation.gm_status} className="w-full px-3 py-1.5 border rounded text-sm mb-2">
-                      <option value="pending">{t("pending")}</option>
-                      <option value="approved">{t("approved")}</option>
-                      <option value="rejected">{t("rejected")}</option>
-                    </select>
-                    <input type="date" name="gm_date" defaultValue={editingResignation.gm_date} className="w-full px-3 py-1.5 border rounded text-sm" />
-                  </div>
-                </div>
-
-                {/* Finance */}
-                <div className="border rounded-lg p-3">
-                  <h4 className="font-medium text-sm mb-2">{t("finance_settlement")}</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium mb-1">{t("name")}</label>
-                      <input name="finance_manager_name" defaultValue={editingResignation.finance_manager_name} className="w-full px-3 py-1.5 border rounded text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1">{t("last_salary_paid_amount")}</label>
-                      <input type="number" step="0.001" name="last_salary_paid_amount" defaultValue={editingResignation.last_salary_paid_amount} className="w-full px-3 py-1.5 border rounded text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1">{t("end_of_service")}</label>
-                      <input type="number" step="0.001" name="end_of_service" defaultValue={editingResignation.end_of_service} className="w-full px-3 py-1.5 border rounded text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1">{t("leave_encashment")}</label>
-                      <input type="number" step="0.001" name="leave_encashment" defaultValue={editingResignation.leave_encashment} className="w-full px-3 py-1.5 border rounded text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1">{t("deductions_loans")}</label>
-                      <input type="number" step="0.001" name="deductions_amount" defaultValue={editingResignation.deductions_amount} className="w-full px-3 py-1.5 border rounded text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1">{t("final_settlement_amount")}</label>
-                      <input type="number" step="0.001" name="final_settlement_amount" defaultValue={editingResignation.final_settlement_amount} className="w-full px-3 py-1.5 border rounded text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1">{t("date")}</label>
-                      <input type="date" name="finance_date" defaultValue={editingResignation.finance_date} className="w-full px-3 py-1.5 border rounded text-sm" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Status */}
-                <div className="flex items-center gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{t("status")}</label>
-                    <select name="status" defaultValue={editingResignation.status} className="px-3 py-2 border rounded-lg text-sm">
-                      <option value="draft">{t("draft")}</option>
-                      <option value="submitted">{t("submitted")}</option>
-                      <option value="approved">{t("approved")}</option>
-                      <option value="rejected">{t("rejected")}</option>
-                      <option value="completed">{t("completed")}</option>
-                    </select>
-                  </div>
-                  <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mt-5">
-                    {t("save")}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* Resignations List */}
-          {!editingResignation && (
-            <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="px-4 py-3 text-left">{t("ref_no")}</th>
-                    <th className="px-4 py-3 text-left">{t("employee")}</th>
-                    <th className="px-4 py-3 text-left">{t("department_branch")}</th>
-                    <th className="px-4 py-3 text-left">{t("resignation_date")}</th>
-                    <th className="px-4 py-3 text-left">{t("last_working_day")}</th>
-                    <th className="px-4 py-3 text-left">{t("status")}</th>
-                    <th className="px-4 py-3 text-left">{t("actions")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {resignations.length === 0 ? (
-                    <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                  ) : resignations.map(r => (
-                    <tr key={r.id} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-3 font-mono">HR-RES-{r.id.toString().padStart(4, "0")}</td>
-                      <td className="px-4 py-3">{r.name_ar || r.name_en || empName(r.employee_id)}</td>
-                      <td className="px-4 py-3">{r.department_branch || "—"}</td>
-                      <td className="px-4 py-3">{r.resignation_date || "—"}</td>
-                      <td className="px-4 py-3">{r.last_working_day || "—"}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          r.status === "completed" ? "bg-green-100 text-green-700" :
-                          r.status === "approved" ? "bg-blue-100 text-blue-700" :
-                          r.status === "rejected" ? "bg-red-100 text-red-700" :
-                          r.status === "submitted" ? "bg-yellow-100 text-yellow-700" :
-                          "bg-gray-100 text-gray-700"
-                        }`}>{t(r.status) || r.status}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button onClick={() => setEditingResignation(r)}
-                          className="text-emerald-600 hover:underline text-sm mr-3">{t("view")} / {t("edit")}</button>
-                        <button onClick={async () => {
-                          if (!confirm(t("confirm_delete"))) return;
-                          await apiFetch(`/api/hr/resignations/${r.id}`, { method: "DELETE" });
-                          apiGet("/api/hr/resignations").then(setResignations);
-                        }} className="text-red-600 hover:underline text-sm">{t("delete")}</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

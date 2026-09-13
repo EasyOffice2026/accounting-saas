@@ -6,6 +6,11 @@ import { useAuth } from "../contexts/AuthContext";
 import { useBrand } from "../contexts/BrandContext";
 import { Plus, Printer, Paperclip, X, Trash2 } from "lucide-react";
 import { PO_STATUS_CLS } from "./PurchaseDashboardPage";
+import SupplierMasterTabs from "../components/SupplierMasterTabs";
+
+type ProcTab = "orders" | "catalog" | "categories" | "invoices" | "ledger";
+const PROC_TABS: ProcTab[] = ["orders", "catalog", "categories", "invoices", "ledger"];
+const TAB_KEY: Record<ProcTab, string> = { orders: "po_orders", catalog: "supplier_catalog", categories: "purchase_categories", invoices: "po_invoices", ledger: "po_ledger" };
 
 interface Supplier { id: number; name: string; payment_type: string; category_id: number | null; category_name: string; }
 interface SupItem { id: number; item_name: string; item_name_ar: string; packaging: string; unit: string; unit_price: number; }
@@ -57,13 +62,14 @@ function FileBtn({ label, file, onChange }: { label: string; file: File | null; 
   );
 }
 
-export default function ProcurementPage() {
+export default function ProcurementPage({ embedded = false }: { embedded?: boolean }) {
   const { t, i18n } = useTranslation();
   const ar = i18n.language === "ar";
   const { user } = useAuth();
   const { selectedBrand, brands } = useBrand();
   const [params, setParams] = useSearchParams();
-  const [tab, setTab] = useState<"orders" | "invoices" | "ledger">((params.get("tab") as "orders" | "invoices" | "ledger") || "orders");
+  const [tab, setTab] = useState<ProcTab>((params.get("tab") as ProcTab) || "orders");
+  const [showSupplierForm, setShowSupplierForm] = useState(false);
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -89,6 +95,7 @@ export default function ProcurementPage() {
   const canApprove = APPROVERS.includes(user?.role || "");
   const canPay = canApprove;
   const isOfficer = user?.role === "purchase_officer";
+  const isMaster = tab === "catalog" || tab === "categories";
 
   const loadRefs = () => {
     apiGet("/api/procurement/suppliers").then(setSuppliers);
@@ -161,27 +168,35 @@ export default function ProcurementPage() {
     <div className="p-4 md:p-6 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">{t("procurement")}</h1>
+          {!embedded && <h1 className="text-2xl font-bold text-gray-800">{t("procurement")}</h1>}
           <p className="text-xs text-gray-500">{t("po_delivery_hint")}</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <button onClick={() => exportTab("csv")} className={`${btn} bg-green-600 text-white text-xs`}>{t("export_csv")}</button>
-          <button onClick={() => exportTab("excel")} className={`${btn} bg-blue-600 text-white text-xs`}>{t("export_excel")}</button>
-          <button onClick={() => exportTab("pdf")} className={`${btn} bg-red-600 text-white text-xs`}>{t("export_pdf")}</button>
+          {isMaster ? null : <>
+            <button onClick={() => exportTab("csv")} className={`${btn} bg-green-600 text-white text-xs`}>{t("export_csv")}</button>
+            <button onClick={() => exportTab("excel")} className={`${btn} bg-blue-600 text-white text-xs`}>{t("export_excel")}</button>
+            <button onClick={() => exportTab("pdf")} className={`${btn} bg-red-600 text-white text-xs`}>{t("export_pdf")}</button>
+          </>}
+          <button onClick={() => { setTab("catalog"); setShowSupplierForm(true); }} className={`${btn} bg-blue-600 text-white inline-flex items-center gap-1`}><Plus size={16} />{t("supplier")}</button>
           <button onClick={() => { setEditOrder(null); setShowForm(true); }} className={`${btn} bg-emerald-600 text-white inline-flex items-center gap-1`}><Plus size={16} />{t("po_new_order")}</button>
         </div>
       </div>
 
       <div className="flex gap-1 border-b">
-        {(["orders", "invoices", "ledger"] as const).map(k => (
+        {PROC_TABS.map(k => (
           <button key={k} onClick={() => setTab(k)} className={`px-4 py-2 text-sm rounded-t-lg ${tab === k ? "bg-emerald-600 text-white" : "bg-gray-200"}`}>
-            {t(k === "orders" ? "po_orders" : k === "invoices" ? "po_invoices" : "po_ledger")}
+            {t(TAB_KEY[k])}
           </button>
         ))}
       </div>
       {err && <div className="text-sm text-red-700">{err}</div>}
 
-      {tab !== "ledger" && (
+      {isMaster && (
+        <SupplierMasterTabs tab={tab as "catalog" | "categories"} canDelete={!isOfficer} canManageCategories
+          showSupplierForm={showSupplierForm} onCloseSupplierForm={() => setShowSupplierForm(false)} onChanged={loadRefs} />
+      )}
+
+      {(tab === "orders" || tab === "invoices") && (
         <div className="flex flex-wrap gap-2">
           <select className="border rounded px-2 py-1.5 text-sm" value={supFilter} onChange={e => setSupFilter(e.target.value)}>
             <option value="">{t("po_all_suppliers")}</option>

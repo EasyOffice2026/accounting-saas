@@ -382,6 +382,8 @@ export default {
   salary_details: "تفاصيل الراتب",
   allowance_details: "تفاصيل البدلات",
   deduction_details: "تفاصيل الخصومات",
+  branch_purchases: "مشتريات الفروع",
+  central_purchases: "المشتريات المركزية",
   purchase_categories: "الفئات",
   select_category: "اختر الفئة",
   add_category: "إضافة فئة",

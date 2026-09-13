@@ -382,6 +382,8 @@ export default {
   salary_details: "Salary Details",
   allowance_details: "Allowance Details",
   deduction_details: "Deduction Details",
+  branch_purchases: "Branch Purchases",
+  central_purchases: "Central Purchases",
   purchase_categories: "Categories",
   select_category: "Select Category",
   add_category: "Add Category",

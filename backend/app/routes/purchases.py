@@ -16,18 +16,28 @@ from app.routes.hr import _brand_branch_ids
 from app.utils.dates import apply_date_range
 
 router = APIRouter(prefix="/api/purchases", tags=["purchases"], dependencies=[Depends(get_business_user)])
+# Supplier / item / category master data is shared with the Purchase Office, so it is not business-guarded.
+def _master_user(user: User = Depends(get_current_user)) -> User:
+    if user.role.startswith("personnel"):
+        raise HTTPException(status_code=403, detail="Not available for this role")
+    return user
+
+
+master_router = APIRouter(prefix="/api/purchases", tags=["purchases"], dependencies=[Depends(_master_user)])
+MASTER_ADMIN_ROLES = ("owner", "manager", "accountant", "purchase_officer", "purchase_manager")
+MASTER_DELETE_ROLES = ("owner", "manager", "accountant", "purchase_manager")
 
 
 # --- Purchase Categories ---
-@router.get("/categories")
+@master_router.get("/categories")
 def list_categories(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return db.query(PurchaseCategory).filter(PurchaseCategory.is_active == True).order_by(PurchaseCategory.name).all()
 
 
-@router.post("/categories")
+@master_router.post("/categories")
 def create_category(name: str = Form(...), name_ar: str = Form(""),
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in MASTER_ADMIN_ROLES:
         raise HTTPException(403, "Not authorized")
     existing = db.query(PurchaseCategory).filter(
         PurchaseCategory.name == name.strip(), PurchaseCategory.is_active == True
@@ -41,10 +51,10 @@ def create_category(name: str = Form(...), name_ar: str = Form(""),
     return cat
 
 
-@router.put("/categories/{cat_id}")
+@master_router.put("/categories/{cat_id}")
 def update_category(cat_id: int, name: str = Form(...), name_ar: str = Form(""),
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in MASTER_ADMIN_ROLES:
         raise HTTPException(403, "Not authorized")
     cat = db.query(PurchaseCategory).filter(PurchaseCategory.id == cat_id).first()
     if not cat:
@@ -62,9 +72,9 @@ def update_category(cat_id: int, name: str = Form(...), name_ar: str = Form(""),
     return cat
 
 
-@router.delete("/categories/{cat_id}")
+@master_router.delete("/categories/{cat_id}")
 def delete_category(cat_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in MASTER_DELETE_ROLES:
         raise HTTPException(403, "Not authorized")
     cat = db.query(PurchaseCategory).filter(PurchaseCategory.id == cat_id).first()
     if not cat:
@@ -75,12 +85,12 @@ def delete_category(cat_id: int, db: Session = Depends(get_db), user: User = Dep
 
 
 # --- Suppliers ---
-@router.get("/suppliers")
+@master_router.get("/suppliers")
 def list_suppliers(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return db.query(Supplier).filter(Supplier.is_active == True).all()
 
 
-@router.post("/suppliers")
+@master_router.post("/suppliers")
 def create_supplier(name: str = Form(...), email: str = Form(""),
                     whatsapp: str = Form(""), whatsapp_group: str = Form(""),
                     payment_type: str = Form("cash"),
@@ -95,7 +105,7 @@ def create_supplier(name: str = Form(...), email: str = Form(""),
     return s
 
 
-@router.put("/suppliers/{supplier_id}")
+@master_router.put("/suppliers/{supplier_id}")
 def update_supplier(supplier_id: int, name: str = Form(...), email: str = Form(""),
                     whatsapp: str = Form(""), whatsapp_group: str = Form(""),
                     payment_type: str = Form("cash"),
@@ -115,9 +125,9 @@ def update_supplier(supplier_id: int, name: str = Form(...), email: str = Form("
     return s
 
 
-@router.delete("/suppliers/{supplier_id}")
+@master_router.delete("/suppliers/{supplier_id}")
 def delete_supplier(supplier_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in MASTER_DELETE_ROLES:
         raise HTTPException(403, "Not authorized")
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s:
@@ -129,9 +139,9 @@ def delete_supplier(supplier_id: int, db: Session = Depends(get_db), user: User 
     return {"status": "deleted"}
 
 
-@router.delete("/orders/{order_id}")
+@master_router.delete("/orders/{order_id}")
 def delete_order(order_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in MASTER_ADMIN_ROLES:
         raise HTTPException(403, "Not authorized")
     order = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
     if not order:
@@ -151,7 +161,7 @@ def delete_order(order_id: int, db: Session = Depends(get_db), user: User = Depe
     return {"status": "deleted"}
 
 
-@router.put("/orders/{order_id}")
+@master_router.put("/orders/{order_id}")
 def update_order(
     order_id: int,
     branch_id: int = Form(...), supplier_id: int = Form(...),
@@ -205,9 +215,9 @@ def update_order(
     return order
 
 
-@router.delete("/invoices/{invoice_id}")
+@master_router.delete("/invoices/{invoice_id}")
 def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in MASTER_ADMIN_ROLES:
         raise HTTPException(403, "Not authorized")
     inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not inv:
@@ -218,14 +228,14 @@ def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = 
 
 
 # --- Supplier Items (Catalog) ---
-@router.get("/suppliers/{supplier_id}/items")
+@master_router.get("/suppliers/{supplier_id}/items")
 def list_supplier_items(supplier_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     return db.query(SupplierItem).filter(
         SupplierItem.supplier_id == supplier_id, SupplierItem.is_active == True
     ).order_by(SupplierItem.item_name).all()
 
 
-@router.post("/suppliers/{supplier_id}/items")
+@master_router.post("/suppliers/{supplier_id}/items")
 def create_supplier_item(
     supplier_id: int,
     item_name: str = Form(...), item_name_ar: str = Form(""),
@@ -245,7 +255,7 @@ def create_supplier_item(
     return si
 
 
-@router.put("/suppliers/items/{item_id}")
+@master_router.put("/suppliers/items/{item_id}")
 def update_supplier_item(
     item_id: int,
     item_name: str = Form(...), item_name_ar: str = Form(""),
@@ -266,7 +276,7 @@ def update_supplier_item(
     return si
 
 
-@router.delete("/suppliers/items/{item_id}")
+@master_router.delete("/suppliers/items/{item_id}")
 def delete_supplier_item(item_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     si = db.query(SupplierItem).filter(SupplierItem.id == item_id).first()
     if not si:

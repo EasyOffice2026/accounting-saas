@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 import DateRangeFilter, { type DateRange, dateRangeParams } from "../components/DateRangeFilter";
+import ProcurementPage from "./ProcurementPage";
 
 interface PurchaseCategoryI { id: number; name: string; name_ar: string | null; is_active: boolean; }
 interface Supplier { id: number; name: string; email: string; whatsapp: string; whatsapp_group?: string; payment_type: string; category_id?: number | null; }
@@ -32,6 +33,7 @@ export default function PurchasesPage() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const [tab, setTab] = useState<Tab>("orders");
+  const [mode, setMode] = useState<"branch" | "central">("branch");
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -406,10 +408,33 @@ export default function PurchasesPage() {
     apiDownload(`/api/export/purchases/${fmt}${listParams(branchFilter)}`, `purchases.${ext}`);
   };
 
+  const modeBar = isManager && (
+    <div className="flex gap-1 mb-4 bg-emerald-50 border border-emerald-200 p-1 rounded-lg w-fit">
+      {(["branch", "central"] as const).map(m => (
+        <button key={m} onClick={() => setMode(m)}
+          className={`px-4 py-2 rounded-md text-sm font-semibold transition ${mode === m ? "bg-emerald-600 text-white shadow" : "text-emerald-800 hover:bg-emerald-100"}`}>
+          {t(m === "branch" ? "branch_purchases" : "central_purchases")}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (mode === "central") {
+    return (
+      <div>
+        <h2 className="text-2xl font-bold text-gray-800 mb-4">{t("purchases")}</h2>
+        {modeBar}
+        <ProcurementPage embedded />
+      </div>
+    );
+  }
+
   return (
     <div>
+      <h2 className="text-2xl font-bold text-gray-800 mb-4">{t("purchases")}</h2>
+      {modeBar}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
-        <h2 className="text-2xl font-bold text-gray-800">{t("purchases")}</h2>
+        <h3 className="text-lg font-semibold text-gray-700">{t("branch_purchases")}</h3>
         <div className="flex gap-2">
           <button onClick={() => exportData("csv")}
             className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">

@@ -54,7 +54,8 @@ PURCHASE_ROLES = ("purchase_officer", "purchase_manager")
 MODULE_RESTRICTED_ROLES = ("personnel", "personnel_manager") + PURCHASE_ROLES
 
 # API prefixes the Purchase Office roles may call; everything else under /api is refused server-side.
-PURCHASE_ALLOWED_PREFIXES = ("/api/auth/", "/api/procurement/", "/api/cash/", "/api/branches/", "/api/hr/brands", "/api/export/cash/")
+PURCHASE_ALLOWED_PREFIXES = ("/api/auth/", "/api/procurement/", "/api/cash/", "/api/branches/", "/api/hr/brands", "/api/export/cash/",
+                             "/api/purchases/suppliers", "/api/purchases/categories")
 
 
 def get_business_user(user: User = Depends(get_current_user)) -> User:
@@ -70,7 +71,7 @@ class PurchaseScopeMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         allowed = path.startswith(PURCHASE_ALLOWED_PREFIXES) and (
-            request.method == "GET" or path.startswith(("/api/auth/", "/api/procurement/", "/api/cash/")))
+            request.method == "GET" or path.startswith(("/api/auth/", "/api/procurement/", "/api/cash/", "/api/purchases/suppliers", "/api/purchases/categories")))
         if path.startswith("/api/") and not allowed:
             auth = request.headers.get("authorization", "")
             if auth.lower().startswith("bearer "):

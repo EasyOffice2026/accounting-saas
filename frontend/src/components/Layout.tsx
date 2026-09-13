@@ -16,7 +16,7 @@ const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles
   { path: "/", icon: LayoutDashboard, key: "dashboard" },
   { path: "/sales", icon: ShoppingCart, key: "sales" },
   { path: "/purchases", icon: Package, key: "purchases" },
-  { path: "/procurement", icon: ClipboardList, key: "procurement", roles: ["owner", "manager", "accountant", "purchase_officer", "purchase_manager"] },
+  { path: "/procurement", icon: ClipboardList, key: "procurement", roles: ["purchase_officer", "purchase_manager"] },
   { path: "/expenses", icon: Receipt, key: "expenses" },
   { path: "/hr", icon: Users, key: "hr" },
   { path: "/renewals", icon: IdCard, key: "renewals", roles: ["owner", "manager", "accountant", "personnel", "personnel_manager"] },

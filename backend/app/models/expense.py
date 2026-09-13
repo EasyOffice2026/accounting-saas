@@ -28,4 +28,5 @@ class Expense(Base):
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     contract_payment_id = Column(Integer, ForeignKey("contract_payments.id"), nullable=True)
     renewal_request_id = Column(Integer, ForeignKey("renewal_requests.id"), nullable=True)
+    salary_payment_id = Column(Integer, ForeignKey("salary_payments.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

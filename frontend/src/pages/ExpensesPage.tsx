@@ -12,6 +12,7 @@ interface Expense {
   description: string; amount: number; payment_method: string; supplier_id?: number;
   attachment_path?: string | null;
   contract_payment_id?: number | null;
+  salary_payment_id?: number | null;
 }
 interface LedgerExpense {
   id: number; date: string; description: string; amount: number;
@@ -328,13 +329,15 @@ export default function ExpensesPage() {
                       <div className="flex gap-1 justify-center flex-wrap">
                         {exp.contract_payment_id ? (
                           <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">{t("contracts_tab")}</span>
+                        ) : exp.salary_payment_id ? (
+                          <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">{t("payroll")}</span>
                         ) : (
                           <button onClick={() => { setEditingExpense(exp); setShowForm(false); }}
                             className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">{t("edit")}</button>
                         )}
                         <button onClick={() => handlePrint(exp)}
                           className="px-2 py-1 bg-orange-500 text-white rounded text-xs hover:bg-orange-600">{t("print")}</button>
-                        {isManager && !exp.contract_payment_id && (
+                        {isManager && !exp.contract_payment_id && !exp.salary_payment_id && (
                           <button onClick={() => handleDelete(exp.id)}
                             className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">{t("delete")}</button>
                         )}

@@ -138,6 +138,9 @@ def update_expense(
     if exp.renewal_request_id:
         from fastapi import HTTPException
         raise HTTPException(400, "This expense is managed from HR Documents & Renewals")
+    if exp.salary_payment_id:
+        from fastapi import HTTPException
+        raise HTTPException(400, "This expense is managed from HR Payroll")
     exp.branch_id = branch_id
     exp.category_id = category_id
     exp.supplier_id = supplier_id if supplier_id else None
@@ -167,6 +170,9 @@ def delete_expense(expense_id: int, db: Session = Depends(get_db),
     if exp.renewal_request_id:
         from fastapi import HTTPException
         raise HTTPException(400, "This expense is managed from HR Documents & Renewals")
+    if exp.salary_payment_id:
+        from fastapi import HTTPException
+        raise HTTPException(400, "This expense is managed from HR Payroll")
     db.delete(exp)
     db.commit()
     return {"ok": True}

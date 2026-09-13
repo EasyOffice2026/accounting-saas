@@ -374,6 +374,47 @@ def mark_attendance(
     return att
 
 
+SALARY_EXPENSE_CATEGORY = ("Salaries", "الرواتب")
+
+
+def _admin_branch(db: Session, brand_id: Optional[int]) -> Optional[Branch]:
+    """Administration branch of the brand (payroll expenses are booked here)."""
+    q = db.query(Branch).filter(Branch.name.like("Administration%"))
+    b = q.filter(Branch.brand_id == brand_id).order_by(Branch.id).first() if brand_id else None
+    return b or q.order_by(Branch.id).first()
+
+
+def _sync_salary_expense(db: Session, sp: SalaryPayment):
+    """Mirror a paid salary as an Expense on the brand's Administration branch,
+    keeping the payroll payment mode (cash reduces Administration petty cash;
+    bank transfer is expense-only)."""
+    exp = db.query(Expense).filter(Expense.salary_payment_id == sp.id).first()
+    if sp.status != "paid":
+        if exp:
+            db.delete(exp)
+        return
+    emp = db.query(Employee).filter(Employee.id == sp.employee_id).first()
+    emp_branch = db.query(Branch).filter(Branch.id == (emp.branch_id if emp else sp.branch_id)).first()
+    admin = _admin_branch(db, emp_branch.brand_id if emp_branch else None)
+    if not admin:
+        return
+    cat = db.query(ExpenseCategory).filter(func.lower(ExpenseCategory.name) == SALARY_EXPENSE_CATEGORY[0].lower()).first()
+    if not cat:
+        cat = ExpenseCategory(name=SALARY_EXPENSE_CATEGORY[0], name_ar=SALARY_EXPENSE_CATEGORY[1], is_active=True)
+        db.add(cat)
+        db.flush()
+    if not exp:
+        exp = Expense(salary_payment_id=sp.id)
+        db.add(exp)
+    exp.branch_id = admin.id
+    exp.category_id = cat.id
+    exp.date = sp.paid_date or date.today()
+    exp.description = f"Salary {sp.month} — {emp.name if emp else ''}".strip(" —")
+    exp.amount = round(sp.net_salary or 0, 3)
+    exp.payment_method = "cash" if (sp.payment_method or "cash") == "cash" else "bank_transfer"
+    exp.notes = f"Payroll · {emp_branch.name}" if emp_branch else "Payroll"
+
+
 def _loan_repayments_for_month(db: Session, employee_id: int, month: str) -> float:
     """Sum of recorded Advance/Loan repayments that fall in the payroll month
     (by explicit month if set, otherwise by repayment date)."""
@@ -898,6 +939,7 @@ def mark_salary_paid(
                 loan.status = "paid_off"
             remaining -= deduct
 
+    _sync_salary_expense(db, sp)
     db.commit()
     return {"message": "Marked as paid"}
 
@@ -949,6 +991,7 @@ def delete_salary_payment(
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
         raise HTTPException(404, "Salary record not found")
+    db.query(Expense).filter(Expense.salary_payment_id == sp.id).delete()
     db.delete(sp)
     db.commit()
     return {"message": "Deleted"}

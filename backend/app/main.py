@@ -326,6 +326,9 @@ def _migrate_columns():
             if "renewal_request_id" not in cols:
                 conn.execute(text("ALTER TABLE expenses ADD COLUMN renewal_request_id INTEGER REFERENCES renewal_requests(id)"))
                 conn.commit()
+            if "salary_payment_id" not in cols:
+                conn.execute(text("ALTER TABLE expenses ADD COLUMN salary_payment_id INTEGER REFERENCES salary_payments(id)"))
+                conn.commit()
 
         # Transfer order lines: add item_name_ar
         if "transfer_order_lines" in insp.get_table_names():

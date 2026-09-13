@@ -41,6 +41,7 @@ export default {
   show_left_staff: "إظهار الموظفين المستقيلين / السابقين",
   cheque: "شيك",
   contract_branch_required: "حدد الفرع لهذا العقد حتى تُسجَّل الدفعات المدفوعة كمصروفات.",
+  payroll: "الرواتب",
   payroll_month: "شهر الراتب",
   payroll_month_hint: "يُخصم من راتب هذا الشهر",
   days_remaining: "الأيام المتبقية",

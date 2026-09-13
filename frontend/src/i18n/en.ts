@@ -41,6 +41,7 @@ export default {
   show_left_staff: "Show resigned / ex-staff",
   cheque: "Cheque",
   contract_branch_required: "Set a Branch on this contract so paid payments are recorded as expenses.",
+  payroll: "Payroll",
   payroll_month: "Payroll Month",
   payroll_month_hint: "Deducted from this month's salary",
   days_remaining: "Days Remaining",

@@ -9,7 +9,8 @@ from app.models import *  # noqa: F401,F403 — register all models
 from app.utils.auth import hash_password
 from app.routes import auth, branches, sales, purchases, expenses, hr, dashboard
 from app.routes import cash, items, export, email, payment, transfers, whatsapp, users
-from app.routes import foodics, renewals
+from app.routes import foodics, renewals, procurement
+from app.utils.auth import PurchaseScopeMiddleware
 
 app = FastAPI(title="Mudawwarah Restaurant Management System")
 
@@ -20,6 +21,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(PurchaseScopeMiddleware)
 
 # Mount uploads
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -43,6 +46,7 @@ app.include_router(whatsapp.router)
 app.include_router(users.router)
 app.include_router(foodics.router)
 app.include_router(renewals.router)
+app.include_router(procurement.router)
 
 
 @app.get("/healthz")
@@ -78,6 +82,16 @@ def startup():
     _seed_data()
     _sync_contract_expenses()
     _seed_renewals()
+    _seed_procurement()
+
+
+def _seed_procurement():
+    from app.routes.procurement import seed_procurement
+    db = SessionLocal()
+    try:
+        seed_procurement(db)
+    finally:
+        db.close()
 
 
 def _seed_renewals():

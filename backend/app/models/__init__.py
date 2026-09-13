@@ -17,6 +17,7 @@ from app.models.foodics import FoodicsSettings, FoodicsBranchMapping, FoodicsPay
 from app.models.renewal import (
     RenewalType, CompanyLicense, EmployeeDocument, RenewalRequest, RenewalRequestLine, RenewalRequestLog,
 )
+from app.models.procurement import ProcOrder, ProcOrderItem, ProcInvoice, ProcPayment, ProcOrderLog
 
 __all__ = [
     "Branch", "User",
@@ -33,4 +34,5 @@ __all__ = [
     "WhatsAppSettings",
     "FoodicsSettings", "FoodicsBranchMapping", "FoodicsPaymentMapping",
     "RenewalType", "CompanyLicense", "EmployeeDocument", "RenewalRequest", "RenewalRequestLine", "RenewalRequestLog",
+    "ProcOrder", "ProcOrderItem", "ProcInvoice", "ProcPayment", "ProcOrderLog",
 ]

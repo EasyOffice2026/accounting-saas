@@ -11,7 +11,8 @@ from app.utils.auth import get_current_user
 from app.models.user import User
 from app.routes.hr import _brand_branch_ids
 
-PERSONNEL_ROLES = ("personnel", "personnel_manager")
+PERSONNEL_ROLES = ("personnel", "personnel_manager", "purchase_officer", "purchase_manager")  # office-box-only roles
+VIEW_ONLY_ROLES = ("personnel", "purchase_officer")
 
 router = APIRouter(prefix="/api/cash", tags=["cash"])
 
@@ -19,7 +20,9 @@ router = APIRouter(prefix="/api/cash", tags=["cash"])
 def _personnel_branch_ids(db: Session, user: User) -> list:
     from app.models.branch import Branch
     from app.routes.renewals import PERSONNEL_BRANCH_PREFIX
-    q = db.query(Branch.id).filter(Branch.name.like(f"{PERSONNEL_BRANCH_PREFIX}%"))
+    from app.routes.procurement import PURCHASE_BRANCH_PREFIX
+    prefix = PURCHASE_BRANCH_PREFIX if user.role.startswith("purchase") else PERSONNEL_BRANCH_PREFIX
+    q = db.query(Branch.id).filter(Branch.name.like(f"{prefix}%"))
     allowed = user.get_allowed_brands()
     if allowed is not None:
         q = q.filter(Branch.brand_id.in_(allowed))
@@ -27,9 +30,9 @@ def _personnel_branch_ids(db: Session, user: User) -> list:
 
 
 def _guard_personnel(db: Session, user: User, branch_id: int):
-    """The Personnel Officer can only operate the Personnel Office cash boxes."""
+    """Personnel / Purchase Office roles can only operate their own office cash boxes."""
     if user.role in PERSONNEL_ROLES and branch_id not in _personnel_branch_ids(db, user):
-        raise HTTPException(403, "Personnel Officer can only access the Personnel Office petty cash")
+        raise HTTPException(403, "This role can only access its own office petty cash")
 
 
 @router.get("/transactions")
@@ -90,8 +93,8 @@ def create_transaction(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role == "personnel":
-        raise HTTPException(403, "Personnel Officer has view-only access to petty cash")
+    if user.role in VIEW_ONLY_ROLES:
+        raise HTTPException(403, "This role has view-only access to petty cash")
     _guard_personnel(db, user, branch_id)
     # An "opening_balance" category anchors the running balance, so store it
     # with the special opening_balance txn_type regardless of the chosen type.
@@ -243,8 +246,8 @@ def save_balance(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role == "personnel":
-        raise HTTPException(403, "Personnel Officer has view-only access to petty cash")
+    if user.role in VIEW_ONLY_ROLES:
+        raise HTTPException(403, "This role has view-only access to petty cash")
     _guard_personnel(db, user, branch_id)
     existing = db.query(CashBalance).filter(
         CashBalance.branch_id == branch_id,

@@ -17,8 +17,10 @@ def list_branches(brand_id: Optional[int] = None, scope: Optional[str] = None,
         q = q.filter(Branch.brand_id == brand_id)
     if scope == "personnel":
         q = q.filter(Branch.name.like("Personnel Office%"))
+    elif scope == "purchase":
+        q = q.filter(Branch.name.like("Purchase Office%"))
     elif scope == "operating":
-        q = q.filter(~Branch.name.like("Personnel Office%"))
+        q = q.filter(~Branch.name.like("Personnel Office%"), ~Branch.name.like("Purchase Office%"))
     rows = q.all()
     return [{"id": b.id, "name": b.name, "name_ar": b.name_ar or "",
              "brand_id": b.brand_id, "is_central_kitchen": b.is_central_kitchen,

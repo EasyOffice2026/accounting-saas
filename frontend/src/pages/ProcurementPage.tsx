@@ -80,6 +80,14 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
   const [statusFilter, setStatusFilter] = useState("");
   const [supFilter, setSupFilter] = useState("");
   const [ledgerSup, setLedgerSup] = useState("");
+  const [expandedSup, setExpandedSup] = useState<number | null>(null);
+  const [statements, setStatements] = useState<Record<number, NonNullable<Ledger["statement"]>>>({});
+  const toggleStatement = async (sid: number) => {
+    if (expandedSup === sid) { setExpandedSup(null); return; }
+    setExpandedSup(sid);
+    const res: Ledger = await apiGet(`/api/procurement/ledger?supplier_id=${sid}`);
+    setStatements(prev => ({ ...prev, [sid]: res.statement || [] }));
+  };
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -285,45 +293,45 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
             <div className="text-sm">{t("po_outstanding")}: <b className="text-red-700">KD {kd(ledger.total_balance)}</b></div>
             <div className="text-sm">{t("po_overdue")}: <b className="text-red-700">KD {kd(ledger.total_overdue)}</b></div>
           </div>
-          <div className="bg-white rounded-lg shadow overflow-x-auto">
-            <table className="w-full text-sm min-w-[700px]">
-              <thead className="bg-gray-50 text-xs text-gray-600"><tr>
-                <th className="text-start p-2">{t("po_supplier")}</th><th className="text-end p-2">{t("po_invoices")}</th><th className="text-end p-2">{t("po_invoiced")}</th>
-                <th className="text-end p-2">{t("po_paid")}</th><th className="text-end p-2">{t("po_balance")}</th><th className="text-end p-2">{t("po_overdue")}</th><th className="text-end p-2">{t("po_open_invoices")}</th>
-              </tr></thead>
-              <tbody>
-                {ledger.suppliers.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-gray-500">{t("po_none")}</td></tr>}
-                {ledger.suppliers.map(r => (
-                  <tr key={r.supplier_id} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => setLedgerSup(String(r.supplier_id))}>
-                    <td className="p-2">{r.supplier_name}</td><td className="p-2 text-end">{r.invoices}</td><td className="p-2 text-end">{kd(r.invoiced)}</td>
-                    <td className="p-2 text-end text-green-700">{kd(r.paid)}</td><td className="p-2 text-end font-semibold text-red-700">{kd(r.balance)}</td>
-                    <td className="p-2 text-end">{kd(r.overdue)}</td><td className="p-2 text-end">{r.open_invoices}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {ledger.statement && (
-            <div className="bg-white rounded-lg shadow overflow-x-auto">
-              <div className="px-3 py-2 font-semibold text-sm border-b">{t("po_statement")}</div>
-              <table className="w-full text-sm min-w-[600px]">
-                <thead className="bg-gray-50 text-xs text-gray-600"><tr>
-                  <th className="text-start p-2">{t("date")}</th><th className="text-start p-2">{t("po_no")}</th><th className="text-start p-2">{t("po_reference")}</th>
-                  <th className="text-end p-2">{t("po_debit")}</th><th className="text-end p-2">{t("po_credit_col")}</th><th className="text-end p-2">{t("po_balance")}</th>
-                </tr></thead>
-                <tbody>
-                  {ledger.statement.map((s, i) => (
-                    <tr key={i} className="border-t">
-                      <td className="p-2 text-xs">{s.date}</td><td className="p-2 font-mono text-xs">{s.po_no}</td>
-                      <td className="p-2 text-xs">{s.kind === "invoice" ? `${t("po_invoice_no")} ${s.ref}` : `${t("po_pay")} · ${methodLabel(s.ref) !== s.ref ? methodLabel(s.ref) : s.ref}`}</td>
-                      <td className="p-2 text-end">{s.debit ? kd(s.debit) : ""}</td><td className="p-2 text-end text-green-700">{s.credit ? kd(s.credit) : ""}</td>
-                      <td className="p-2 text-end font-semibold">{kd(s.balance)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {ledger.suppliers.length === 0 && <div className="bg-white rounded-xl shadow-sm border p-6 text-center text-gray-400 text-sm">{t("po_none")}</div>}
+          {ledger.suppliers.map(r => (
+            <div key={r.supplier_id} className="bg-white rounded-xl shadow-sm border">
+              <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                onClick={() => toggleStatement(r.supplier_id)}>
+                <div>
+                  <h3 className="font-semibold text-lg">{r.supplier_name}</h3>
+                  <p className="text-sm text-gray-500">{r.invoices} {t("po_invoices")} | {r.open_invoices} {t("po_open_invoices")}{r.overdue ? ` | ${t("po_overdue")} KD ${kd(r.overdue)}` : ""}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-500">{t("total_invoiced")}: <span className="font-mono">KD {kd(r.invoiced)}</span></p>
+                  <p className="text-sm text-green-600">{t("total_paid")}: <span className="font-mono">KD {kd(r.paid)}</span></p>
+                  <p className="text-lg font-bold text-red-600">{t("balance_due")}: <span className="font-mono">KD {kd(r.balance)}</span></p>
+                </div>
+              </div>
+              {expandedSup === r.supplier_id && (
+                <div className="border-t overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50"><tr>
+                      <th className="px-4 py-2 text-left">{t("date")}</th><th className="px-4 py-2 text-left">{t("po_no")}</th><th className="px-4 py-2 text-left">{t("po_reference")}</th>
+                      <th className="px-4 py-2 text-right">DR</th><th className="px-4 py-2 text-right">CR</th><th className="px-4 py-2 text-right">{t("po_balance")}</th>
+                    </tr></thead>
+                    <tbody>
+                      {(statements[r.supplier_id] || []).length === 0 && <tr><td colSpan={6} className="px-4 py-3 text-center text-gray-400">{t("po_none")}</td></tr>}
+                      {(statements[r.supplier_id] || []).map((s, i) => (
+                        <tr key={i} className="border-b hover:bg-gray-50">
+                          <td className="px-4 py-2">{s.date}</td><td className="px-4 py-2 font-mono text-xs">{s.po_no}</td>
+                          <td className="px-4 py-2">{s.kind === "invoice" ? `${t("po_invoice_no")} ${s.ref}` : `${t("po_pay")} · ${methodLabel(s.ref) !== s.ref ? methodLabel(s.ref) : s.ref}`}</td>
+                          <td className="px-4 py-2 text-right font-mono">{s.debit ? `KD ${kd(s.debit)}` : ""}</td>
+                          <td className="px-4 py-2 text-right font-mono text-green-700">{s.credit ? `KD ${kd(s.credit)}` : ""}</td>
+                          <td className="px-4 py-2 text-right font-mono font-semibold">KD {kd(s.balance)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          )}
+          ))}
         </div>
       )}
 

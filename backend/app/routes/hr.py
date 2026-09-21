@@ -1761,7 +1761,7 @@ def _sync_payment_expense(db: Session, p: ContractPayment, c: Contract):
         db.add(exp)
     exp.branch_id = c.branch_id
     exp.category_id = cat.id
-    exp.date = p.due_date
+    exp.date = _payroll_month_end(f"{p.due_date:%Y-%m}") or p.due_date
     exp.description = f"{c.name} — {p.due_date:%b %Y}"
     exp.amount = p.amount
     exp.payment_method = p.payment_method or "bank_transfer"

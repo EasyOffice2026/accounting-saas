@@ -384,6 +384,16 @@ def _admin_branch(db: Session, brand_id: Optional[int]) -> Optional[Branch]:
     return b or q.order_by(Branch.id).first()
 
 
+def _payroll_month_end(month: Optional[str]) -> Optional[date]:
+    """Last day of a 'YYYY-MM' payroll month; salary expenses are booked in the
+    month the salary belongs to, not the day it was paid."""
+    try:
+        year, mon = int(month.split("-")[0]), int(month.split("-")[1])
+        return date(year, mon, calendar.monthrange(year, mon)[1])
+    except (AttributeError, ValueError, IndexError):
+        return None
+
+
 def _sync_salary_expense(db: Session, sp: SalaryPayment):
     """Mirror a paid salary as an Expense on the brand's Administration branch,
     keeping the payroll payment mode (cash reduces Administration petty cash;
@@ -408,7 +418,7 @@ def _sync_salary_expense(db: Session, sp: SalaryPayment):
         db.add(exp)
     exp.branch_id = admin.id
     exp.category_id = cat.id
-    exp.date = sp.paid_date or date.today()
+    exp.date = _payroll_month_end(sp.month) or sp.paid_date or date.today()
     exp.description = f"Salary {sp.month} — {emp.name if emp else ''}".strip(" —")
     exp.amount = round(sp.net_salary or 0, 3)
     exp.payment_method = "cash" if (sp.payment_method or "cash") == "cash" else "bank_transfer"

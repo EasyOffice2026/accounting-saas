@@ -3,6 +3,9 @@ import { useTranslation } from "react-i18next";
 import { apiGet, apiFetch, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 import PaymentChannelsPanel from "../components/PaymentChannelsPanel";
+import DailyCashSummary from "../components/DailyCashSummary";
+
+const DAILY_ROLES = ["owner", "manager", "accountant"];
 
 const CHANNEL_VIEW_ROLES = ["owner", "manager", "accountant", "personnel_manager", "purchase_manager"];
 
@@ -28,13 +31,13 @@ export default function CashPage() {
   const [summary, setSummary] = useState<CashSummary | null>(null);
   const [transactions, setTransactions] = useState<CashTxn[]>([]);
   const [tab, setTab] = useState<"summary" | "transactions">("summary");
-  const [mode, setMode] = useState<"cash" | "channels">("cash");
+  const [mode, setMode] = useState<"cash" | "daily" | "channels">("cash");
   const [showTxnForm, setShowTxnForm] = useState(false);
   const [txnType, setTxnType] = useState<"cash_in" | "cash_out">("cash_in");
 
   const categoriesFor = (type: string) =>
     type === "cash_in"
-      ? [{ value: "opening_balance", label: t("opening_balance") }, { value: "petty_cash", label: t("petty_cash") }]
+      ? [{ value: "petty_cash", label: t("petty_cash") }]
       : [{ value: "deposit", label: t("bank_deposit") }, { value: "withdrawal", label: t("withdrawal") }];
 
   useEffect(() => {
@@ -92,6 +95,7 @@ export default function CashPage() {
   const isStaff = user?.role === "staff";
   const readOnly = user?.role === "personnel" || user?.role === "purchase_officer" || isStaff;
   const canSeeChannels = CHANNEL_VIEW_ROLES.includes(user?.role || "");
+  const canSeeDaily = DAILY_ROLES.includes(user?.role || "");
 
   return (
     <div>
@@ -103,6 +107,10 @@ export default function CashPage() {
               className={`px-4 py-1.5 text-sm rounded-md ${mode === "cash" ? "bg-white shadow font-semibold text-emerald-700" : "text-gray-600"}`}>
               {t("cash_boxes")}
             </button>
+            {canSeeDaily && <button onClick={() => setMode("daily")}
+              className={`px-4 py-1.5 text-sm rounded-md ${mode === "daily" ? "bg-white shadow font-semibold text-emerald-700" : "text-gray-600"}`}>
+              {t("daily_cash_summary")}
+            </button>}
             <button onClick={() => setMode("channels")}
               className={`px-4 py-1.5 text-sm rounded-md ${mode === "channels" ? "bg-white shadow font-semibold text-emerald-700" : "text-gray-600"}`}>
               {t("payment_channels")}
@@ -126,6 +134,7 @@ export default function CashPage() {
       </div>
 
       {mode === "channels" && canSeeChannels && <PaymentChannelsPanel />}
+      {mode === "daily" && canSeeDaily && <DailyCashSummary />}
 
       {mode === "cash" && <>
       <div className="flex gap-3 mb-4 flex-wrap items-end">

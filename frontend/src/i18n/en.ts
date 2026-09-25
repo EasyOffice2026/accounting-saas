@@ -916,6 +916,7 @@ export default {
   po_details: "Details",
   po_close: "Close",
   cash_boxes: "Cash Boxes",
+  daily_cash_summary: "Daily Cash Summary",
   payment_channels: "Payment Channels",
   channels_intro: "Banks, cards and KNET channels. Payments booked with a channel are deducted from its balance from {{date}}; earlier records and branch cash boxes are not affected.",
   add_channel: "Add Channel",

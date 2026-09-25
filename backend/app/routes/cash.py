@@ -120,6 +120,10 @@ def cash_summary(
 ):
     _guard_personnel(db, user, branch_id)
     target_date = date_cls.fromisoformat(summary_date) if summary_date else date_cls.today()
+    return _box_summary(db, branch_id, target_date)
+
+
+def _box_summary(db: Session, branch_id: int, target_date: date_cls) -> dict:
 
     # Cash sales for this branch on this date
     cash_sales = db.query(func.coalesce(func.sum(Sale.physical_cash), 0)).filter(
@@ -298,3 +302,69 @@ def save_balance(
 
     db.commit()
     return {"status": "saved"}
+
+
+DAILY_ROLES = ("owner", "manager", "accountant")
+DAILY_KEYS = ("opening_balance", "cash_sales", "petty_cash_in", "cash_expenses",
+              "cash_purchases", "cash_withdrawn", "deposited", "closing_balance")
+
+
+def _daily_rows(db: Session, user: User, target_date: date_cls, brand_id: int = None) -> list:
+    from app.models.branch import Branch
+    from app.models.hr import Brand
+    q = db.query(Branch).filter(Branch.is_active == True)  # noqa: E712
+    allowed = user.get_allowed_brands()
+    if allowed is not None:
+        q = q.filter(Branch.brand_id.in_(allowed))
+    if brand_id:
+        q = q.filter(Branch.brand_id == brand_id)
+    brands = {b.id: b for b in db.query(Brand).all()}
+    rows = []
+    for br in q.order_by(Branch.brand_id, Branch.id).all():
+        s = _box_summary(db, br.id, target_date)
+        brand = brands.get(br.brand_id)
+        rows.append({
+            "branch_id": br.id,
+            "branch": br.name,
+            "branch_ar": br.name_ar or "",
+            "brand": brand.name_en if brand else "",
+            "brand_ar": (brand.name_ar or "") if brand else "",
+            **{k: round(float(s[k]), 3) for k in DAILY_KEYS},
+        })
+    return rows
+
+
+@router.get("/daily")
+def daily_summary(
+    summary_date: str = Query(None),
+    brand_id: int = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in DAILY_ROLES:
+        raise HTTPException(403, "Not authorized")
+    target_date = date_cls.fromisoformat(summary_date) if summary_date else date_cls.today()
+    rows = _daily_rows(db, user, target_date, brand_id)
+    totals = {k: round(sum(r[k] for r in rows), 3) for k in DAILY_KEYS}
+    return {"date": str(target_date), "rows": rows, "totals": totals}
+
+
+@router.get("/daily/export/{fmt}")
+def export_daily_summary(
+    fmt: str,
+    summary_date: str = Query(None),
+    brand_id: int = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.routes.export import _respond
+    if user.role not in DAILY_ROLES:
+        raise HTTPException(403, "Not authorized")
+    target_date = date_cls.fromisoformat(summary_date) if summary_date else date_cls.today()
+    rows = _daily_rows(db, user, target_date, brand_id)
+    header = ["Brand", "Branch", "Opening Balance", "Cash Sales", "Cash In",
+              "Expenses", "Purchases", "Cash Out", "Deposits", "Closing Balance"]
+    data = [[r["brand"], r["branch"]] + [f"{r[k]:.3f}" for k in DAILY_KEYS] for r in rows]
+    data.append(["", "TOTAL"] + [f"{sum(r[k] for r in rows):.3f}" for k in DAILY_KEYS])
+    return _respond(fmt, header, data, f"daily_cash_summary_{target_date}",
+                    f"Daily Cash Summary - {target_date}", summary_rows=1)

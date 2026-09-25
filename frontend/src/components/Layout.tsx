@@ -54,7 +54,7 @@ export default function Layout() {
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
       <aside className={`
-        fixed inset-y-0 z-30 w-64 bg-gradient-to-b from-emerald-700 to-emerald-900
+        fixed inset-y-0 z-30 w-64 flex flex-col bg-gradient-to-b from-emerald-700 to-emerald-900
         text-white transform transition-transform md:relative md:translate-x-0
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
       `}>
@@ -97,7 +97,7 @@ export default function Layout() {
           </div>
         )}
 
-        <nav className="mt-1">
+        <nav className="mt-1 flex-1 overflow-y-auto min-h-0">
           {navItems
             .filter(item => !item.roles || item.roles.includes(user?.role || ""))
             .filter(item => !["personnel", "personnel_manager"].includes(user?.role || "") || PERSONNEL_NAV.includes(item.key))
@@ -113,7 +113,7 @@ export default function Layout() {
               key={path}
               to={path}
               onClick={() => { setSidebarOpen(false); setBrandDropdown(false); }}
-              className={`flex items-center gap-3 px-6 py-3 text-sm transition-colors
+              className={`flex items-center gap-3 px-6 py-2.5 text-sm transition-colors
                 ${location.pathname === path
                   ? "bg-emerald-600 text-white"
                   : "text-emerald-100 hover:bg-emerald-600/50"}`}
@@ -123,7 +123,7 @@ export default function Layout() {
             </Link>
           ))}
         </nav>
-        <div className="absolute bottom-0 w-full p-4 border-t border-emerald-600">
+        <div className="shrink-0 w-full p-4 border-t border-emerald-600">
           <div className="text-sm text-emerald-200 mb-2">{user?.full_name}</div>
           <div className="flex gap-2">
             <button onClick={toggleLang}

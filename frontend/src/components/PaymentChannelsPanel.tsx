@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet, apiFetch, apiPost, apiPut } from "../contexts/api";
+import { apiGet, apiFetch, apiPost, apiPut, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 import { type PaymentChannel, channelLabel, useChannels, CHANNEL_START_DATE } from "./ChannelSelect";
 
@@ -277,8 +277,22 @@ export default function PaymentChannelsPanel() {
       {selected != null && statement && (
         <div className="bg-white rounded-xl shadow-sm border">
           <div className="p-4 border-b flex flex-wrap gap-3 items-end justify-between">
-            <h3 className="font-semibold text-lg">{t("channel_statement")} — {channelLabel(statement.channel, i18n.language)}</h3>
+            <h3 className="font-semibold text-lg">{t("channel_ledger")} — {channelLabel(statement.channel, i18n.language)}</h3>
             <div className="flex gap-2 items-end">
+              {(["excel", "pdf", "csv"] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => {
+                    const q = new URLSearchParams();
+                    if (dateFrom) q.set("date_from", dateFrom);
+                    if (dateTo) q.set("date_to", dateTo);
+                    apiDownload(`/api/payment-channels/${selected}/statement/export/${f}?${q}`, `channel_ledger_${selected}.${f === "excel" ? "xlsx" : f}`);
+                  }}
+                  className="px-3 py-1.5 border rounded-lg text-sm hover:bg-gray-50"
+                >
+                  {f === "excel" ? t("export_excel") : f === "pdf" ? t("export_pdf") : "CSV"}
+                </button>
+              ))}
               <div>
                 <label className="block text-xs text-gray-500 mb-1">{t("from")}</label>
                 <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="px-3 py-1.5 border rounded-lg text-sm" />
@@ -303,13 +317,21 @@ export default function PaymentChannelsPanel() {
                   <th className="px-4 py-3 text-left">{t("source")}</th>
                   <th className="px-4 py-3 text-left">{t("description")}</th>
                   <th className="px-4 py-3 text-left">{t("head")}</th>
-                  <th className="px-4 py-3 text-right">{t("channel_in")}</th>
-                  <th className="px-4 py-3 text-right">{t("channel_out")}</th>
+                  <th className="px-4 py-3 text-right">DR</th>
+                  <th className="px-4 py-3 text-right">CR</th>
                   <th className="px-4 py-3 text-right font-bold">{t("balance")}</th>
                   {canManage && <th className="px-2 py-3"></th>}
                 </tr>
               </thead>
               <tbody>
+                <tr className="border-b bg-gray-50/60 italic">
+                  <td className="px-4 py-2">{dateFrom || statement.channel.opening_date || ""}</td>
+                  <td className="px-4 py-2" colSpan={3}>{t("opening_balance")}</td>
+                  <td className="px-4 py-2 text-right">-</td>
+                  <td className="px-4 py-2 text-right">-</td>
+                  <td className="px-4 py-2 text-right font-bold">KD {statement.opening_balance.toFixed(3)}</td>
+                  {canManage && <td></td>}
+                </tr>
                 {statement.entries.length === 0 ? (
                   <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : statement.entries.map(en => (
@@ -318,13 +340,22 @@ export default function PaymentChannelsPanel() {
                     <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded text-xs ${en.credit > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{sourceLabel(en.source)}</span></td>
                     <td className="px-4 py-2">{en.description}{en.notes ? <span className="text-gray-400"> · {en.notes}</span> : null}</td>
                     <td className="px-4 py-2">{en.head}</td>
-                    <td className="px-4 py-2 text-right text-green-600">{en.credit > 0 ? `KD ${en.credit.toFixed(3)}` : "-"}</td>
                     <td className="px-4 py-2 text-right text-red-600">{en.debit > 0 ? `KD ${en.debit.toFixed(3)}` : "-"}</td>
+                    <td className="px-4 py-2 text-right text-green-600">{en.credit > 0 ? `KD ${en.credit.toFixed(3)}` : "-"}</td>
                     <td className="px-4 py-2 text-right font-bold">KD {en.balance.toFixed(3)}</td>
                     {canManage && <td className="px-2 py-2">{en.txn_id ? <button onClick={() => deleteTxn(en)} className="text-red-500 text-xs hover:underline">{t("delete")}</button> : null}</td>}
                   </tr>
                 ))}
               </tbody>
+              <tfoot className="bg-gray-100 border-t font-bold">
+                <tr>
+                  <td className="px-4 py-3" colSpan={4}>{t("total")}</td>
+                  <td className="px-4 py-3 text-right text-red-700">KD {statement.total_out.toFixed(3)}</td>
+                  <td className="px-4 py-3 text-right text-green-700">KD {statement.total_in.toFixed(3)}</td>
+                  <td className="px-4 py-3 text-right text-blue-700">KD {statement.closing_balance.toFixed(3)}</td>
+                  {canManage && <td></td>}
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>

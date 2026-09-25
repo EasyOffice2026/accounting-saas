@@ -931,6 +931,7 @@ export default {
   opening_date: "Opening Date",
   add_channel_txn: "Deposit / Withdrawal",
   channel_statement: "Statement",
+  channel_ledger: "Channel Ledger",
   channel_in: "In",
   channel_out: "Out",
   source: "Source",

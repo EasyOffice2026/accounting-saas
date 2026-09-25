@@ -225,17 +225,10 @@ def delete_transaction(channel_id: int, txn_id: int, db: Session = Depends(get_d
     return {"status": "deleted"}
 
 
-@router.get("/{channel_id}/statement")
-def statement(
-    channel_id: int,
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    if user.role not in MANAGE_ROLES + ("personnel_manager", "purchase_manager"):
-        raise HTTPException(403, "Not authorized")
-    ch = _channel_or_404(db, channel_id)
+STATEMENT_ROLES = MANAGE_ROLES + ("personnel_manager", "purchase_manager")
+
+
+def _statement(db: Session, ch: PaymentChannel, date_from: Optional[str], date_to: Optional[str]) -> dict:
     d_from = date.fromisoformat(date_from) if date_from else None
     d_to = date.fromisoformat(date_to) if date_to else None
 
@@ -291,3 +284,40 @@ def statement(
         "closing_balance": round(out[-1]["balance"], 3) if out else round(opening, 3),
         "entries": out,
     }
+
+
+@router.get("/{channel_id}/statement")
+def statement(
+    channel_id: int,
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in STATEMENT_ROLES:
+        raise HTTPException(403, "Not authorized")
+    return _statement(db, _channel_or_404(db, channel_id), date_from, date_to)
+
+
+@router.get("/{channel_id}/statement/export/{fmt}")
+def export_statement(
+    channel_id: int,
+    fmt: str,
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.routes.export import _respond
+    if user.role not in STATEMENT_ROLES:
+        raise HTTPException(403, "Not authorized")
+    ch = _channel_or_404(db, channel_id)
+    st = _statement(db, ch, date_from, date_to)
+    header = ["Date", "Source", "Description", "Branch / Head", "Reference / Notes", "DR", "CR", "Balance"]
+    data = [[date_from or (str(ch.opening_date) if ch.opening_date else ""), "Opening Balance", "", "", "", "", "", f"{st['opening_balance']:.3f}"]]
+    for e in st["entries"]:
+        data.append([e["date"], e["source"].replace("_", " ").title(), e["description"] or "", e["head"] or "", e["notes"] or "",
+                     f"{e['debit']:.3f}" if e["debit"] else "", f"{e['credit']:.3f}" if e["credit"] else "", f"{e['balance']:.3f}"])
+    data.append(["", "TOTAL", "", "", "", f"{st['total_out']:.3f}", f"{st['total_in']:.3f}", f"{st['closing_balance']:.3f}"])
+    label = f"{ch.name}" + (f" ({ch.account_no})" if ch.account_no else "")
+    return _respond(fmt, header, data, f"channel_ledger_{ch.id}", f"Payment Channel Ledger — {label}", summary_rows=1)

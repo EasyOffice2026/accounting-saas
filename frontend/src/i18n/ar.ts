@@ -930,6 +930,7 @@ export default {
   account_no: "رقم الحساب / البطاقة",
   opening_date: "تاريخ الافتتاح",
   add_channel_txn: "إيداع / سحب",
+  channel_ledger: "دفتر قناة الدفع",
   channel_statement: "كشف الحساب",
   channel_in: "وارد",
   channel_out: "صادر",

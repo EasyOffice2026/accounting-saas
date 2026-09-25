@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiFetch, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
+import PaymentChannelsPanel from "../components/PaymentChannelsPanel";
+
+const CHANNEL_VIEW_ROLES = ["owner", "manager", "accountant", "personnel_manager", "purchase_manager"];
 
 interface Branch { id: number; name: string; name_ar: string; }
 interface CashSummary {
@@ -25,6 +28,7 @@ export default function CashPage() {
   const [summary, setSummary] = useState<CashSummary | null>(null);
   const [transactions, setTransactions] = useState<CashTxn[]>([]);
   const [tab, setTab] = useState<"summary" | "transactions">("summary");
+  const [mode, setMode] = useState<"cash" | "channels">("cash");
   const [showTxnForm, setShowTxnForm] = useState(false);
   const [txnType, setTxnType] = useState<"cash_in" | "cash_out">("cash_in");
 
@@ -86,13 +90,26 @@ export default function CashPage() {
   };
 
   const isStaff = user?.role === "staff";
-  const readOnly = user?.role === "personnel" || user?.role === "purchase_officer";
+  const readOnly = user?.role === "personnel" || user?.role === "purchase_officer" || isStaff;
+  const canSeeChannels = CHANNEL_VIEW_ROLES.includes(user?.role || "");
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("cash_management")}</h2>
-        <div className="flex gap-2">
+        {canSeeChannels && (
+          <div className="flex bg-gray-100 rounded-lg p-1 gap-1">
+            <button onClick={() => setMode("cash")}
+              className={`px-4 py-1.5 text-sm rounded-md ${mode === "cash" ? "bg-white shadow font-semibold text-emerald-700" : "text-gray-600"}`}>
+              {t("cash_boxes")}
+            </button>
+            <button onClick={() => setMode("channels")}
+              className={`px-4 py-1.5 text-sm rounded-md ${mode === "channels" ? "bg-white shadow font-semibold text-emerald-700" : "text-gray-600"}`}>
+              {t("payment_channels")}
+            </button>
+          </div>
+        )}
+        {mode === "cash" && <div className="flex gap-2">
           <button onClick={() => exportData("csv")}
             className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
             {t("export_csv")}
@@ -105,9 +122,12 @@ export default function CashPage() {
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
             {t("export_pdf")}
           </button>
-        </div>
+        </div>}
       </div>
 
+      {mode === "channels" && canSeeChannels && <PaymentChannelsPanel />}
+
+      {mode === "cash" && <>
       <div className="flex gap-3 mb-4 flex-wrap items-end">
         {!isStaff && (
           <div>
@@ -142,7 +162,7 @@ export default function CashPage() {
       </div>
       {readOnly && (
         <div className="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-          {t(user?.role === "purchase_officer" ? "po_view_only_cash" : "cash_view_only")}
+          {t(user?.role === "purchase_officer" ? "po_view_only_cash" : isStaff ? "branch_cash_view_only" : "cash_view_only")}
         </div>
       )}
 
@@ -315,6 +335,7 @@ export default function CashPage() {
           </div>
         </div>
       )}
+      </>}
     </div>
   );
 }

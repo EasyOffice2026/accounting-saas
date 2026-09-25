@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiFetch, apiDownload } from "../contexts/api";
+import ChannelSelect, { useChannels, needsChannel, CHANNEL_START_DATE } from "../components/ChannelSelect";
 
 interface Branch { id: number; name: string; name_ar?: string; }
 interface Employee {
@@ -25,6 +26,7 @@ interface SalaryRecord {
   other_deduction: number; loan_deduction: number; penalty: number;
   deductions: number; advance: number; net_salary: number;
   payment_method: string; status: string; notes: string | null; paid_date: string | null;
+  channel_id?: number | null;
   approval_status?: string;
 }
 interface Transfer {
@@ -110,7 +112,11 @@ export default function HRPage() {
   const [editLoanDed, setEditLoanDed] = useState("0");
   const [editPenalty, setEditPenalty] = useState("0");
   const [editMethod, setEditMethod] = useState("cash");
+  const [editChannel, setEditChannel] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [payingSalary, setPayingSalary] = useState<SalaryRecord | null>(null);
+  const [payChannel, setPayChannel] = useState("");
+  const { channels } = useChannels();
 
   // Search state
   const [empSearch, setEmpSearch] = useState("");
@@ -351,6 +357,7 @@ export default function HRPage() {
     setEditPenalty(String(r.penalty));
     // Sync payment method from employee's current transfer method
     setEditMethod(emp ? emp.salary_transfer_method || "cash" : r.payment_method);
+    setEditChannel(r.channel_id ? String(r.channel_id) : "");
     setEditNotes(r.notes || "");
   };
 
@@ -396,6 +403,7 @@ export default function HRPage() {
     fd.append("loan_deduction", editLoanDed);
     fd.append("penalty", editPenalty);
     fd.append("payment_method", editMethod);
+    fd.append("channel_id", editMethod === "cash" ? "" : editChannel);
     fd.append("notes", editNotes);
     try {
       const res = await apiFetch(`/api/hr/salary/${editingRecord.id}`, { method: "PUT", body: fd });
@@ -408,11 +416,19 @@ export default function HRPage() {
     }
   };
 
-  const handleMarkPaid = async (id: number) => {
+  const salaryMonthEnd = (month: string) => `${month}-31`;
+  const salaryNeedsChannel = (r: SalaryRecord) =>
+    needsChannel(r.payment_method) && !r.channel_id && salaryMonthEnd(r.month) >= CHANNEL_START_DATE && channels.length > 0;
+
+  const handleMarkPaid = async (id: number, channelId = "") => {
+    const rec = salaryRecords.find(r => r.id === id);
+    if (rec && !channelId && salaryNeedsChannel(rec)) { setPayingSalary(rec); setPayChannel(""); return; }
     try {
-      const res = await apiFetch(`/api/hr/salary/${id}/pay`, { method: "POST" });
+      const body = new URLSearchParams({ channel_id: channelId });
+      const res = await apiFetch(`/api/hr/salary/${id}/pay`, { method: "POST", body });
       if (!res.ok) throw new Error("Error");
       showSalaryMsg(t("salary_marked_paid"), "success");
+      setPayingSalary(null);
       loadSalary();
     } catch (err: unknown) {
       showSalaryMsg((err as Error).message, "error");
@@ -1185,6 +1201,21 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
             </div>
           )}
 
+          {payingSalary && (
+            <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-200 mb-4 flex flex-wrap items-end gap-3">
+              <div className="text-sm font-medium">
+                {t("mark_paid")}: {empName(payingSalary.employee_id)} ({payingSalary.month}) — KD {payingSalary.net_salary.toFixed(3)} · {t(payingSalary.payment_method)}
+              </div>
+              <div className="min-w-[220px]">
+                <ChannelSelect value={payChannel} onChange={setPayChannel} method={payingSalary.payment_method}
+                  date={salaryMonthEnd(payingSalary.month)} channels={channels} />
+              </div>
+              <button onClick={() => handleMarkPaid(payingSalary.id, payChannel || "0")} disabled={!payChannel}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm disabled:opacity-50">{t("confirm")}</button>
+              <button onClick={() => setPayingSalary(null)} className="px-4 py-2 border rounded-lg text-sm">{t("cancel")}</button>
+            </div>
+          )}
+
           {/* Edit Modal */}
           {editingRecord && (
             <div className="bg-gray-50 p-5 rounded-xl border mb-4 space-y-4">
@@ -1371,12 +1402,14 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium mb-1">{t("payment_method")}</label>
-                  <select value={editMethod} onChange={e => setEditMethod(e.target.value)}
+                  <select value={editMethod} onChange={e => { setEditMethod(e.target.value); setEditChannel(""); }}
                     className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="cash">{t("cash")}</option>
                     <option value="bank_transfer">{t("bank_transfer")}</option>
                   </select>
                 </div>
+                <ChannelSelect value={editChannel} onChange={setEditChannel} method={editMethod}
+                  date={editingRecord ? salaryMonthEnd(editingRecord.month) : undefined} channels={channels} />
                 <div>
                   <label className="block text-xs font-medium mb-1">{t("notes")}</label>
                   <input value={editNotes} onChange={e => setEditNotes(e.target.value)}

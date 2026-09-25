@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiDownload, apiFetch } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 import DateRangeFilter, { type DateRange, dateRangeParams } from "../components/DateRangeFilter";
+import ChannelSelect, { useChannels, channelLabel } from "../components/ChannelSelect";
 
 interface Branch { id: number; name: string; name_ar?: string; }
 interface Category { id: number; name: string; name_ar: string; }
@@ -10,6 +11,7 @@ interface Supplier { id: number; name: string; whatsapp?: string; whatsapp_group
 interface Expense {
   id: number; branch_id: number; category_id: number; date: string;
   description: string; amount: number; payment_method: string; supplier_id?: number;
+  channel_id?: number | null;
   attachment_path?: string | null;
   contract_payment_id?: number | null;
   salary_payment_id?: number | null;
@@ -36,6 +38,10 @@ export default function ExpensesPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [payMethod, setPayMethod] = useState("cash");
+  const [channelId, setChannelId] = useState("");
+  const [expDate, setExpDate] = useState("");
+  const { channels } = useChannels();
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [expandedSupplier, setExpandedSupplier] = useState<number | null>(null);
   const [ledgerSearch, setLedgerSearch] = useState("");
@@ -83,6 +89,12 @@ export default function ExpensesPage() {
     setShowForm(false);
     loadExpenses();
   };
+
+  useEffect(() => {
+    setPayMethod(editingExpense?.payment_method || "cash");
+    setChannelId(editingExpense?.channel_id ? String(editingExpense.channel_id) : "");
+    setExpDate(editingExpense?.date || "");
+  }, [editingExpense, showForm]);
 
   const handleDelete = async (id: number) => {
     if (!confirm(t("confirm_delete"))) return;
@@ -241,7 +253,7 @@ export default function ExpensesPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("date")}</label>
-                  <input type="date" name="expense_date" required defaultValue={editingExpense?.date || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="date" name="expense_date" required value={expDate} onChange={e => setExpDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("amount")}</label>
@@ -249,11 +261,15 @@ export default function ExpensesPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("payment_type")}</label>
-                  <select name="payment_method" defaultValue={editingExpense?.payment_method || "cash"} className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="payment_method" value={payMethod} onChange={e => { setPayMethod(e.target.value); setChannelId(""); }} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="cash">{t("cash")}</option>
                     <option value="credit">{t("credit")}</option>
+                    <option value="bank_transfer">{t("bank_transfer")}</option>
+                    <option value="knet">{t("knet")}</option>
+                    <option value="cheque">{t("cheque")}</option>
                   </select>
                 </div>
+                <ChannelSelect name="channel_id" value={channelId} onChange={setChannelId} method={payMethod} date={expDate} channels={channels} required />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">{t("description")}</label>
@@ -324,6 +340,7 @@ export default function ExpensesPage() {
                       }`}>
                         {t(exp.payment_method)}
                       </span>
+                      {exp.channel_id ? <div className="text-[10px] text-gray-500 mt-0.5">{channelLabel(channels.find(c => c.id === exp.channel_id), i18n.language)}</div> : null}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex gap-1 justify-center flex-wrap">

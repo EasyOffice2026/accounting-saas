@@ -9,7 +9,7 @@ from app.models import *  # noqa: F401,F403 — register all models
 from app.utils.auth import hash_password
 from app.routes import auth, branches, sales, purchases, expenses, hr, dashboard
 from app.routes import cash, items, export, email, payment, transfers, whatsapp, users
-from app.routes import foodics, renewals, procurement
+from app.routes import foodics, renewals, procurement, channels
 from app.utils.auth import PurchaseScopeMiddleware
 
 app = FastAPI(title="Mudawwarah Restaurant Management System")
@@ -48,6 +48,7 @@ app.include_router(users.router)
 app.include_router(foodics.router)
 app.include_router(renewals.router)
 app.include_router(procurement.router)
+app.include_router(channels.router)
 
 
 @app.get("/healthz")
@@ -329,6 +330,14 @@ def _migrate_columns():
             if "salary_payment_id" not in cols:
                 conn.execute(text("ALTER TABLE expenses ADD COLUMN salary_payment_id INTEGER REFERENCES salary_payments(id)"))
                 conn.commit()
+
+        # Payment channels (banks/cards): channel_id on every payment record
+        for tbl in ["expenses", "salary_payments", "contract_payments", "renewal_requests", "proc_payments"]:
+            if tbl in insp.get_table_names():
+                cols = [c["name"] for c in insp.get_columns(tbl)]
+                if "channel_id" not in cols:
+                    conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN channel_id INTEGER REFERENCES payment_channels(id)"))
+                    conn.commit()
 
         # Transfer order lines: add item_name_ar
         if "transfer_order_lines" in insp.get_table_names():

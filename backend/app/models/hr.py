@@ -87,6 +87,7 @@ class SalaryPayment(Base):
     last_workplace = Column(String, nullable=True)
     net_salary = Column(Float, default=0)
     payment_method = Column(String, default="cash")  # cash, bank_transfer
+    channel_id = Column(Integer, ForeignKey("payment_channels.id"), nullable=True)
     status = Column(String, default="pending")  # pending, paid
     approval_status = Column(String, default="pending_approval")  # pending_approval, approved, rejected
     approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -268,6 +269,7 @@ class ContractPayment(Base):
     status = Column(String, default="pending")  # pending, paid, overdue
     paid_date = Column(Date, nullable=True)
     payment_method = Column(String, nullable=True)  # cash, bank_transfer, cheque
+    channel_id = Column(Integer, ForeignKey("payment_channels.id"), nullable=True)
     reference = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

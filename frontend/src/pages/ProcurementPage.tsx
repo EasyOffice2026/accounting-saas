@@ -7,6 +7,7 @@ import { useBrand } from "../contexts/BrandContext";
 import { Plus, Printer, Paperclip, X, Trash2 } from "lucide-react";
 import { PO_STATUS_CLS } from "./PurchaseDashboardPage";
 import SupplierMasterTabs from "../components/SupplierMasterTabs";
+import ChannelSelect from "../components/ChannelSelect";
 
 type ProcTab = "orders" | "catalog" | "categories" | "invoices" | "ledger";
 const PROC_TABS: ProcTab[] = ["orders", "catalog", "categories", "invoices", "ledger"];
@@ -654,6 +655,9 @@ function PayForm({ inv, methodLabel, onClose, onSaved }: { inv: Invoice; methodL
   const { t } = useTranslation();
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [method, setMethod] = useState(inv.payment_type === "cash" ? "purchase_petty_cash" : "bank_transfer");
+  const [channelId, setChannelId] = useState("");
+  const [payDate, setPayDate] = useState(today());
   return (
     <form className="bg-white rounded-lg shadow-xl w-full max-w-md p-5 space-y-3 text-sm" onSubmit={async e => {
       e.preventDefault();
@@ -667,12 +671,13 @@ function PayForm({ inv, methodLabel, onClose, onSaved }: { inv: Invoice; methodL
       <div className="text-xs text-gray-600">{inv.supplier_name} · {t("po_invoice_no")} {inv.invoice_number || "—"} · {t("po_balance")} <b className="text-red-700">KD {kd(inv.balance)}</b></div>
       <div className="grid grid-cols-2 gap-3">
         <label className="block"><span className="text-xs text-gray-600">{t("amount")}</span><input type="number" step="0.001" min="0.001" max={inv.balance} name="amount" className={inp} defaultValue={kd(inv.balance)} required /></label>
-        <label className="block"><span className="text-xs text-gray-600">{t("date")}</span><input type="date" name="pay_date" className={inp} defaultValue={today()} required /></label>
+        <label className="block"><span className="text-xs text-gray-600">{t("date")}</span><input type="date" name="pay_date" className={inp} value={payDate} onChange={e => setPayDate(e.target.value)} required /></label>
       </div>
       <label className="block"><span className="text-xs text-gray-600">{t("po_paid_from")}</span>
-        <select name="method" className={inp} defaultValue={inv.payment_type === "cash" ? "purchase_petty_cash" : "bank_transfer"}>
+        <select name="method" className={inp} value={method} onChange={e => { setMethod(e.target.value); setChannelId(""); }}>
           {METHODS.map(m => <option key={m} value={m}>{methodLabel(m)}</option>)}
         </select></label>
+      <ChannelSelect name="channel_id" value={channelId} onChange={setChannelId} method={method} date={payDate} className={inp} required />
       <div className="text-xs text-gray-500">{t("po_pay_hint")}</div>
       <label className="block"><span className="text-xs text-gray-600">{t("po_reference")}</span><input name="reference" className={inp} /></label>
       <textarea name="notes" className={inp} rows={2} placeholder={t("notes")} />

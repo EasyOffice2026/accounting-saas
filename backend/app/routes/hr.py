@@ -11,6 +11,7 @@ from app.models.branch import Branch
 from app.models.expense import Expense, ExpenseCategory
 from app.models.user import User
 from app.utils.auth import get_current_user
+from app.routes.channels import channel_for_payment
 
 def _personnel_read_only(request: Request, user: User = Depends(get_current_user)):
     if user.role in ("personnel", "personnel_manager") and request.method not in ("GET", "HEAD", "OPTIONS"):
@@ -422,6 +423,7 @@ def _sync_salary_expense(db: Session, sp: SalaryPayment):
     exp.description = f"Salary {sp.month} — {emp.name if emp else ''}".strip(" —")
     exp.amount = round(sp.net_salary or 0, 3)
     exp.payment_method = "cash" if (sp.payment_method or "cash") == "cash" else "bank_transfer"
+    exp.channel_id = sp.channel_id if exp.payment_method != "cash" else None
     exp.notes = f"Payroll · {emp_branch.name}" if emp_branch else "Payroll"
 
 
@@ -543,6 +545,7 @@ def list_salary_payments(
             "advance": 0 if hide_salary else r.advance,
             "net_salary": 0 if hide_salary else r.net_salary,
             "payment_method": r.payment_method,
+            "channel_id": r.channel_id,
             "status": r.status, "notes": r.notes,
             "paid_date": str(r.paid_date) if r.paid_date else None,
         }
@@ -801,6 +804,7 @@ def update_salary_payment(
     loan_deduction: float = Form(0),
     penalty: float = Form(0),
     payment_method: str = Form("cash"),
+    channel_id: str = Form(""),
     notes: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -842,6 +846,7 @@ def update_salary_payment(
     sp.loan_deduction = loan_deduction
     sp.penalty = penalty
     sp.payment_method = payment_method
+    sp.channel_id = channel_for_payment(db, channel_id, user) if payment_method != "cash" else None
     sp.notes = notes
 
     earned, total_allow, total_deduct, net = _calc_net(
@@ -911,6 +916,7 @@ def get_payslip(
         "advance": sp.advance or 0,
         "net_salary": sp.net_salary or 0,
         "payment_method": sp.payment_method,
+        "channel_id": sp.channel_id,
         "status": sp.status,
         "paid_date": str(sp.paid_date) if sp.paid_date else None,
     }
@@ -919,6 +925,7 @@ def get_payslip(
 @router.post("/salary/{payment_id}/pay")
 def mark_salary_paid(
     payment_id: int,
+    channel_id: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -929,6 +936,10 @@ def mark_salary_paid(
         raise HTTPException(404, "Salary record not found")
     sp.status = "paid"
     sp.paid_date = date.today()
+    if (sp.payment_method or "cash") != "cash":
+        sp.channel_id = channel_for_payment(db, channel_id, user) or sp.channel_id
+    else:
+        sp.channel_id = None
 
     # Deduct loan balances for any manual deduction beyond the repayments
     # already recorded for this month (those reduced the balance on entry).
@@ -1765,6 +1776,7 @@ def _sync_payment_expense(db: Session, p: ContractPayment, c: Contract):
     exp.description = f"{c.name} — {p.due_date:%b %Y}"
     exp.amount = p.amount
     exp.payment_method = p.payment_method or "bank_transfer"
+    exp.channel_id = p.channel_id if exp.payment_method != "cash" else None
     exp.notes = " | ".join(x for x in [p.reference, p.notes] if x) or None
 
 
@@ -1938,7 +1950,7 @@ def list_contract_payments(contract_id: int, db: Session = Depends(get_db), user
         "id": p.id, "contract_id": p.contract_id,
         "due_date": str(p.due_date), "amount": p.amount,
         "status": p.status, "paid_date": str(p.paid_date) if p.paid_date else None,
-        "payment_method": p.payment_method, "reference": p.reference,
+        "payment_method": p.payment_method, "channel_id": p.channel_id, "reference": p.reference,
         "notes": p.notes,
     } for p in rows]
 
@@ -1949,7 +1961,7 @@ def create_contract_payment(
     due_date: str = Form(...), amount: float = Form(...),
     status: str = Form("pending"), paid_date: str = Form(""),
     payment_method: str = Form(""), reference: str = Form(""),
-    notes: str = Form(""),
+    notes: str = Form(""), channel_id: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if user.role not in SALARY_VISIBLE_ROLES:
@@ -1965,6 +1977,7 @@ def create_contract_payment(
         amount=amount, status=status,
         paid_date=date.fromisoformat(paid_date) if paid_date else None,
         payment_method=payment_method or None,
+        channel_id=channel_for_payment(db, channel_id, user) if payment_method and payment_method != "cash" else None,
         reference=reference or None,
         notes=notes or None,
     )
@@ -2016,6 +2029,7 @@ def update_contract_payment(
     status: str = Form("pending"), paid_date: str = Form(""),
     payment_method: str = Form(""), reference: str = Form(""),
     notes: str = Form(""), amount: float = Form(0),
+    channel_id: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if user.role not in SALARY_VISIBLE_ROLES:
@@ -2030,6 +2044,7 @@ def update_contract_payment(
         p.amount = amount
     p.paid_date = date.fromisoformat(paid_date) if paid_date else None
     p.payment_method = payment_method or None
+    p.channel_id = channel_for_payment(db, channel_id, user) if payment_method and payment_method != "cash" else None
     p.reference = reference or None
     p.notes = notes or None
     c = db.query(Contract).filter(Contract.id == p.contract_id).first()

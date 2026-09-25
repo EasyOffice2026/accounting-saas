@@ -4,6 +4,7 @@ import { Plus, Printer, FileSpreadsheet, FileText, Paperclip, Pencil, Trash2, Se
 import { apiGet, apiPost, apiPut, apiDelete, apiFetch, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useBrand } from "../contexts/BrandContext";
+import ChannelSelect from "../components/ChannelSelect";
 
 type Tab = "overview" | "requests" | "approvals" | "staff" | "company" | "prices";
 
@@ -275,14 +276,14 @@ export default function RenewalsPage() {
   // manager / accountant then confirms the payment which posts petty cash + expense.
   const [payReq, setPayReq] = useState<Req | null>(null);
   const [payMode, setPayMode] = useState<"complete" | "pay">("complete");
-  const [pay, setPay] = useState<{ paid_date: string; receipt_no: string; notes: string; common_expense: boolean; payment_method: string; actuals: Record<number, string>; files: (File | null)[] }>(
-    { paid_date: "", receipt_no: "", notes: "", common_expense: false, payment_method: "personnel_petty_cash", actuals: {}, files: [null, null, null] });
+  const [pay, setPay] = useState<{ paid_date: string; receipt_no: string; notes: string; common_expense: boolean; payment_method: string; channel_id: string; actuals: Record<number, string>; files: (File | null)[] }>(
+    { paid_date: "", receipt_no: "", notes: "", common_expense: false, payment_method: "personnel_petty_cash", channel_id: "", actuals: {}, files: [null, null, null] });
   const openPay = async (r: Req, mode: "complete" | "pay") => {
     const d: Req = await apiGet(`/api/renewals/requests/${r.id}`);
     const actuals: Record<number, string> = {};
     (d.lines || []).forEach(l => { if (l.id) actuals[l.id] = String(l.actual_amount ?? l.line_total ?? 0); });
     setPayMode(mode);
-    setPay({ paid_date: d.completed_date || new Date().toISOString().slice(0, 10), receipt_no: d.receipt_no || "", notes: "", payment_method: "personnel_petty_cash",
+    setPay({ paid_date: d.completed_date || new Date().toISOString().slice(0, 10), receipt_no: d.receipt_no || "", notes: "", payment_method: "personnel_petty_cash", channel_id: "",
       common_expense: !!d.common_expense, actuals, files: [null, null, null] });
     setPayReq(d);
   };
@@ -290,7 +291,7 @@ export default function RenewalsPage() {
     if (!payReq) return;
     const fd = new FormData();
     fd.append(payMode === "pay" ? "paid_date" : "completed_date", pay.paid_date);
-    if (payMode === "pay") fd.append("payment_method", pay.payment_method);
+    if (payMode === "pay") { fd.append("payment_method", pay.payment_method); fd.append("channel_id", pay.channel_id); }
     fd.append("receipt_no", pay.receipt_no); fd.append("notes", pay.notes);
     fd.append("common_expense", pay.common_expense ? "true" : "false");
     fd.append("actuals", JSON.stringify(Object.fromEntries(Object.entries(pay.actuals).map(([k, v]) => [k, Number(v) || 0]))));
@@ -919,12 +920,13 @@ export default function RenewalsPage() {
             {payMode === "pay" && (
               <div>
                 <label className="text-xs text-gray-600">{t("rn_payment_method")}</label>
-                <select className={inp} value={pay.payment_method} onChange={e => setPay(p => ({ ...p, payment_method: e.target.value }))}>
+                <select className={inp} value={pay.payment_method} onChange={e => setPay(p => ({ ...p, payment_method: e.target.value, channel_id: "" }))}>
                   <option value="personnel_petty_cash">{t("personnel_petty_cash")}</option>
                   <option value="personnel_bank_transfer">{t("personnel_bank_transfer")}</option>
                   <option value="personnel_knet">{t("personnel_knet")}</option>
                 </select>
                 <div className="text-[11px] text-gray-500 mt-0.5">{t("rn_payment_method_hint")}</div>
+                <div className="mt-2"><ChannelSelect value={pay.channel_id} onChange={v => setPay(p => ({ ...p, channel_id: v }))} method={pay.payment_method} date={pay.paid_date} className={inp} /></div>
               </div>
             )}
             <label className="flex items-start gap-2 text-sm">

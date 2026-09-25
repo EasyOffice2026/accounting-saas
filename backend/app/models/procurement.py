@@ -82,6 +82,7 @@ class ProcPayment(Base):
     date = Column(Date, nullable=False)
     amount = Column(Float, nullable=False)
     method = Column(String, default="purchase_petty_cash")  # purchase_petty_cash, bank_transfer, knet, cheque
+    channel_id = Column(Integer, ForeignKey("payment_channels.id"), nullable=True)
     reference = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     cash_txn_id = Column(Integer, ForeignKey("cash_transactions.id"), nullable=True)

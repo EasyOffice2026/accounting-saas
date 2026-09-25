@@ -12,7 +12,7 @@ from app.models.user import User
 from app.routes.hr import _brand_branch_ids
 
 PERSONNEL_ROLES = ("personnel", "personnel_manager", "purchase_officer", "purchase_manager")  # office-box-only roles
-VIEW_ONLY_ROLES = ("personnel", "purchase_officer")
+VIEW_ONLY_ROLES = ("personnel", "purchase_officer", "staff")  # branch cash entries are made by management / accountants only
 
 router = APIRouter(prefix="/api/cash", tags=["cash"])
 

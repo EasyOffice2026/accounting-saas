@@ -18,6 +18,7 @@ from app.models.renewal import (
     RenewalType, CompanyLicense, EmployeeDocument, RenewalRequest, RenewalRequestLine, RenewalRequestLog,
 )
 from app.models.procurement import ProcOrder, ProcOrderItem, ProcInvoice, ProcPayment, ProcOrderLog
+from app.models.channel import PaymentChannel, ChannelTransaction
 
 __all__ = [
     "Branch", "User",
@@ -35,4 +36,5 @@ __all__ = [
     "FoodicsSettings", "FoodicsBranchMapping", "FoodicsPaymentMapping",
     "RenewalType", "CompanyLicense", "EmployeeDocument", "RenewalRequest", "RenewalRequestLine", "RenewalRequestLog",
     "ProcOrder", "ProcOrderItem", "ProcInvoice", "ProcPayment", "ProcOrderLog",
+    "PaymentChannel", "ChannelTransaction",
 ]

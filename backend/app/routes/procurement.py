@@ -20,6 +20,7 @@ from app.models.hr import Brand
 from app.models.cash import CashTransaction
 from app.models.user import User
 from app.utils.auth import get_current_user, hash_password
+from app.routes.channels import channel_for_payment
 
 router = APIRouter(prefix="/api/procurement", tags=["procurement"])
 
@@ -223,7 +224,7 @@ def invoice_out(db: Session, inv: ProcInvoice, names: Optional[dict] = None) -> 
         "balance": round((inv.total_amount or 0) - (inv.paid_amount or 0), 3), "status": inv.status,
         "notes": inv.notes or "", "attachment": inv.attachment_path or "",
         "days_overdue": (date.today() - inv.due_date).days if inv.due_date and inv.status != "paid" and inv.due_date < date.today() else 0,
-        "payments": [{"id": p.id, "date": str(p.date), "amount": p.amount, "method": p.method,
+        "payments": [{"id": p.id, "date": str(p.date), "amount": p.amount, "method": p.method, "channel_id": p.channel_id,
                       "reference": p.reference or "", "notes": p.notes or "", "cash_txn_id": p.cash_txn_id,
                       "created_by_name": names.get(p.created_by, "")} for p in pays],
     }
@@ -617,6 +618,7 @@ def list_invoices(brand_id: Optional[int] = None, supplier_id: Optional[int] = N
 @router.post("/invoices/{invoice_id}/pay")
 def pay_invoice(invoice_id: int, amount: float = Form(...), method: str = Form("purchase_petty_cash"),
                 pay_date: str = Form(...), reference: str = Form(""), notes: str = Form(""),
+                channel_id: str = Form(""),
                 db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Owner / Purchase Manager / Accountant. Only purchase_petty_cash touches (the Purchase Office) cash."""
     _require(user, PAYER_ROLES)
@@ -646,7 +648,8 @@ def pay_invoice(invoice_id: int, amount: float = Form(...), method: str = Form("
         db.flush()
         txn_id = txn.id
     p = ProcPayment(invoice_id=inv.id, date=pd, amount=amount, method=method, reference=reference or None,
-                    notes=notes or None, cash_txn_id=txn_id, created_by=user.id)
+                    notes=notes or None, cash_txn_id=txn_id, created_by=user.id,
+                    channel_id=channel_for_payment(db, channel_id, user) if method != "purchase_petty_cash" else None)
     db.add(p)
     inv.paid_amount = round((inv.paid_amount or 0) + amount, 3)
     if inv.paid_amount >= (inv.total_amount or 0) - 0.0005:

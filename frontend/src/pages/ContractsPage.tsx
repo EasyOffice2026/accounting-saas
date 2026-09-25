@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiFetch, apiPost, apiDownload } from "../contexts/api";
+import ChannelSelect, { useChannels, channelLabel } from "../components/ChannelSelect";
 
 interface Branch { id: number; name: string; name_ar?: string; }
 
@@ -15,7 +16,7 @@ interface ContractRecord {
 interface ContractPaymentRecord {
   id: number; contract_id: number; due_date: string;
   amount: number; status: string; paid_date: string | null;
-  payment_method: string | null; reference: string | null; notes: string | null;
+  payment_method: string | null; channel_id?: number | null; reference: string | null; notes: string | null;
 }
 
 interface ReminderRecord {
@@ -49,6 +50,15 @@ export default function ContractsPage() {
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [payingPayment, setPayingPayment] = useState<ContractPaymentRecord | null>(null);
+  const [payMethod, setPayMethod] = useState("bank_transfer");
+  const [payChannel, setPayChannel] = useState("");
+  const [newMethod, setNewMethod] = useState("bank_transfer");
+  const [newChannel, setNewChannel] = useState("");
+  const { channels } = useChannels();
+  useEffect(() => {
+    setPayMethod(payingPayment?.payment_method || "bank_transfer");
+    setPayChannel(payingPayment?.channel_id ? String(payingPayment.channel_id) : "");
+  }, [payingPayment]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ContractRecord | null>(null);
   const [customType, setCustomType] = useState("");
@@ -124,12 +134,13 @@ export default function ContractsPage() {
           </div>
           <div>
             <label className="block text-xs mb-1">{t("payment_method")}</label>
-            <select name="payment_method" required defaultValue={payingPayment.payment_method || "bank_transfer"}
+            <select name="payment_method" required value={payMethod} onChange={e => { setPayMethod(e.target.value); setPayChannel(""); }}
               className="w-full border rounded px-2 py-1.5 text-sm">
               <option value="">{t("select")}</option>
               {PAYMENT_METHODS.map(m => <option key={m} value={m}>{t(m)}</option>)}
             </select>
           </div>
+          <ChannelSelect name="channel_id" value={payChannel} onChange={setPayChannel} method={payMethod} date={payingPayment.due_date} channels={channels} required className="w-full border rounded px-2 py-1.5 text-sm" />
           <div>
             <label className="block text-xs mb-1">{t("reference")}</label>
             <input type="text" name="reference" defaultValue={payingPayment.reference || ""}
@@ -206,11 +217,12 @@ export default function ContractsPage() {
           </div>
           <div>
             <label className="block text-xs mb-1">{t("payment_method")}</label>
-            <select name="payment_method" defaultValue="bank_transfer" className="w-full border rounded px-2 py-1.5 text-sm">
+            <select name="payment_method" value={newMethod} onChange={e => { setNewMethod(e.target.value); setNewChannel(""); }} className="w-full border rounded px-2 py-1.5 text-sm">
               <option value="">{t("select")}</option>
               {PAYMENT_METHODS.map(m => <option key={m} value={m}>{t(m)}</option>)}
             </select>
           </div>
+          <ChannelSelect name="channel_id" value={newChannel} onChange={setNewChannel} method={newMethod} channels={channels} className="w-full border rounded px-2 py-1.5 text-sm" />
           <div className="flex items-end">
             <button type="submit" className="px-4 py-1.5 bg-emerald-600 text-white rounded text-sm">{t("save")}</button>
           </div>
@@ -261,7 +273,7 @@ export default function ContractsPage() {
                 }`}>{t(p.status)}</span>
               </td>
               <td className="px-3 py-2">{p.paid_date || "—"}</td>
-              <td className="px-3 py-2">{p.payment_method ? t(p.payment_method) : "—"}</td>
+              <td className="px-3 py-2">{p.payment_method ? t(p.payment_method) : "—"}{p.channel_id ? <div className="text-[10px] text-gray-500">{channelLabel(channels.find(ch => ch.id === p.channel_id), i18n.language)}</div> : null}</td>
               <td className="px-3 py-2">{p.reference || "—"}</td>
               <td className="px-3 py-2 text-center space-x-1">
                 <button onClick={() => setPayingPayment(p)}

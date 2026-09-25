@@ -16,6 +16,7 @@ from app.models.renewal import (
     RenewalType, CompanyLicense, EmployeeDocument, RenewalRequest, RenewalRequestLine, RenewalRequestLog,
 )
 from app.utils.auth import get_current_user, hash_password
+from app.routes.channels import channel_for_payment
 from app.routes.hr import _exclude_left_employees
 
 router = APIRouter(prefix="/api/renewals", tags=["renewals"])
@@ -279,6 +280,7 @@ def request_out(db: Session, r: RenewalRequest, detail: bool = False):
         "paid_date": str(r.paid_date) if r.paid_date else "", "paid_amount": r.paid_amount,
         "receipt_no": r.receipt_no or "", "paid_by_name": _user_name(db, r.paid_by),
         "payment_method": r.payment_method or PERSONNEL_PAYMENT_METHOD,
+        "channel_id": r.channel_id,
         "completed_date": str(r.completed_date) if r.completed_date else "",
         "completed_by_name": _user_name(db, r.completed_by),
         "completed_at": str(r.completed_at)[:16] if r.completed_at else "",
@@ -1042,7 +1044,7 @@ def complete_request(req_id: int, completed_date: str = Form(...), receipt_no: s
 @router.post("/requests/{req_id}/pay")
 def pay_request(req_id: int, paid_date: str = Form(""), receipt_no: str = Form(""),
                 actuals: str = Form("{}"), notes: str = Form(""), common_expense: Optional[bool] = Form(None),
-                payment_method: str = Form(PERSONNEL_PAYMENT_METHOD),
+                payment_method: str = Form(PERSONNEL_PAYMENT_METHOD), channel_id: str = Form(""),
                 file1: Optional[UploadFile] = File(None), file2: Optional[UploadFile] = File(None),
                 file3: Optional[UploadFile] = File(None),
                 db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -1061,6 +1063,7 @@ def pay_request(req_id: int, paid_date: str = Form(""), receipt_no: str = Form("
     if payment_method not in PERSONNEL_PAYMENT_METHODS:
         raise HTTPException(400, "Invalid payment method")
     r.payment_method = payment_method
+    r.channel_id = channel_for_payment(db, channel_id, user) if payment_method != PERSONNEL_PAYMENT_METHOD else None
 
     pb = personnel_branch(db, r.brand_id)
     emp = db.query(Employee).filter(Employee.id == r.employee_id).first() if r.employee_id else None
@@ -1082,7 +1085,7 @@ def pay_request(req_id: int, paid_date: str = Form(""), receipt_no: str = Form("
             cat = _renewal_category(db, t)
             exp = Expense(branch_id=exp_branch_id, category_id=cat.id, date=pd,
                           description=f"{r.request_no} · {t.name if t else 'Renewal'} · {subject}",
-                          amount=round(amt, 3), payment_method=payment_method,
+                          amount=round(amt, 3), payment_method=payment_method, channel_id=r.channel_id,
                           notes=(ln.description or None), created_by=user.id, renewal_request_id=r.id)
             db.add(exp)
             db.flush()

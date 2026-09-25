@@ -11,6 +11,7 @@ from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
 from app.routes.hr import _brand_branch_ids
+from app.routes.channels import channel_for_payment
 from app.utils.dates import apply_date_range
 
 router = APIRouter(prefix="/api/expenses", tags=["expenses"])
@@ -70,9 +71,11 @@ def create_expense(
     description: str = Form(...), amount: float = Form(...),
     category_id: Optional[int] = Form(None), supplier_id: Optional[int] = Form(None),
     payment_method: str = Form("cash"), notes: str = Form(""),
+    channel_id: str = Form(""),
     attachment: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    channel_id = channel_for_payment(db, channel_id, user) if payment_method != "cash" else None
     attachment_path = None
     if attachment and attachment.filename:
         ext = os.path.splitext(attachment.filename)[1]
@@ -87,7 +90,7 @@ def create_expense(
         supplier_id=supplier_id if supplier_id else None,
         date=date.fromisoformat(expense_date),
         description=description, amount=amount,
-        payment_method=payment_method, notes=notes,
+        payment_method=payment_method, notes=notes, channel_id=channel_id,
         attachment_path=attachment_path, created_by=user.id,
     )
     db.add(exp)
@@ -126,6 +129,7 @@ def update_expense(
     description: str = Form(...), amount: float = Form(...),
     category_id: Optional[int] = Form(None), supplier_id: Optional[int] = Form(None),
     payment_method: str = Form("cash"), notes: str = Form(""),
+    channel_id: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     exp = db.query(Expense).filter(Expense.id == expense_id).first()
@@ -148,6 +152,7 @@ def update_expense(
     exp.description = description
     exp.amount = amount
     exp.payment_method = payment_method
+    exp.channel_id = channel_for_payment(db, channel_id, user) if payment_method != "cash" else None
     exp.notes = notes or None
     db.commit()
     db.refresh(exp)

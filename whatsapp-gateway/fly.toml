@@ -1,0 +1,37 @@
+app = "mudawwarah-wa"
+primary_region = "cdg"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  AUTH_DIR = "/data/auth"
+
+[[mounts]]
+  source = "wa_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+# /health reports 503 once a linked session has been offline for 5 minutes,
+# which lets Fly recycle a machine the in-process watchdog could not recover.
+[checks.health]
+  type = "http"
+  port = 3000
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "60s"
+  method = "GET"
+  path = "/health"
+
+[[restart]]
+  policy = "always"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

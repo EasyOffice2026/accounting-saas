@@ -312,7 +312,14 @@ DAILY_KEYS = ("opening_balance", "cash_sales", "petty_cash_in", "cash_expenses",
 def _daily_rows(db: Session, user: User, target_date: date_cls, brand_id: int = None) -> list:
     from app.models.branch import Branch
     from app.models.hr import Brand
-    q = db.query(Branch).filter(Branch.is_active == True)  # noqa: E712
+    q = db.query(Branch).filter(
+        Branch.is_active == True,  # noqa: E712
+        Branch.is_central_kitchen == False,  # noqa: E712
+        ~Branch.name.like("Personnel Office%"),
+        ~Branch.name.like("Purchase Office%"),
+        ~Branch.name.like("Administration%"),
+        ~Branch.name.like("Central%"),
+    )
     allowed = user.get_allowed_brands()
     if allowed is not None:
         q = q.filter(Branch.brand_id.in_(allowed))

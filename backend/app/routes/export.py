@@ -120,7 +120,7 @@ def _excel_response(header: List[str], data: List[list], filename: str, summary_
     )
 
 
-def _pdf_response(header: List[str], data: List[list], filename: str, title: str = "", summary_rows: int = 0):
+def _pdf_response(header: List[str], data: List[list], filename: str, title: str = "", summary_rows: int = 0, lang: str = "en"):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib import colors
     from reportlab.lib.units import mm
@@ -129,6 +129,22 @@ def _pdf_response(header: List[str], data: List[list], filename: str, title: str
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
 
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+
+    _dvs = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    _dvsb = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    if "DejaVuSans" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("DejaVuSans", _dvs))
+    if "DejaVuSans-Bold" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", _dvsb))
+
+    def _shape(s: str) -> str:
+        if any("\u0600" <= ch <= "\u06FF" for ch in s):
+            return get_display(arabic_reshaper.reshape(s))
+        return s
+
+    is_ar = lang == "ar"
     buf = io.BytesIO()
     page_size = landscape(A4) if len(header) > 8 else A4
     doc = SimpleDocTemplate(buf, pagesize=page_size,
@@ -139,18 +155,22 @@ def _pdf_response(header: List[str], data: List[list], filename: str, title: str
     elements = []
 
     if title:
-        title_style = ParagraphStyle("title", parent=styles["Title"], fontSize=14, spaceAfter=10)
-        elements.append(Paragraph(title, title_style))
+        title_style = ParagraphStyle("title", parent=styles["Title"], fontSize=14, spaceAfter=10,
+                                     fontName="DejaVuSans-Bold")
+        elements.append(Paragraph(_shape(title), title_style))
         elements.append(Spacer(1, 5 * mm))
 
     # Truncate long strings for PDF
     def trunc(val, max_len=25):
         s = str(val) if val is not None else ""
-        return s[:max_len] + ".." if len(s) > max_len else s
+        s = s[:max_len] + ".." if len(s) > max_len else s
+        return _shape(s)
 
-    table_data = [header]
+    table_data = [[_shape(h) for h in header]]
     for row in data:
         table_data.append([trunc(v) for v in row])
+    if is_ar:
+        table_data = [list(reversed(r)) for r in table_data]
 
     if not table_data or len(table_data) < 2:
         table_data.append(["No data"] + [""] * (len(header) - 1))
@@ -163,6 +183,8 @@ def _pdf_response(header: List[str], data: List[list], filename: str, title: str
     style_cmds = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2E7D32")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "DejaVuSans-Bold"),
+        ("FONTNAME", (0, 1), (-1, -1), "DejaVuSans"),
         ("FONTSIZE", (0, 0), (-1, 0), 8),
         ("FONTSIZE", (0, 1), (-1, -1), 7),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
@@ -205,11 +227,12 @@ def _pdf_response(header: List[str], data: List[list], filename: str, title: str
     )
 
 
-def _respond(fmt: str, header: List[str], data: List[list], filename: str, title: str = "", summary_rows: int = 0):
+def _respond(fmt: str, header: List[str], data: List[list], filename: str, title: str = "",
+             summary_rows: int = 0, lang: str = "en"):
     if fmt == "excel":
         return _excel_response(header, data, filename, summary_rows=summary_rows)
     elif fmt == "pdf":
-        return _pdf_response(header, data, filename, title, summary_rows=summary_rows)
+        return _pdf_response(header, data, filename, title, summary_rows=summary_rows, lang=lang)
     return _csv_response(header, data, filename)
 
 

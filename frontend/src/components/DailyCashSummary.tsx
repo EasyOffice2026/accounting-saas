@@ -61,9 +61,9 @@ export default function DailyCashSummary() {
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => apiDownload(`/api/cash/daily/export/excel?${query()}`, `daily_cash_summary_${date}.xlsx`)}
+          <button onClick={() => apiDownload(`/api/cash/daily/export/excel?${query()}&lang=${i18n.language}`, `daily_cash_summary_${date}.xlsx`)}
             className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">{t("export_excel")}</button>
-          <button onClick={() => apiDownload(`/api/cash/daily/export/pdf?${query()}`, `daily_cash_summary_${date}.pdf`)}
+          <button onClick={() => apiDownload(`/api/cash/daily/export/pdf?${query()}&lang=${i18n.language}`, `daily_cash_summary_${date}.pdf`)}
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">{t("export_pdf")}</button>
         </div>
       </div>

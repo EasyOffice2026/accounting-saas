@@ -361,6 +361,7 @@ def export_daily_summary(
     fmt: str,
     summary_date: str = Query(None),
     brand_id: int = Query(None),
+    lang: str = Query("en"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -369,9 +370,15 @@ def export_daily_summary(
         raise HTTPException(403, "Not authorized")
     target_date = date_cls.fromisoformat(summary_date) if summary_date else date_cls.today()
     rows = _daily_rows(db, user, target_date, brand_id)
-    header = ["Brand", "Branch", "Opening Balance", "Cash Sales", "Cash In",
-              "Expenses", "Purchases", "Cash Out", "Deposits", "Closing Balance"]
-    data = [[r["brand"], r["branch"]] + [f"{r[k]:.3f}" for k in DAILY_KEYS] for r in rows]
-    data.append(["", "TOTAL"] + [f"{sum(r[k] for r in rows):.3f}" for k in DAILY_KEYS])
-    return _respond(fmt, header, data, f"daily_cash_summary_{target_date}",
-                    f"Daily Cash Summary - {target_date}", summary_rows=1)
+    is_ar = lang == "ar"
+    header = (["العلامة التجارية", "الفرع", "الرصيد الافتتاحي", "مبيعات نقدية", "نقد وارد",
+               "المصروفات", "المشتريات", "نقد صادر", "الإيداعات", "الرصيد الختامي"] if is_ar else
+              ["Brand", "Branch", "Opening Balance", "Cash Sales", "Cash In",
+               "Expenses", "Purchases", "Cash Out", "Deposits", "Closing Balance"])
+    def _name(r, key):
+        return (r[f"{key}_ar"] or r[key]) if is_ar else r[key]
+    data = [[_name(r, "brand"), _name(r, "branch")] + [f"{r[k]:.3f}" for k in DAILY_KEYS] for r in rows]
+    data.append(["", "الإجمالي" if is_ar else "TOTAL"] + [f"{sum(r[k] for r in rows):.3f}" for k in DAILY_KEYS])
+    title = f"ملخص النقد اليومي - {target_date}" if is_ar else f"Daily Cash Summary - {target_date}"
+    return _respond(fmt, header, data, f"daily_cash_summary_{target_date}", title,
+                    summary_rows=1, lang=lang)

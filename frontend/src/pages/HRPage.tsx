@@ -903,7 +903,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
         {(["employees", "salary", "transfers", "loans", "benefits", "deductions", "leaves"] as Tab[]).filter(tb => {
           if (currentUser.role === "owner") return true;
-          const restrictedTabs: Tab[] = ["salary", "loans", "deductions"];
+          const restrictedTabs: Tab[] = ["salary", "loans"];
           if (restrictedTabs.includes(tb) && !canViewSalary) return false;
           const userTabs: string[] | null = currentUser.allowed_tabs || null;
           if (userTabs) {

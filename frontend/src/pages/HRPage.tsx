@@ -2115,12 +2115,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       {/* Deductions Tab (Fine, Penalty) */}
       {tab === "deductions" && (
         <div>
-          {isManager && (
             <button onClick={() => { setShowDeductionForm(!showDeductionForm); setEditingDeduction(null); setDedSelectedEmpId(null); setDedDays(0); setDedAmount(0); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
               {showDeductionForm ? t("cancel") : t("add_new")}
             </button>
-          )}
 
           {showDeductionForm && (() => {
             const dedEmp = employees.find(e => e.id === dedSelectedEmpId);
@@ -2221,7 +2219,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <td className="px-4 py-3">{empName(d.employee_id)}</td>
                     <td className="px-4 py-3">
                       <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
-                        {t(d.category + "_label") || d.category}
+                        {d.category === "other_deduction" ? t("other_deduction") : t(d.category + "_label")}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right font-mono">KD {d.amount.toFixed(3)}</td>

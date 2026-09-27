@@ -1031,8 +1031,11 @@ def list_transfers(brand_id: Optional[int] = None, db: Session = Depends(get_db)
     else:
         bb_ids = _brand_branch_ids(db, brand_id)
         if bb_ids is not None:
-            q = q.filter(StaffTransfer.from_branch_id.in_(bb_ids))
-    return q.order_by(StaffTransfer.created_at.desc()).all()
+            q = q.filter(
+                StaffTransfer.from_branch_id.in_(bb_ids)
+                | StaffTransfer.to_branch_id.in_(bb_ids)
+            )
+    return q.order_by(StaffTransfer.transfer_date.desc(), StaffTransfer.created_at.desc()).all()
 
 
 @router.post("/transfers")

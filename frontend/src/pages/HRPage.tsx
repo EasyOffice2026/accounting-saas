@@ -299,6 +299,8 @@ export default function HRPage() {
     !branchFilter || emp.branch_id === Number(branchFilter);
   const inEmpBranchFilter = (rec: { employee_id: number }) =>
     !branchFilter || employees.find(e => e.id === rec.employee_id)?.branch_id === Number(branchFilter);
+  const inTransferBranchFilter = (tr: { from_branch_id: number; to_branch_id: number }) =>
+    !branchFilter || tr.from_branch_id === Number(branchFilter) || tr.to_branch_id === Number(branchFilter);
 
   const exportData = (fmt: string) => {
     const params = branchFilter ? `?branch_id=${branchFilter}` : "";
@@ -1707,7 +1709,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
               <tbody>
                 {transfers.length === 0 ? (
                   <tr><td colSpan={isManager ? 7 : 6} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
-                ) : transfers.filter(inEmpBranchFilter).map(tr => (
+                ) : transfers.filter(inTransferBranchFilter).map(tr => (
                   <tr key={tr.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{empStaffNo(tr.employee_id) || "—"}</td>
                     <td className="px-4 py-3">{empName(tr.employee_id)}</td>

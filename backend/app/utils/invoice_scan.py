@@ -169,7 +169,15 @@ def extract_invoice(data: bytes, content_type: str, filename: str) -> dict:
     except httpx.HTTPError as e:
         raise ScanFailed(f"AI service unreachable: {e}")
     if r.status_code != 200:
-        raise ScanFailed(f"AI service error {r.status_code}: {r.text[:200]}")
+        try:
+            msg = r.json()["error"]["message"]
+        except (ValueError, KeyError, TypeError):
+            msg = r.text[:200]
+        if r.status_code == 429 and ("credit" in msg.lower() or "quota" in msg.lower()):
+            raise ScanFailed("AI account has no credits — please top up the OpenAI billing account")
+        if r.status_code == 401:
+            raise ScanFailed("AI key rejected — please check the OpenAI API key")
+        raise ScanFailed(f"AI service error {r.status_code}: {msg}")
     try:
         content = r.json()["choices"][0]["message"]["content"]
         raw = json.loads(content)

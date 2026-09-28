@@ -11,7 +11,7 @@ from typing import Optional
 
 import httpx
 
-OPENAI_MODEL = os.environ.get("INVOICE_SCAN_MODEL", "gpt-4o")
+OPENAI_MODEL = os.environ.get("INVOICE_SCAN_MODEL", "gpt-5-mini")
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 MAX_PAGES = 3
 PDF_DPI = 130
@@ -37,7 +37,7 @@ Extract the data as JSON only, no commentary, using exactly this schema:
   "notes": string                   // anything uncertain / unreadable, briefly
 }
 Rules: amounts are in KD with 3 decimals (e.g. 6.250). Dates printed as DD/MM/YYYY. If a line has weight (kg) as quantity use kg as unit.
-Use the printed amount column for "amount" even if quantity*price differs. Leave unknown fields as "" or 0. Never invent lines."""
+Use the printed amount column for "amount" even if quantity*price differs. Read every line exactly as printed; never change figures to force the total to balance. Leave unknown fields as "" or 0. Never invent lines."""
 
 
 class ScanNotConfigured(Exception):
@@ -113,7 +113,7 @@ def _normalize(raw: dict) -> dict:
             amount = round(qty * price, 3)
         desc = str(l.get("description") or "").strip()
         desc_ar = str(l.get("description_ar") or "").strip()
-        if not desc and not desc_ar:
+        if (not desc and not desc_ar) or (qty <= 0 and amount <= 0):
             continue
         lines.append({
             "item_code": str(l.get("item_code") or "").strip(),
@@ -156,15 +156,16 @@ def extract_invoice(data: bytes, content_type: str, filename: str) -> dict:
         raise ScanFailed("Unsupported file")
     body = {
         "model": OPENAI_MODEL,
-        "temperature": 0,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": PROMPT},
             {"role": "user", "content": [{"type": "text", "text": "Extract this invoice."}] + parts},
         ],
     }
+    if not OPENAI_MODEL.startswith("gpt-5"):
+        body["temperature"] = 0
     try:
-        r = httpx.post(OPENAI_URL, json=body, timeout=90,
+        r = httpx.post(OPENAI_URL, json=body, timeout=120,
                        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
     except httpx.HTTPError as e:
         raise ScanFailed(f"AI service unreachable: {e}")

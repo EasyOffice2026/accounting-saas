@@ -395,9 +395,8 @@ def scan_invoice(file: UploadFile = File(...), db: Session = Depends(get_db), us
 
     warnings: list[str] = []
     sups = db.query(Supplier).filter(Supplier.is_active == True).all()
-    match = invoice_scan.best_match(ext["supplier_name"] or ext["supplier_name_ar"], [(s.id, s.name) for s in sups])
-    if not match and ext["supplier_name_ar"]:
-        match = invoice_scan.best_match(ext["supplier_name_ar"], [(s.id, s.name_ar or "") for s in sups])
+    cands = [(s.id, s.name) for s in sups]
+    match = invoice_scan.best_match(ext["supplier_name"], cands) or invoice_scan.best_match(ext["supplier_name_ar"], cands)
     supplier = next((s for s in sups if match and s.id == match[0]), None)
     if not supplier:
         warnings.append("supplier_unmatched")

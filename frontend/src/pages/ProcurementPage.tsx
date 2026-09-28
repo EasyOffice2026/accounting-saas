@@ -37,7 +37,7 @@ interface ScanResult {
   supplier_id: number | null; supplier_name: string; supplier_name_raw: string; invoice_number: string; invoice_date: string; due_date: string; payment_type: string;
   lines: ScanLineOut[]; discount: number; total: number; lines_total: number; warnings: string[]; duplicate: { po_no: string; date: string; total: number } | null; notes: string;
 }
-interface LedgerRow { supplier_id: number; supplier_name: string; invoices: number; invoiced: number; paid: number; balance: number; overdue: number; open_invoices: number; }
+interface LedgerRow { supplier_id: number; supplier_name: string; invoices: number; opening: number; invoiced: number; paid: number; balance: number; overdue: number; open_invoices: number; }
 interface Ledger { suppliers: LedgerRow[]; total_balance: number; total_overdue: number; statement?: { date: string; kind: string; ref: string; po_no: string; debit: number; credit: number; balance: number }[]; }
 
 const inp = "border rounded px-2 py-1.5 text-sm w-full";
@@ -86,6 +86,7 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
   const [statusFilter, setStatusFilter] = useState("");
   const [supFilter, setSupFilter] = useState("");
   const [ledgerSup, setLedgerSup] = useState("");
+  const [openingForm, setOpeningForm] = useState<{ supplier_id: string; amount: string; as_of: string; notes: string } | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -290,7 +291,7 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
               {invoices.map(i => (
                 <tr key={i.id} className="border-t hover:bg-gray-50">
                   <td className="p-2 font-mono text-xs">{i.invoice_number || "—"}</td>
-                  <td className="p-2"><button onClick={() => openDetail(i.order_id)} className="font-mono text-xs text-emerald-700 hover:underline">{i.po_no}</button></td>
+                  <td className="p-2">{i.order_id ? <button onClick={() => openDetail(i.order_id)} className="font-mono text-xs text-emerald-700 hover:underline">{i.po_no}</button> : <span className="text-xs text-amber-700">{t("po_opening_balance")}</span>}</td>
                   <td className="p-2">{i.supplier_name}<div className="text-xs text-gray-500">{i.payment_type === "cash" ? t("po_cash") : t("po_credit")}</div></td>
                   <td className="p-2 text-xs">{i.date}</td>
                   <td className="p-2 text-xs">{i.due_date || "—"}{i.days_overdue > 0 && <div className="text-red-600">{i.days_overdue} {t("po_days_overdue").toLowerCase()}</div>}</td>
@@ -315,18 +316,24 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
             </select>
             <div className="text-sm">{t("po_outstanding")}: <b className="text-red-700">KD {kd(ledger.total_balance)}</b></div>
             <div className="text-sm">{t("po_overdue")}: <b className="text-red-700">KD {kd(ledger.total_overdue)}</b></div>
+            {canApprove && brandId && (
+              <button onClick={() => {
+                const cur = ledger.suppliers.find(r => String(r.supplier_id) === ledgerSup);
+                setOpeningForm({ supplier_id: ledgerSup, amount: cur ? String(cur.opening || "") : "", as_of: new Date().toISOString().slice(0, 10), notes: "" });
+              }} className={`${btn} bg-amber-600 text-white ms-auto`}>{t("po_set_opening")}</button>
+            )}
           </div>
           <div className="bg-white rounded-lg shadow overflow-x-auto">
             <table className="w-full text-sm min-w-[700px]">
               <thead className="bg-gray-50 text-xs text-gray-600"><tr>
-                <th className="text-start p-2">{t("po_supplier")}</th><th className="text-end p-2">{t("po_invoices")}</th><th className="text-end p-2">{t("po_invoiced")}</th>
+                <th className="text-start p-2">{t("po_supplier")}</th><th className="text-end p-2">{t("po_opening_balance")}</th><th className="text-end p-2">{t("po_invoices")}</th><th className="text-end p-2">{t("po_invoiced")}</th>
                 <th className="text-end p-2">{t("po_paid")}</th><th className="text-end p-2">{t("po_balance")}</th><th className="text-end p-2">{t("po_overdue")}</th><th className="text-end p-2">{t("po_open_invoices")}</th>
               </tr></thead>
               <tbody>
-                {ledger.suppliers.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-gray-500">{t("po_none")}</td></tr>}
+                {ledger.suppliers.length === 0 && <tr><td colSpan={8} className="p-4 text-center text-gray-500">{t("po_none")}</td></tr>}
                 {ledger.suppliers.map(r => (
                   <tr key={r.supplier_id} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => setLedgerSup(String(r.supplier_id))}>
-                    <td className="p-2">{r.supplier_name}</td><td className="p-2 text-end">{r.invoices}</td><td className="p-2 text-end">{kd(r.invoiced)}</td>
+                    <td className="p-2">{r.supplier_name}</td><td className="p-2 text-end">{r.opening ? kd(r.opening) : ""}</td><td className="p-2 text-end">{r.invoices}</td><td className="p-2 text-end">{kd(r.invoiced)}</td>
                     <td className="p-2 text-end text-green-700">{kd(r.paid)}</td><td className="p-2 text-end font-semibold text-red-700">{kd(r.balance)}</td>
                     <td className="p-2 text-end">{kd(r.overdue)}</td><td className="p-2 text-end">{r.open_invoices}</td>
                   </tr>
@@ -346,7 +353,7 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
                   {ledger.statement.map((s, i) => (
                     <tr key={i} className="border-t">
                       <td className="p-2 text-xs">{s.date}</td><td className="p-2 font-mono text-xs">{s.po_no}</td>
-                      <td className="p-2 text-xs">{s.kind === "invoice" ? `${t("po_invoice_no")} ${s.ref}` : `${t("po_pay")} · ${methodLabel(s.ref) !== s.ref ? methodLabel(s.ref) : s.ref}`}</td>
+                      <td className="p-2 text-xs">{s.kind === "opening" ? t("po_opening_balance") : s.kind === "invoice" ? `${t("po_invoice_no")} ${s.ref}` : `${t("po_pay")} · ${methodLabel(s.ref) !== s.ref ? methodLabel(s.ref) : s.ref}`}</td>
                       <td className="p-2 text-end">{s.debit ? kd(s.debit) : ""}</td><td className="p-2 text-end text-green-700">{s.credit ? kd(s.credit) : ""}</td>
                       <td className="p-2 text-end font-semibold">{kd(s.balance)}</td>
                     </tr>
@@ -355,6 +362,47 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {openingForm && brandId && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <form className="bg-white rounded-lg shadow-xl w-full max-w-md p-5 space-y-3 text-sm" onSubmit={async e => {
+            e.preventDefault();
+            if (!openingForm.supplier_id) return;
+            setBusy(true); setErr("");
+            const fd = new FormData();
+            fd.set("brand_id", String(brandId)); fd.set("supplier_id", openingForm.supplier_id);
+            fd.set("amount", openingForm.amount || "0"); fd.set("as_of", openingForm.as_of); fd.set("notes", openingForm.notes);
+            try {
+              const res = await apiFetch("/api/procurement/opening-balances", { method: "POST", body: fd });
+              const d = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(d.detail || "Error");
+              setOpeningForm(null); reload();
+            } catch (ex) { setErr(ex instanceof Error ? ex.message : "Error"); } finally { setBusy(false); }
+          }}>
+            <div className="flex justify-between items-center"><h2 className="font-bold text-base">{t("po_set_opening")}</h2><button type="button" onClick={() => setOpeningForm(null)} className="text-gray-500">✕</button></div>
+            <p className="text-xs text-gray-500">{t("po_opening_hint")}</p>
+            <label className="block">{t("po_supplier")}
+              <select required className="mt-1 w-full border rounded px-2 py-1.5" value={openingForm.supplier_id} onChange={e => {
+                const cur = ledger?.suppliers.find(r => String(r.supplier_id) === e.target.value);
+                setOpeningForm({ ...openingForm, supplier_id: e.target.value, amount: cur?.opening ? String(cur.opening) : "" });
+              }}>
+                <option value="">—</option>
+                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">{t("amount")} (KD)<input required type="number" step="0.001" min="0" className="mt-1 w-full border rounded px-2 py-1.5" value={openingForm.amount} onChange={e => setOpeningForm({ ...openingForm, amount: e.target.value })} /></label>
+              <label className="block">{t("po_as_of")}<input required type="date" className="mt-1 w-full border rounded px-2 py-1.5" value={openingForm.as_of} onChange={e => setOpeningForm({ ...openingForm, as_of: e.target.value })} /></label>
+            </div>
+            <label className="block">{t("notes")}<input className="mt-1 w-full border rounded px-2 py-1.5" value={openingForm.notes} onChange={e => setOpeningForm({ ...openingForm, notes: e.target.value })} /></label>
+            {err && <div className="text-red-600 text-xs">{err}</div>}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setOpeningForm(null)} className={`${btn} bg-gray-100`}>{t("cancel")}</button>
+              <button type="submit" disabled={busy} className={`${btn} bg-amber-600 text-white`}>{t("save")}</button>
+            </div>
+          </form>
         </div>
       )}
 

@@ -217,9 +217,11 @@ def invoice_out(db: Session, inv: ProcInvoice, names: Optional[dict] = None) -> 
     o = db.query(ProcOrder).filter(ProcOrder.id == inv.order_id).first()
     pays = db.query(ProcPayment).filter(ProcPayment.invoice_id == inv.id).order_by(ProcPayment.id).all()
     return {
-        "id": inv.id, "order_id": inv.order_id, "po_no": o.po_no if o else "", "brand_id": inv.brand_id,
+        "id": inv.id, "order_id": inv.order_id, "kind": inv.kind or "invoice",
+        "po_no": o.po_no if o else "", "brand_id": inv.brand_id,
         "supplier_id": inv.supplier_id, "supplier_name": sup.name if sup else "",
-        "payment_type": o.payment_type if o else "", "invoice_number": inv.invoice_number or "",
+        "payment_type": o.payment_type if o else ("credit" if inv.kind == "opening" else ""),
+        "invoice_number": inv.invoice_number or "",
         "date": str(inv.date), "due_date": str(inv.due_date) if inv.due_date else "",
         "total_amount": round(inv.total_amount or 0, 3), "paid_amount": round(inv.paid_amount or 0, 3),
         "balance": round((inv.total_amount or 0) - (inv.paid_amount or 0), 3), "status": inv.status,
@@ -749,6 +751,56 @@ def pay_invoice(invoice_id: int, amount: float = Form(...), method: str = Form("
     return invoice_out(db, inv)
 
 
+@router.post("/opening-balances")
+def set_opening_balance(brand_id: int = Form(...), supplier_id: int = Form(...), amount: float = Form(...),
+                        as_of: str = Form(...), notes: str = Form(""),
+                        db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Create or update a supplier's Purchase Office opening balance (payable) for a brand."""
+    _require(user, APPROVER_ROLES)
+    _check_brand(user, brand_id)
+    if not db.query(Supplier).filter(Supplier.id == supplier_id).first():
+        raise HTTPException(404, "Supplier not found")
+    amount = round(amount, 3)
+    if amount < 0:
+        raise HTTPException(400, "Amount cannot be negative")
+    inv = db.query(ProcInvoice).filter(ProcInvoice.kind == "opening", ProcInvoice.brand_id == brand_id,
+                                       ProcInvoice.supplier_id == supplier_id).first()
+    if inv is None:
+        if amount == 0:
+            raise HTTPException(400, "Amount must be positive")
+        inv = ProcInvoice(order_id=None, kind="opening", brand_id=brand_id, supplier_id=supplier_id,
+                          invoice_number="Opening Balance", paid_amount=0)
+        db.add(inv)
+    paid = inv.paid_amount or 0
+    if amount == 0 and paid == 0:
+        db.delete(inv)
+        db.commit()
+        return {"ok": True, "deleted": True}
+    if amount < paid - 0.0005:
+        raise HTTPException(400, f"Amount cannot be less than what was already paid ({round(paid, 3)})")
+    inv.date = _d(as_of) or date.today()
+    inv.total_amount = amount
+    inv.notes = notes or None
+    inv.status = "paid" if paid >= amount - 0.0005 else ("partial" if paid > 0 else "pending")
+    db.commit()
+    return invoice_out(db, inv)
+
+
+@router.get("/opening-balances")
+def list_opening_balances(brand_id: Optional[int] = None, db: Session = Depends(get_db),
+                          user: User = Depends(get_current_user)):
+    _require(user)
+    _check_brand(user, brand_id)
+    q = db.query(ProcInvoice).filter(ProcInvoice.kind == "opening")
+    allowed = user.get_allowed_brands()
+    if allowed is not None:
+        q = q.filter(ProcInvoice.brand_id.in_(allowed))
+    if brand_id:
+        q = q.filter(ProcInvoice.brand_id == brand_id)
+    names = _user_names(db)
+    return [invoice_out(db, i, names) for i in q.all()]
+
+
 @router.get("/ledger")
 def supplier_ledger(brand_id: Optional[int] = None, supplier_id: Optional[int] = None,
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -769,10 +821,13 @@ def supplier_ledger(brand_id: Optional[int] = None, supplier_id: Optional[int] =
     agg: dict = {}
     for i in invs:
         a = agg.setdefault(i.supplier_id, {"supplier_id": i.supplier_id, "supplier_name": sups[i.supplier_id].name if i.supplier_id in sups else "",
-                                           "invoices": 0, "invoiced": 0.0, "paid": 0.0, "balance": 0.0, "overdue": 0.0, "open_invoices": 0})
+                                           "invoices": 0, "opening": 0.0, "invoiced": 0.0, "paid": 0.0, "balance": 0.0, "overdue": 0.0, "open_invoices": 0})
         bal = (i.total_amount or 0) - (i.paid_amount or 0)
-        a["invoices"] += 1
-        a["invoiced"] += i.total_amount or 0
+        if i.kind == "opening":
+            a["opening"] += i.total_amount or 0
+        else:
+            a["invoices"] += 1
+            a["invoiced"] += i.total_amount or 0
         a["paid"] += i.paid_amount or 0
         a["balance"] += bal
         if i.status != "paid":
@@ -786,13 +841,14 @@ def supplier_ledger(brand_id: Optional[int] = None, supplier_id: Optional[int] =
     if supplier_id:
         stmt = []
         for i in sorted(invs, key=lambda x: (x.date, x.id)):
-            o = db.query(ProcOrder).filter(ProcOrder.id == i.order_id).first()
-            stmt.append({"date": str(i.date), "kind": "invoice", "ref": i.invoice_number or (o.po_no if o else ""),
+            o = db.query(ProcOrder).filter(ProcOrder.id == i.order_id).first() if i.order_id else None
+            stmt.append({"date": str(i.date), "kind": "opening" if i.kind == "opening" else "invoice",
+                         "ref": i.invoice_number or (o.po_no if o else ""),
                          "po_no": o.po_no if o else "", "debit": round(i.total_amount or 0, 3), "credit": 0.0})
             for p in db.query(ProcPayment).filter(ProcPayment.invoice_id == i.id).all():
                 stmt.append({"date": str(p.date), "kind": "payment", "ref": p.reference or p.method,
                              "po_no": o.po_no if o else "", "debit": 0.0, "credit": round(p.amount, 3)})
-        stmt.sort(key=lambda x: x["date"])
+        stmt.sort(key=lambda x: (x["kind"] != "opening", x["date"]))
         run = 0.0
         for s in stmt:
             run += s["debit"] - s["credit"]
@@ -837,8 +893,8 @@ def export_ledger(fmt: str, brand_id: Optional[int] = None, db: Session = Depend
                   user: User = Depends(get_current_user)):
     from app.routes.export import _respond
     led = supplier_ledger(brand_id=brand_id, db=db, user=user)
-    header = ["Supplier", "Invoices", "Open Invoices", "Invoiced (KD)", "Paid (KD)", "Balance (KD)", "Overdue (KD)"]
-    data = [[r["supplier_name"], r["invoices"], r["open_invoices"], r["invoiced"], r["paid"], r["balance"], r["overdue"]]
+    header = ["Supplier", "Opening Balance (KD)", "Invoices", "Open Invoices", "Invoiced (KD)", "Paid (KD)", "Balance (KD)", "Overdue (KD)"]
+    data = [[r["supplier_name"], r["opening"], r["invoices"], r["open_invoices"], r["invoiced"], r["paid"], r["balance"], r["overdue"]]
             for r in led["suppliers"]]
     return _respond(fmt, header, data, "purchase_office_supplier_ledger", title="Purchase Office - Supplier Ledger")
 

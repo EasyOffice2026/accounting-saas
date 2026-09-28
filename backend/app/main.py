@@ -339,6 +339,28 @@ def _migrate_columns():
                     conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN channel_id INTEGER REFERENCES payment_channels(id)"))
                     conn.commit()
 
+        # Purchase Office invoices: allow order-less opening-balance rows (order_id nullable + kind)
+        if "proc_invoices" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("proc_invoices")]
+            if "kind" not in cols:
+                conn.execute(text("ALTER TABLE proc_invoices ADD COLUMN kind TEXT DEFAULT 'invoice'"))
+                conn.commit()
+            info = conn.execute(text("PRAGMA table_info(proc_invoices)")).fetchall()
+            if any(r[1] == "order_id" and r[3] == 1 for r in info):
+                conn.execute(text("""CREATE TABLE proc_invoices_new (
+                    id INTEGER PRIMARY KEY, order_id INTEGER REFERENCES proc_orders(id), kind TEXT DEFAULT 'invoice',
+                    brand_id INTEGER NOT NULL REFERENCES brands(id), supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+                    invoice_number TEXT, date DATE NOT NULL, due_date DATE, total_amount FLOAT NOT NULL DEFAULT 0,
+                    paid_amount FLOAT, status TEXT, notes TEXT, attachment_path TEXT, created_at DATETIME)"""))
+                conn.execute(text("""INSERT INTO proc_invoices_new (id, order_id, kind, brand_id, supplier_id, invoice_number,
+                    date, due_date, total_amount, paid_amount, status, notes, attachment_path, created_at)
+                    SELECT id, order_id, COALESCE(kind, 'invoice'), brand_id, supplier_id, invoice_number, date, due_date,
+                    total_amount, paid_amount, status, notes, attachment_path, created_at FROM proc_invoices"""))
+                conn.execute(text("DROP TABLE proc_invoices"))
+                conn.execute(text("ALTER TABLE proc_invoices_new RENAME TO proc_invoices"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_proc_invoices_order_id ON proc_invoices(order_id)"))
+                conn.commit()
+
         # Transfer order lines: add item_name_ar
         if "transfer_order_lines" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("transfer_order_lines")]

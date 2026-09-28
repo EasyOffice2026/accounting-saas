@@ -54,11 +54,13 @@ class ProcOrderItem(Base):
 
 
 class ProcInvoice(Base):
-    """Supplier invoice for a Purchase Office order (cash or credit)."""
+    """Supplier invoice for a Purchase Office order (cash or credit).
+    kind='opening' rows carry a supplier's opening balance (no order) so they can be paid and appear in the ledger."""
     __tablename__ = "proc_invoices"
 
     id = Column(Integer, primary_key=True, index=True)
-    order_id = Column(Integer, ForeignKey("proc_orders.id"), nullable=False, index=True)
+    order_id = Column(Integer, ForeignKey("proc_orders.id"), nullable=True, index=True)
+    kind = Column(String, default="invoice")  # invoice, opening
     brand_id = Column(Integer, ForeignKey("brands.id"), nullable=False)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
     invoice_number = Column(String, nullable=True)

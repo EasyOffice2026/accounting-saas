@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { apiGet, apiFetch, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useBrand } from "../contexts/BrandContext";
-import { Plus, Printer, Paperclip, X, Trash2 } from "lucide-react";
+import { Plus, Printer, Paperclip, X, Trash2, ScanLine } from "lucide-react";
 import { PO_STATUS_CLS } from "./PurchaseDashboardPage";
 import SupplierMasterTabs from "../components/SupplierMasterTabs";
 import ChannelSelect from "../components/ChannelSelect";
@@ -31,6 +31,11 @@ interface Order {
   approval_comment: string; ordered_at: string; received_date: string; received_by_name: string; receiving_notes: string; receiving_attachment: string;
   invoice_id: number | null; invoice_status: string; invoice_paid: number; invoice_total: number; item_count: number;
   items?: OrderItem[]; logs?: { status: string; label: string; comment: string; user_name: string; at: string }[]; invoice?: Invoice | null;
+}
+interface ScanLineOut { supplier_item_id: number | null; item_name: string; item_name_ar: string; packaging: string; unit: string; quantity: number; unit_price: number; amount: number; item_code: string; matched: boolean; }
+interface ScanResult {
+  supplier_id: number | null; supplier_name: string; supplier_name_raw: string; invoice_number: string; invoice_date: string; due_date: string; payment_type: string;
+  lines: ScanLineOut[]; discount: number; total: number; lines_total: number; warnings: string[]; duplicate: { po_no: string; date: string; total: number } | null; notes: string;
 }
 interface LedgerRow { supplier_id: number; supplier_name: string; invoices: number; invoiced: number; paid: number; balance: number; overdue: number; open_invoices: number; }
 interface Ledger { suppliers: LedgerRow[]; total_balance: number; total_overdue: number; statement?: { date: string; kind: string; ref: string; po_no: string; debit: number; credit: number; balance: number }[]; }
@@ -87,6 +92,24 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
 
   const [showForm, setShowForm] = useState(false);
   const [editOrder, setEditOrder] = useState<Order | null>(null);
+  const [scan, setScan] = useState<{ result: ScanResult; file: File } | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanErr, setScanErr] = useState("");
+  const scanInputId = useMemo(() => `scan${Math.random().toString(36).slice(2)}`, []);
+
+  const scanFile = async (f: File | null) => {
+    if (!f) return;
+    setScanErr(""); setScanning(true);
+    const fd = new FormData(); fd.set("file", f);
+    try {
+      const res = await apiFetch("/api/procurement/scan-invoice", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 503) throw new Error(t("scan_not_configured"));
+      if (!res.ok) throw new Error(data.detail || t("scan_failed"));
+      setScan({ result: data as ScanResult, file: f }); setEditOrder(null); setShowForm(true);
+    } catch (e) { setScanErr(e instanceof Error ? e.message : t("scan_failed")); }
+    finally { setScanning(false); }
+  };
   const [detail, setDetail] = useState<Order | null>(null);
   const [approveOrder, setApproveOrder] = useState<Order | null>(null);
   const [receiveOrder, setReceiveOrder] = useState<Order | null>(null);
@@ -180,9 +203,15 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
             <button onClick={() => exportTab("pdf")} className={`${btn} bg-red-600 text-white text-xs`}>{t("export_pdf")}</button>
           </>}
           <button onClick={() => { setTab("catalog"); setShowSupplierForm(true); }} className={`${btn} bg-blue-600 text-white inline-flex items-center gap-1`}><Plus size={16} />{t("supplier")}</button>
-          <button onClick={() => { setEditOrder(null); setShowForm(true); }} className={`${btn} bg-emerald-600 text-white inline-flex items-center gap-1`}><Plus size={16} />{t("po_new_order")}</button>
+          <label htmlFor={scanInputId} className={`${btn} bg-indigo-600 text-white inline-flex items-center gap-1 cursor-pointer ${scanning ? "opacity-60 pointer-events-none" : ""}`} title={t("scan_hint")}>
+            <ScanLine size={16} />{scanning ? t("scan_reading") : t("scan_invoice")}
+          </label>
+          <input id={scanInputId} type="file" accept="image/*,application/pdf" className="hidden" disabled={scanning}
+            onChange={e => { scanFile(e.target.files?.[0] || null); e.target.value = ""; }} />
+          <button onClick={() => { setScan(null); setEditOrder(null); setShowForm(true); }} className={`${btn} bg-emerald-600 text-white inline-flex items-center gap-1`}><Plus size={16} />{t("po_new_order")}</button>
         </div>
       </div>
+      {scanErr && <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded px-3 py-2 text-sm flex justify-between"><span>{scanErr}</span><button onClick={() => setScanErr("")}><X size={14} /></button></div>}
 
       <div className="flex gap-1 border-b">
         {PROC_TABS.map(k => (
@@ -330,8 +359,8 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
       )}
 
       {showForm && brandId && (
-        <OrderForm brandId={brandId} order={editOrder} suppliers={suppliers} categories={categories} locations={locations} ar={ar}
-          onClose={() => { setShowForm(false); setEditOrder(null); }} onSaved={() => { setShowForm(false); setEditOrder(null); reload(); }} />
+        <OrderForm brandId={brandId} order={editOrder} suppliers={suppliers} categories={categories} locations={locations} ar={ar} scan={scan}
+          onClose={() => { setShowForm(false); setEditOrder(null); setScan(null); }} onSaved={() => { setShowForm(false); setEditOrder(null); setScan(null); reload(); }} />
       )}
 
       {detail && (
@@ -434,21 +463,32 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
   );
 }
 
-function OrderForm({ brandId, order, suppliers, categories, locations, ar, onClose, onSaved }: {
+function OrderForm({ brandId, order, suppliers, categories, locations, ar, scan, onClose, onSaved }: {
   brandId: number; order: Order | null; suppliers: Supplier[]; categories: Category[]; locations: { name: string; name_ar: string }[]; ar: boolean;
-  onClose: () => void; onSaved: () => void;
+  scan?: { result: ScanResult; file: File } | null; onClose: () => void; onSaved: () => void;
 }) {
   const { t } = useTranslation();
-  const [supplierId, setSupplierId] = useState(order ? String(order.supplier_id) : "");
+  const sr = scan?.result;
+  const [supplierId, setSupplierId] = useState(order ? String(order.supplier_id) : sr?.supplier_id ? String(sr.supplier_id) : "");
   const [categoryId, setCategoryId] = useState(order?.category_id ? String(order.category_id) : "");
-  const [paymentType, setPaymentType] = useState(order?.payment_type || "cash");
-  const [orderDate, setOrderDate] = useState(order?.date || today());
+  const [paymentType, setPaymentType] = useState(order?.payment_type || sr?.payment_type || "cash");
+  const [orderDate, setOrderDate] = useState(order?.date || sr?.invoice_date || today());
   const [expected, setExpected] = useState(order?.expected_date || "");
   const [location, setLocation] = useState(order?.delivery_location || "");
-  const [notes, setNotes] = useState(order?.notes || "");
-  const [file, setFile] = useState<File | null>(null);
+  const [notes, setNotes] = useState(order?.notes || (sr ? [sr.invoice_number ? `${t("po_invoice_no")} ${sr.invoice_number}` : "", sr.notes].filter(Boolean).join(" · ") : ""));
+  const [file, setFile] = useState<File | null>(scan?.file || null);
   const [items, setItems] = useState<SupItem[]>([]);
-  const [lines, setLines] = useState<Line[]>([emptyLine()]);
+  const [lines, setLines] = useState<Line[]>(sr && sr.lines.length
+    ? sr.lines.map(l => ({ supplier_item_id: l.supplier_item_id, item_name: l.item_name, item_name_ar: l.item_name_ar, packaging: l.packaging, unit: l.unit, quantity: String(l.quantity), unit_price: String(l.unit_price) }))
+    : [emptyLine()]);
+  const [previewUrl] = useState(() => scan?.file ? URL.createObjectURL(scan.file) : "");
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+  const scanWarn = (w: string) => ({
+    supplier_unmatched: `${t("scan_w_supplier")}${sr?.supplier_name_raw ? `: ${sr.supplier_name_raw}` : ""}`,
+    items_unmatched: t("scan_w_items"), no_lines: t("scan_w_no_lines"), handwritten: t("scan_w_handwritten"),
+    total_mismatch: `${t("scan_w_total")} (${kd(sr?.lines_total)} ≠ ${kd(sr?.total)})`,
+    duplicate_invoice: `${t("scan_w_duplicate")}${sr?.duplicate ? `: ${sr.duplicate.po_no} · ${sr.duplicate.date} · KD ${kd(sr.duplicate.total)}` : ""}`,
+  } as Record<string, string>)[w] || w;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -462,7 +502,7 @@ function OrderForm({ brandId, order, suppliers, categories, locations, ar, onClo
     if (!supplierId) { setItems([]); return; }
     apiGet(`/api/procurement/suppliers/${supplierId}/items`).then(setItems);
     const s = suppliers.find(x => String(x.id) === supplierId);
-    if (s && !order) {
+    if (s && !order && !(sr && String(sr.supplier_id) === supplierId)) {
       setPaymentType(s.payment_type === "credit" ? "credit" : "cash");
       if (s.category_id) setCategoryId(String(s.category_id));
     }
@@ -500,12 +540,30 @@ function OrderForm({ brandId, order, suppliers, categories, locations, ar, onClo
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl my-4 overflow-hidden">
         <div className="flex justify-between items-center px-5 py-3 bg-emerald-700 text-white">
           <div>
-            <h2 className="text-lg font-bold">{order ? order.po_no : t("po_new_order")}</h2>
-            <div className="text-xs text-emerald-100">{t("po_delivery_hint")}</div>
+            <h2 className="text-lg font-bold">{order ? order.po_no : sr ? t("scan_review_title") : t("po_new_order")}</h2>
+            <div className="text-xs text-emerald-100">{sr ? t("scan_review_hint") : t("po_delivery_hint")}</div>
           </div>
           <button onClick={onClose}><X size={20} /></button>
         </div>
         <div className="p-5 space-y-4 text-sm">
+          {sr && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-2 space-y-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                  {[[t("po_supplier"), sr.supplier_name || "—"], [t("po_invoice_no"), sr.invoice_number || "—"], [t("date"), sr.invoice_date || "—"], [t("total"), `KD ${kd(sr.total)}`]]
+                    .map(([l, v], i) => <div key={i} className="bg-indigo-50 rounded p-2"><div className="text-gray-500">{l}</div><div className="font-medium">{v}</div></div>)}
+                </div>
+                {sr.warnings.length > 0 && (
+                  <ul className={`rounded px-3 py-2 text-xs space-y-1 border ${sr.warnings.includes("duplicate_invoice") ? "bg-red-50 border-red-300 text-red-800" : "bg-amber-50 border-amber-300 text-amber-800"}`}>
+                    {sr.warnings.map(w => <li key={w}>• {scanWarn(w)}</li>)}
+                  </ul>
+                )}
+              </div>
+              {previewUrl && (scan?.file.type === "application/pdf"
+                ? <a href={previewUrl} target="_blank" rel="noreferrer" className="border rounded flex items-center justify-center text-xs text-indigo-700 underline h-28">{scan.file.name}</a>
+                : <a href={previewUrl} target="_blank" rel="noreferrer"><img src={previewUrl} alt="" className="border rounded max-h-40 object-contain w-full bg-gray-50" /></a>)}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <label className="block"><span className="text-xs text-gray-600">{t("po_supplier")} *</span>
               <select className={inp} value={supplierId} onChange={e => setSupplierId(e.target.value)} required>
@@ -547,13 +605,14 @@ function OrderForm({ brandId, order, suppliers, categories, locations, ar, onClo
                             {items.map(it => <option key={it.id} value={it.id}>{ar && it.item_name_ar ? it.item_name_ar : it.item_name}{it.packaging ? ` (${it.packaging})` : ""} — {kd(it.unit_price)}</option>)}
                           </select>
                         )}
-                        <input className={inp} placeholder={t("po_custom_item")} value={l.item_name} onChange={e => setLine(i, { item_name: e.target.value, supplier_item_id: null })} />
+                        <input className={`${inp} ${sr && !l.supplier_item_id ? "border-amber-400 bg-amber-50" : ""}`} placeholder={t("po_custom_item")} value={l.item_name} onChange={e => setLine(i, { item_name: e.target.value, supplier_item_id: null })} />
                       </td>
                       <td className="p-2"><input className={inp} value={l.packaging} onChange={e => setLine(i, { packaging: e.target.value })} /></td>
                       <td className="p-2"><input className={`${inp} w-20`} value={l.unit} onChange={e => setLine(i, { unit: e.target.value })} /></td>
                       <td className="p-2"><input type="number" step="0.001" min="0" className={`${inp} w-24 text-end`} value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
                       <td className="p-2"><input type="number" step="0.001" min="0" className={`${inp} w-28 text-end`} value={l.unit_price} onChange={e => setLine(i, { unit_price: e.target.value })} /></td>
-                      <td className="p-2 text-end font-semibold">{kd((parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0))}</td>
+                      <td className="p-2 text-end font-semibold">{kd((parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0))}
+                        {sr && sr.lines[i] && Math.abs(sr.lines[i].amount - (parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0)) > 0.005 && <div className="text-[10px] text-amber-700 font-normal">{t("scan_inv_amount")} {kd(sr.lines[i].amount)}</div>}</td>
                       <td className="p-2"><button type="button" onClick={() => setLines(ls => ls.length > 1 ? ls.filter((_, j) => j !== i) : ls)} className="text-red-600"><Trash2 size={14} /></button></td>
                     </tr>
                   ))}

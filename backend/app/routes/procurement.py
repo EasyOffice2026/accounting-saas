@@ -21,6 +21,7 @@ from app.models.cash import CashTransaction
 from app.models.user import User
 from app.utils.auth import get_current_user, hash_password
 from app.routes.channels import channel_for_payment
+from app.utils import invoice_scan
 
 router = APIRouter(prefix="/api/procurement", tags=["procurement"])
 
@@ -364,6 +365,90 @@ def delivery_locations(brand_id: Optional[int] = None, db: Session = Depends(get
     if brand_id:
         q = q.filter(Branch.brand_id == brand_id)
     return [{"name": b.name, "name_ar": b.name_ar or ""} for b in q.order_by(Branch.name).all()]
+
+
+# ---------------------------------------------------------------- invoice scanning (AI pre-fill, never books)
+
+@router.get("/scan-invoice/status")
+def scan_status(user: User = Depends(get_current_user)):
+    _require(user)
+    return {"configured": invoice_scan.is_configured()}
+
+
+@router.post("/scan-invoice")
+def scan_invoice(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Read an uploaded supplier invoice and return suggested order data for the user to review."""
+    _require(user)
+    if not invoice_scan.is_configured():
+        raise HTTPException(503, "Scanning not configured")
+    data = file.file.read()
+    if not data:
+        raise HTTPException(400, "Empty file")
+    if len(data) > 15 * 1024 * 1024:
+        raise HTTPException(400, "File too large (max 15 MB)")
+    try:
+        ext = invoice_scan.extract_invoice(data, file.content_type or "", file.filename or "")
+    except invoice_scan.ScanNotConfigured:
+        raise HTTPException(503, "Scanning not configured")
+    except invoice_scan.ScanFailed as e:
+        raise HTTPException(502, str(e))
+
+    warnings: list[str] = []
+    sups = db.query(Supplier).filter(Supplier.is_active == True).all()
+    match = invoice_scan.best_match(ext["supplier_name"] or ext["supplier_name_ar"], [(s.id, s.name) for s in sups])
+    if not match and ext["supplier_name_ar"]:
+        match = invoice_scan.best_match(ext["supplier_name_ar"], [(s.id, s.name_ar or "") for s in sups])
+    supplier = next((s for s in sups if match and s.id == match[0]), None)
+    if not supplier:
+        warnings.append("supplier_unmatched")
+
+    items = db.query(SupplierItem).filter(SupplierItem.supplier_id == supplier.id, SupplierItem.is_active == True).all() if supplier else []
+    lines = []
+    for l in ext["lines"]:
+        si = None
+        if items:
+            m = invoice_scan.best_match(l["description"], [(i.id, i.item_name) for i in items]) \
+                or invoice_scan.best_match(l["description_ar"], [(i.id, i.item_name_ar or "") for i in items])
+            si = next((i for i in items if m and i.id == m[0]), None)
+        lines.append({
+            "supplier_item_id": si.id if si else None,
+            "item_name": si.item_name if si else l["description"],
+            "item_name_ar": (si.item_name_ar if si else l["description_ar"]) or "",
+            "packaging": (si.packaging if si else "") or "",
+            "unit": l["unit"] if not si or l["unit"] != "pcs" else (si.unit or "pcs"),
+            "quantity": l["quantity"], "unit_price": l["unit_price"], "amount": l["amount"],
+            "item_code": l["item_code"], "matched": bool(si),
+        })
+    if lines and any(not l["matched"] for l in lines):
+        warnings.append("items_unmatched")
+    if not lines:
+        warnings.append("no_lines")
+    if ext["total_mismatch"]:
+        warnings.append("total_mismatch")
+    if ext["handwritten"]:
+        warnings.append("handwritten")
+
+    duplicate = None
+    if ext["invoice_number"]:
+        dq = db.query(ProcInvoice).join(ProcOrder, ProcOrder.id == ProcInvoice.order_id)\
+            .filter(func.lower(ProcInvoice.invoice_number) == ext["invoice_number"].lower())
+        if supplier:
+            dq = dq.filter(ProcOrder.supplier_id == supplier.id)
+        d = dq.first()
+        if d:
+            o = db.query(ProcOrder).filter(ProcOrder.id == d.order_id).first()
+            duplicate = {"po_no": o.po_no if o else "", "date": d.date.isoformat() if d.date else "", "total": d.total_amount}
+            warnings.append("duplicate_invoice")
+
+    return {
+        "supplier_id": supplier.id if supplier else None,
+        "supplier_name": supplier.name if supplier else (ext["supplier_name"] or ext["supplier_name_ar"]),
+        "supplier_name_raw": ext["supplier_name"], "supplier_name_ar_raw": ext["supplier_name_ar"],
+        "invoice_number": ext["invoice_number"], "invoice_date": ext["invoice_date"], "due_date": ext["due_date"],
+        "payment_type": ext["payment_type"] or (supplier.payment_type if supplier else "") or "cash",
+        "lines": lines, "discount": ext["discount"], "total": ext["total"], "lines_total": ext["lines_total"],
+        "warnings": warnings, "duplicate": duplicate, "notes": ext["notes"],
+    }
 
 
 # ---------------------------------------------------------------- orders

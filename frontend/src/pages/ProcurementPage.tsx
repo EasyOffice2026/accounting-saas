@@ -707,14 +707,16 @@ function ReceiveForm({ order, ar, onClose, onSaved }: { order: Order; ar: boolea
   };
   return (
     <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-5 space-y-3 text-sm">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-5 space-y-3 text-sm max-h-[90vh] flex flex-col">
         <h2 className="font-bold">{t("po_receive")} — {order.po_no}</h2>
-        <table className="w-full"><thead className="text-xs text-gray-600"><tr><th className="text-start p-1">{t("po_item")}</th><th className="text-end p-1">{t("po_qty")}</th><th className="text-end p-1">{t("po_received_qty")}</th></tr></thead>
+        <div className="flex-1 min-h-0 overflow-y-auto border rounded">
+        <table className="w-full"><thead className="text-xs text-gray-600 sticky top-0 bg-white shadow-sm"><tr><th className="text-start p-1">{t("po_item")}</th><th className="text-end p-1">{t("po_qty")}</th><th className="text-end p-1">{t("po_received_qty")}</th></tr></thead>
           <tbody>{(order.items || []).map(i => (
             <tr key={i.id} className="border-t"><td className="p-1">{ar && i.item_name_ar ? i.item_name_ar : i.item_name} <span className="text-xs text-gray-500">{i.packaging}</span></td>
               <td className="p-1 text-end">{i.quantity} {i.unit}</td>
               <td className="p-1 text-end"><input type="number" step="0.001" min="0" className={`${inp} w-28 text-end inline-block`} value={qty[i.id]} onChange={e => setQty({ ...qty, [i.id]: e.target.value })} /></td></tr>
           ))}</tbody></table>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <label className="block"><span className="text-xs text-gray-600">{t("po_received_date")}</span><input type="date" className={inp} value={date} onChange={e => setDate(e.target.value)} /></label>
           <div><span className="text-xs text-gray-600 block mb-1">{t("po_delivery_note")}</span><FileBtn label={t("po_delivery_note")} file={file} onChange={setFile} /></div>

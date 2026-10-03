@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
@@ -50,6 +50,8 @@ def dashboard(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
               date_from: Optional[str] = None, date_to: Optional[str] = None,
               db: Session = Depends(get_db),
               user: User = Depends(get_current_user)):
+    if user.role == "staff":
+        raise HTTPException(403, "Dashboard is not available for branch logins")
     bb_ids = _brand_branch_ids(db, brand_id)
 
     def apply_branch(q, model):

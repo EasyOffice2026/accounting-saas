@@ -43,10 +43,17 @@ function ProtectedRoutes() {
   const isPersonnel = ["personnel", "personnel_manager"].includes(user?.role || "");
   const isPurchase = ["purchase_officer", "purchase_manager"].includes(user?.role || "");
   const restricted = isPersonnel || isPurchase;
+  const isBranch = user?.role === "staff";
+  const branchHome = (() => {
+    const tabs = user?.allowed_tabs;
+    const order: [string, string][] = [["sales", "/sales"], ["purchases", "/purchases"], ["expenses", "/expenses"], ["hr", "/hr"], ["cash", "/cash"], ["transfers", "/transfers"]];
+    const hit = order.find(([k]) => !tabs || tabs.includes(k));
+    return hit ? hit[1] : "/sales";
+  })();
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={isPersonnel ? <PersonnelDashboardPage /> : isPurchase ? <PurchaseDashboardPage /> : <DashboardPage />} />
+        <Route path="/" element={isBranch ? <Navigate to={branchHome} replace /> : isPersonnel ? <PersonnelDashboardPage /> : isPurchase ? <PurchaseDashboardPage /> : <DashboardPage />} />
         <Route path="/sales" element={restricted ? <Navigate to="/" /> : <SalesPage />} />
         <Route path="/purchases" element={restricted ? <Navigate to="/" /> : <PurchasesPage />} />
         <Route path="/procurement" element={isPersonnel || user?.role === "staff" ? <Navigate to="/" /> : <ProcurementPage />} />

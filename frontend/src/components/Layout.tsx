@@ -102,6 +102,7 @@ export default function Layout() {
             .filter(item => !item.roles || item.roles.includes(user?.role || ""))
             .filter(item => !["personnel", "personnel_manager"].includes(user?.role || "") || PERSONNEL_NAV.includes(item.key))
             .filter(item => !["purchase_officer", "purchase_manager"].includes(user?.role || "") || PURCHASE_NAV.includes(item.key))
+            .filter(item => user?.role !== "staff" || item.key !== "dashboard")
             .filter(item => {
               if (user?.role === "owner") return true;
               if (!user?.allowed_tabs) return true;

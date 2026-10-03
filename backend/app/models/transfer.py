@@ -10,6 +10,9 @@ class TransferItem(Base):
     name = Column(String, nullable=False)
     name_ar = Column(String, nullable=True)
     unit = Column(String, default="pcs")
+    unit_price = Column(Float, default=0)
+    opening_stock = Column(Float, default=0)
+    category = Column(String, default="food")  # food, packaging
     is_active = Column(Boolean, default=True)
 
 
@@ -18,6 +21,7 @@ class TransferOrder(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     requesting_branch_id = Column(Integer, ForeignKey("branches.id"), nullable=False)
+    source_branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True)
     date = Column(Date, nullable=False)
     status = Column(String, default="requested")  # requested, dispatched, received
     notes = Column(Text, nullable=True)
@@ -34,7 +38,9 @@ class TransferOrderLine(Base):
     transfer_order_id = Column(Integer, ForeignKey("transfer_orders.id"), nullable=False)
     item_id = Column(Integer, ForeignKey("transfer_items.id"), nullable=False)
     item_name = Column(String, nullable=False)
+    item_name_ar = Column(String, nullable=True)
     requested_qty = Column(Float, nullable=False)
     dispatched_qty = Column(Float, nullable=True)
     received_qty = Column(Float, nullable=True)
     unit = Column(String, default="pcs")
+    unit_price = Column(Float, default=0)

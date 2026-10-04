@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_
 from datetime import date, time
 from typing import Optional
 import calendar
+import os
+import uuid
 
-from app.database import get_db
+from app.database import get_db, UPLOAD_DIR
 from app.models.hr import Brand, Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, LoanRepayment, StaffBenefitDeduction, LeaveRecord, Resignation, Contract, ContractPayment, Employer
 from app.models.branch import Branch
 from app.models.expense import Expense, ExpenseCategory
@@ -56,6 +58,14 @@ def _staff_emp_ids(db: Session, user) -> Optional[list]:
 
 
 # --- Brands ---
+LOGO_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg"}
+
+
+def _brand_out(b: Brand) -> dict:
+    return {"id": b.id, "name_en": b.name_en, "name_ar": b.name_ar or "", "status": b.status or "active",
+            "logo_url": f"/uploads/{b.logo_path}" if b.logo_path else None}
+
+
 @router.get("/brands")
 def list_brands(all: bool = False, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Brand)
@@ -64,8 +74,7 @@ def list_brands(all: bool = False, db: Session = Depends(get_db), user: User = D
         # Cross-brand transfers need every brand as a possible source/destination,
         # regardless of which brands the user is scoped to.
         rows = q.filter(Brand.status == "active").order_by(Brand.id).all()
-        return [{"id": b.id, "name_en": b.name_en, "name_ar": b.name_ar or "",
-                 "status": b.status or "active"} for b in rows]
+        return [_brand_out(b) for b in rows]
     if allowed:
         q = q.filter(Brand.id.in_(allowed))
     else:
@@ -77,8 +86,7 @@ def list_brands(all: bool = False, db: Session = Depends(get_db), user: User = D
             else:
                 q = q.filter(False)
     rows = q.order_by(Brand.id).all()
-    return [{"id": b.id, "name_en": b.name_en, "name_ar": b.name_ar or "",
-             "status": b.status or "active"} for b in rows]
+    return [_brand_out(b) for b in rows]
 
 
 @router.post("/brands")
@@ -115,6 +123,47 @@ def update_brand(
     b.status = status
     db.commit()
     return {"id": b.id, "name_en": b.name_en, "name_ar": b.name_ar or "", "status": b.status}
+
+
+@router.post("/brands/{brand_id}/logo")
+def upload_brand_logo(brand_id: int, file: UploadFile = File(...), db: Session = Depends(get_db),
+                      user: User = Depends(get_current_user)):
+    """Brand logo (PNG/JPG) used on printed statements."""
+    if user.role != "owner":
+        raise HTTPException(403, "Only owner can edit brands")
+    b = db.query(Brand).filter(Brand.id == brand_id).first()
+    if not b:
+        raise HTTPException(404, "Brand not found")
+    ext = LOGO_TYPES.get((file.content_type or "").lower())
+    if not ext:
+        raise HTTPException(400, "Logo must be a PNG or JPG image")
+    content = file.file.read()
+    if len(content) > 3 * 1024 * 1024:
+        raise HTTPException(400, "Logo must be smaller than 3 MB")
+    os.makedirs(os.path.join(UPLOAD_DIR, "brand_logos"), exist_ok=True)
+    rel = f"brand_logos/brand_{b.id}_{uuid.uuid4().hex[:8]}{ext}"
+    with open(os.path.join(UPLOAD_DIR, rel), "wb") as f:
+        f.write(content)
+    old = b.logo_path
+    b.logo_path = rel
+    db.commit()
+    if old and os.path.exists(os.path.join(UPLOAD_DIR, old)):
+        os.remove(os.path.join(UPLOAD_DIR, old))
+    return _brand_out(b)
+
+
+@router.delete("/brands/{brand_id}/logo")
+def delete_brand_logo(brand_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role != "owner":
+        raise HTTPException(403, "Only owner can edit brands")
+    b = db.query(Brand).filter(Brand.id == brand_id).first()
+    if not b:
+        raise HTTPException(404, "Brand not found")
+    if b.logo_path and os.path.exists(os.path.join(UPLOAD_DIR, b.logo_path)):
+        os.remove(os.path.join(UPLOAD_DIR, b.logo_path))
+    b.logo_path = None
+    db.commit()
+    return _brand_out(b)
 
 
 @router.delete("/brands/{brand_id}")

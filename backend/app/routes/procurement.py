@@ -21,7 +21,7 @@ from app.models.cash import CashTransaction
 from app.models.user import User
 from app.utils.auth import get_current_user, hash_password
 from app.routes.channels import channel_for_payment
-from app.utils import invoice_scan
+from app.utils import invoice_scan, supplier_statement
 
 router = APIRouter(prefix="/api/procurement", tags=["procurement"])
 
@@ -897,6 +897,31 @@ def export_ledger(fmt: str, brand_id: Optional[int] = None, db: Session = Depend
     data = [[r["supplier_name"], r["opening"], r["invoices"], r["open_invoices"], r["invoiced"], r["paid"], r["balance"], r["overdue"]]
             for r in led["suppliers"]]
     return _respond(fmt, header, data, "purchase_office_supplier_ledger", title="Purchase Office - Supplier Ledger")
+
+
+@router.get("/suppliers/{supplier_id}/statement/{fmt}")
+def supplier_statement_export(supplier_id: int, fmt: str, brand_id: Optional[int] = None,
+                              date_from: Optional[str] = None, date_to: Optional[str] = None, lang: str = "en",
+                              db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Printable Statement of Account for one Central Purchases supplier (pdf | excel)."""
+    from fastapi.responses import Response
+    _require(user)
+    if not brand_id:
+        raise HTTPException(400, "Select a brand to print a statement")
+    _check_brand(user, brand_id)
+    sup = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not sup:
+        raise HTTPException(404, "Supplier not found")
+    data = supplier_statement.build(db, brand_id, supplier_id, date_from, date_to)
+    safe = "".join(ch if ch.isalnum() else "_" for ch in sup.name)[:40]
+    if fmt == "pdf":
+        return Response(content=supplier_statement.render_pdf(data, lang), media_type="application/pdf",
+                        headers={"Content-Disposition": f'inline; filename="Statement_{safe}.pdf"'})
+    if fmt == "excel":
+        return Response(content=supplier_statement.render_xlsx(data, lang),
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f'attachment; filename="Statement_{safe}.xlsx"'})
+    raise HTTPException(400, "Unknown format")
 
 
 @router.get("/orders/{order_id}/form.pdf")

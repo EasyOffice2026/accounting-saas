@@ -137,6 +137,11 @@ def _migrate_columns():
                     conn.execute(text(f"ALTER TABLE whatsapp_settings ADD COLUMN {gcol} TEXT"))
                     conn.commit()
 
+        if "brands" in insp.get_table_names():
+            if "logo_path" not in [c["name"] for c in insp.get_columns("brands")]:
+                conn.execute(text("ALTER TABLE brands ADD COLUMN logo_path TEXT"))
+                conn.commit()
+
         # Purchase orders: add missing columns
         if "purchase_orders" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("purchase_orders")]

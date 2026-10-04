@@ -86,6 +86,8 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
   const [statusFilter, setStatusFilter] = useState("");
   const [supFilter, setSupFilter] = useState("");
   const [ledgerSup, setLedgerSup] = useState("");
+  const [soaFrom, setSoaFrom] = useState("");
+  const [soaTo, setSoaTo] = useState("");
   const [openingForm, setOpeningForm] = useState<{ supplier_id: string; amount: string; as_of: string; notes: string } | null>(null);
 
   const [busy, setBusy] = useState(false);
@@ -161,6 +163,14 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
   const cancelOrder = (o: Order) => { if (window.confirm(t("po_confirm_cancel"))) run(() => post(`/api/procurement/orders/${o.id}/cancel`, new FormData())); };
   const deleteOrder = (o: Order) => { if (window.confirm(t("po_confirm_delete"))) run(() => post(`/api/procurement/orders/${o.id}`, new FormData(), "DELETE")); };
   const printPO = (o: Order) => apiDownload(`/api/procurement/orders/${o.id}/form.pdf`, `${o.po_no}.pdf`);
+  const printStatement = (fmt: "pdf" | "excel") => {
+    if (!ledgerSup || !brandId) return;
+    const q = new URLSearchParams({ brand_id: String(brandId), lang: i18n.language === "ar" ? "ar" : "en" });
+    if (soaFrom) q.set("date_from", soaFrom);
+    if (soaTo) q.set("date_to", soaTo);
+    const name = suppliers.find(s => String(s.id) === ledgerSup)?.name || "supplier";
+    apiDownload(`/api/procurement/suppliers/${ledgerSup}/statement/${fmt}?${q}`, `Statement_${name}.${fmt === "excel" ? "xlsx" : "pdf"}`);
+  };
   const exportTab = (fmt: string) => {
     const ext = fmt === "excel" ? "xlsx" : fmt;
     apiDownload(`/api/procurement/export/${tab}/${fmt}`, `purchase_${tab}.${ext}`);
@@ -341,6 +351,21 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
               </tbody>
             </table>
           </div>
+          {ledgerSup ? (
+            <div className="bg-white rounded-lg shadow p-3 flex flex-wrap items-end gap-3 text-sm">
+              <div className="font-semibold">{t("po_soa")}</div>
+              <label className="flex flex-col text-xs text-gray-600">{t("from_date")}
+                <input type="date" className="border rounded px-2 py-1 text-sm" value={soaFrom} onChange={e => setSoaFrom(e.target.value)} />
+              </label>
+              <label className="flex flex-col text-xs text-gray-600">{t("to_date")}
+                <input type="date" className="border rounded px-2 py-1 text-sm" value={soaTo} onChange={e => setSoaTo(e.target.value)} />
+              </label>
+              <button onClick={() => printStatement("pdf")} className={`${btn} bg-red-600 text-white text-xs`}>{t("po_soa")} · PDF</button>
+              <button onClick={() => printStatement("excel")} className={`${btn} bg-blue-600 text-white text-xs`}>{t("po_soa")} · Excel</button>
+            </div>
+          ) : (
+            <div className="text-xs text-gray-500">{t("po_soa_select")}</div>
+          )}
           {ledger.statement && (
             <div className="bg-white rounded-lg shadow overflow-x-auto">
               <div className="px-3 py-2 font-semibold text-sm border-b">{t("po_statement")}</div>

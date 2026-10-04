@@ -10,6 +10,7 @@ class Brand(Base):
     name_en = Column(String, nullable=False)
     name_ar = Column(String, nullable=True)
     status = Column(String, default="active")  # active, inactive
+    logo_path = Column(String, nullable=True)  # relative to UPLOAD_DIR
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

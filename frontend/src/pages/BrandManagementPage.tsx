@@ -3,7 +3,7 @@ import { useBrand } from "../contexts/BrandContext";
 import type { BrandInfo } from "../contexts/BrandContext";
 import { useState } from "react";
 import { apiPost, apiFetch } from "../contexts/api";
-import { Plus, Pencil, Trash2, Check, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X, Upload } from "lucide-react";
 
 export default function BrandManagementPage() {
   const { t } = useTranslation();
@@ -51,6 +51,37 @@ export default function BrandManagementPage() {
     await refreshBrands();
   };
 
+  const uploadLogo = async (id: number, file: File | null) => {
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await apiFetch(`/api/hr/brands/${id}/logo`, { method: "POST", body: fd });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.detail || "Upload failed");
+      return;
+    }
+    await refreshBrands();
+  };
+
+  const removeLogo = async (id: number) => {
+    if (!confirm(t("confirm_delete"))) return;
+    await apiFetch(`/api/hr/brands/${id}/logo`, { method: "DELETE" });
+    await refreshBrands();
+  };
+
+  const logoCell = (b: BrandInfo) => (
+    <div className="flex items-center gap-2">
+      {b.logo_url && <img src={b.logo_url} alt="" className="h-10 max-w-[90px] object-contain border rounded bg-white" />}
+      <label className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded hover:bg-gray-200 cursor-pointer text-xs" title={t("logo_hint")}>
+        <Upload size={12} /> {t("upload_logo")}
+        <input type="file" accept="image/png,image/jpeg" className="hidden"
+          onChange={(e) => { uploadLogo(b.id, e.target.files?.[0] || null); e.target.value = ""; }} />
+      </label>
+      {b.logo_url && <button onClick={() => removeLogo(b.id)} className="text-xs text-red-600 hover:underline">{t("remove_logo")}</button>}
+    </div>
+  );
+
   const deleteBrand = async (id: number) => {
     if (!confirm(t("confirm_delete"))) return;
     try {
@@ -85,6 +116,7 @@ export default function BrandManagementPage() {
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">{t("brand_name_en")}</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">{t("brand_name_ar")}</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">{t("status")}</th>
+              <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">{t("brand_logo")}</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">{t("actions")}</th>
             </tr>
           </thead>
@@ -109,6 +141,7 @@ export default function BrandManagementPage() {
                         <option value="inactive">{t("inactive")}</option>
                       </select>
                     </td>
+                    <td className="px-4 py-2">{logoCell(b)}</td>
                     <td className="px-4 py-2 flex gap-1">
                       <button onClick={save} className="p-1.5 bg-emerald-100 rounded hover:bg-emerald-200">
                         <Check size={16} className="text-emerald-700" />
@@ -129,6 +162,7 @@ export default function BrandManagementPage() {
                         {t(b.status)}
                       </span>
                     </td>
+                    <td className="px-4 py-3">{logoCell(b)}</td>
                     <td className="px-4 py-3 flex gap-1">
                       <button onClick={() => startEdit(b)} className="p-1.5 bg-blue-50 rounded hover:bg-blue-100">
                         <Pencil size={14} className="text-blue-600" />
@@ -161,6 +195,7 @@ export default function BrandManagementPage() {
                     <option value="inactive">{t("inactive")}</option>
                   </select>
                 </td>
+                <td className="px-4 py-2" />
                 <td className="px-4 py-2 flex gap-1">
                   <button onClick={save} className="p-1.5 bg-emerald-100 rounded hover:bg-emerald-200">
                     <Check size={16} className="text-emerald-700" />

@@ -8,6 +8,7 @@ export interface BrandInfo {
   name_en: string;
   name_ar: string;
   status: string;
+  logo_url?: string | null;
 }
 
 interface BrandCtx {

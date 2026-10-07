@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
@@ -23,6 +24,7 @@ app.add_middleware(
 )
 
 app.add_middleware(PurchaseScopeMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Mount uploads
 os.makedirs(UPLOAD_DIR, exist_ok=True)

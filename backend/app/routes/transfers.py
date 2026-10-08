@@ -382,10 +382,14 @@ def inventory_stock(start_date: Optional[str] = None, end_date: Optional[str] = 
 
 
 def _product_consumption(db: Session, user: User, brand_id: Optional[int], start_date: Optional[str],
-                         end_date: Optional[str], branch_id: Optional[int]) -> dict:
+                         end_date: Optional[str], branch_id: Optional[int],
+                         branch_ids: Optional[str] = None) -> dict:
     rows = _consumption_rows(db, user, brand_id, start_date, end_date)
     if branch_id:
         rows = [r for r in rows if r.requesting_branch_id == branch_id]
+    if branch_ids:
+        wanted = {int(x) for x in branch_ids.split(",") if x.strip().isdigit()}
+        rows = [r for r in rows if r.requesting_branch_id in wanted]
     branch_by_id = {b.id: b for b in db.query(Branch).all()}
     products: dict[tuple, dict] = {}
     for r in rows:
@@ -425,10 +429,11 @@ def _product_consumption(db: Session, user: User, brand_id: Optional[int], start
 
 @router.get("/product-summary")
 def product_consumption_summary(brand_id: Optional[int] = None, branch_id: Optional[int] = None,
+                                branch_ids: Optional[str] = None,
                                 start_date: Optional[str] = None, end_date: Optional[str] = None,
                                 db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Dispatched qty/amount per item, broken down by receiving branch."""
-    return _product_consumption(db, user, brand_id, start_date, end_date, branch_id)
+    return _product_consumption(db, user, brand_id, start_date, end_date, branch_id, branch_ids)
 
 
 def _fmt_qty(v: float) -> str:
@@ -437,11 +442,12 @@ def _fmt_qty(v: float) -> str:
 
 @router.get("/product-summary/{fmt}")
 def export_product_consumption(fmt: str, brand_id: Optional[int] = None, branch_id: Optional[int] = None,
+                               branch_ids: Optional[str] = None,
                                start_date: Optional[str] = None, end_date: Optional[str] = None,
                                item_name: Optional[str] = None, unit: Optional[str] = None,
                                lang: str = "en", db: Session = Depends(get_db),
                                user: User = Depends(get_current_user)):
-    data = _product_consumption(db, user, brand_id, start_date, end_date, branch_id)
+    data = _product_consumption(db, user, brand_id, start_date, end_date, branch_id, branch_ids)
     is_ar = lang == "ar"
     period = f"{start_date or '...'} - {end_date or '...'}" if (start_date or end_date) else ("كل الفترات" if is_ar else "All dates")
     if item_name:

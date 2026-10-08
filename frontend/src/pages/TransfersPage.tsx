@@ -70,7 +70,8 @@ export default function TransfersPage() {
   const [consumption, setConsumption] = useState<BranchConsumption[]>([]);
   const [conStartDate, setConStartDate] = useState("");
   const [conEndDate, setConEndDate] = useState("");
-  const [conBranchFilter, setConBranchFilter] = useState<string>("all");
+  const [conBranches, setConBranches] = useState<number[]>([]);
+  const [conBranchOpen, setConBranchOpen] = useState(false);
   const [conGroupView, setConGroupView] = useState(false);
   const [conExpanded, setConExpanded] = useState<Record<string, boolean>>({});
   const [conView, setConView] = useState<"branch" | "product">("branch");
@@ -93,7 +94,7 @@ export default function TransfersPage() {
     const params = new URLSearchParams({ lang: i18n.language === "ar" ? "ar" : "en" });
     if (conStartDate) params.set("start_date", conStartDate);
     if (conEndDate) params.set("end_date", conEndDate);
-    if (conBranchFilter !== "all") params.set("branch_id", conBranchFilter);
+    if (conBranches.length) params.set("branch_ids", conBranches.join(","));
     if (conProduct) {
       const [name, unit] = conProduct.split("||");
       params.set("item_name", name);
@@ -760,15 +761,42 @@ export default function TransfersPage() {
               {isOwnerManager && (
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">{t("branch")}</label>
-                  <select value={conBranchFilter} onChange={e => setConBranchFilter(e.target.value)}
-                    className="px-3 py-2 border rounded-lg text-sm">
-                    <option value="all">{t("all_branches")}</option>
-                    {consumption.map(bc => (
-                      <option key={bc.branch_id} value={bc.branch_id}>
-                        {i18n.language === "ar" ? (bc.branch_name_ar || bc.branch_name) : bc.branch_name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <button type="button" onClick={() => setConBranchOpen(o => !o)}
+                      className="px-3 py-2 border rounded-lg text-sm bg-white min-w-[200px] text-start flex items-center justify-between gap-2">
+                      <span className="truncate max-w-[240px]">
+                        {conBranches.length === 0 || conBranches.length === consumption.length
+                          ? t("all_branches")
+                          : consumption.filter(bc => conBranches.includes(bc.branch_id))
+                              .map(bc => i18n.language === "ar" ? (bc.branch_name_ar || bc.branch_name) : bc.branch_name).join(", ")}
+                      </span>
+                      <span className="text-gray-400">▾</span>
+                    </button>
+                    {conBranchOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setConBranchOpen(false)} />
+                        <div className="absolute z-20 mt-1 bg-white border rounded-lg shadow-lg py-1 min-w-[220px] max-h-72 overflow-y-auto">
+                          <label className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold border-b cursor-pointer hover:bg-gray-50">
+                            <input type="checkbox" className="w-4 h-4"
+                              checked={conBranches.length === 0 || conBranches.length === consumption.length}
+                              onChange={() => setConBranches([])} />
+                            {t("all_branches")}
+                          </label>
+                          {consumption.map(bc => (
+                            <label key={bc.branch_id} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
+                              <input type="checkbox" className="w-4 h-4"
+                                checked={conBranches.includes(bc.branch_id)}
+                                onChange={e => setConBranches(prev => {
+                                  const next = e.target.checked ? [...prev, bc.branch_id] : prev.filter(id => id !== bc.branch_id);
+                                  return next.length === consumption.length ? [] : next;
+                                })} />
+                              {i18n.language === "ar" ? (bc.branch_name_ar || bc.branch_name) : bc.branch_name}
+                            </label>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
               {conView === "product" && productCon && (
@@ -805,7 +833,7 @@ export default function TransfersPage() {
                 {t("filter")}
               </button>
               <button onClick={() => {
-                setConStartDate(""); setConEndDate(""); setConProduct("");
+                setConStartDate(""); setConEndDate(""); setConProduct(""); setConBranches([]);
                 loadConsumption("", "");
               }} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300">
                 {t("clear")}
@@ -826,9 +854,9 @@ export default function TransfersPage() {
           {conView === "product" && (() => {
             if (!productCon) return null;
             const isAr = i18n.language === "ar";
-            const cols = conBranchFilter === "all"
+            const cols = conBranches.length === 0
               ? productCon.branches
-              : productCon.branches.filter(b => b.branch_id === Number(conBranchFilter));
+              : productCon.branches.filter(b => conBranches.includes(b.branch_id));
             const q = conSearch.trim().toLowerCase();
             const rows = productCon.products
               .filter(p => cols.some(b => p.by_branch[String(b.branch_id)]))
@@ -955,9 +983,9 @@ export default function TransfersPage() {
           })()}
 
           {conView === "branch" && (() => {
-            const filtered = conBranchFilter === "all"
+            const filtered = conBranches.length === 0
               ? consumption
-              : consumption.filter(bc => bc.branch_id === Number(conBranchFilter));
+              : consumption.filter(bc => conBranches.includes(bc.branch_id));
 
             let cards: { key: string; title: string; title_ar: string; items: BranchConsumption["items"]; total_amount: number }[];
             if (conGroupView) {

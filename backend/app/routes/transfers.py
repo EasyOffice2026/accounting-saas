@@ -21,6 +21,16 @@ def list_transfer_items(db: Session = Depends(get_db), _=Depends(get_current_use
     return db.query(TransferItem).filter(TransferItem.is_active == True).order_by(TransferItem.name).all()
 
 
+def _require_item_manager(db: Session, user: User):
+    if user.role in ("owner", "manager", "accountant"):
+        return
+    if user.branch_id:
+        branch = db.query(Branch).filter(Branch.id == user.branch_id).first()
+        if branch and branch.is_central_kitchen:
+            return
+    raise HTTPException(403, "Only management or Central Kitchen can manage transfer items")
+
+
 @router.post("/items")
 def create_transfer_item(
     name: str = Form(...), name_ar: str = Form(""), unit: str = Form("pcs"),
@@ -28,6 +38,7 @@ def create_transfer_item(
     category: str = Form("food"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    _require_item_manager(db, user)
     item = TransferItem(name=name, name_ar=name_ar or None, unit=unit, unit_price=unit_price, opening_stock=opening_stock, category=category)
     db.add(item)
     db.commit()
@@ -43,6 +54,7 @@ def update_transfer_item(
     category: str = Form("food"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    _require_item_manager(db, user)
     item = db.query(TransferItem).filter(TransferItem.id == item_id).first()
     if not item:
         raise HTTPException(404, "Item not found")

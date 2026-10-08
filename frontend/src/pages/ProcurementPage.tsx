@@ -9,9 +9,9 @@ import { PO_STATUS_CLS } from "./PurchaseDashboardPage";
 import SupplierMasterTabs from "../components/SupplierMasterTabs";
 import ChannelSelect from "../components/ChannelSelect";
 
-type ProcTab = "orders" | "catalog" | "categories" | "invoices" | "ledger";
-const PROC_TABS: ProcTab[] = ["orders", "catalog", "categories", "invoices", "ledger"];
-const TAB_KEY: Record<ProcTab, string> = { orders: "po_orders", catalog: "supplier_catalog", categories: "purchase_categories", invoices: "po_invoices", ledger: "po_ledger" };
+type ProcTab = "orders" | "catalog" | "categories" | "invoices" | "ledger" | "products";
+const PROC_TABS: ProcTab[] = ["orders", "catalog", "categories", "invoices", "ledger", "products"];
+const TAB_KEY: Record<ProcTab, string> = { orders: "po_orders", catalog: "supplier_catalog", categories: "purchase_categories", invoices: "po_invoices", ledger: "po_ledger", products: "po_products" };
 
 interface Supplier { id: number; name: string; payment_type: string; category_id: number | null; category_name: string; }
 interface SupItem { id: number; item_name: string; item_name_ar: string; packaging: string; unit: string; unit_price: number; }
@@ -38,6 +38,9 @@ interface ScanResult {
   lines: ScanLineOut[]; discount: number; total: number; lines_total: number; warnings: string[]; duplicate: { po_no: string; date: string; total: number } | null; notes: string;
 }
 interface LedgerRow { supplier_id: number; supplier_name: string; invoices: number; opening: number; invoiced: number; paid: number; balance: number; overdue: number; open_invoices: number; }
+interface ProductRow { key: string; item_name: string; item_name_ar: string; unit: string; total_qty: number; total_amount: number; avg_price: number; min_price: number; max_price: number; last_price: number; last_date: string; orders: number; suppliers: number; }
+interface ProductLine { date: string; po_no: string; order_id: number; supplier_name: string; packaging: string; quantity: number; unit_price: number; amount: number; status: string; status_label: string; }
+interface ProductPurchases { products: ProductRow[]; total_amount: number; product?: ProductRow | null; lines?: ProductLine[]; }
 interface Ledger { suppliers: LedgerRow[]; total_balance: number; total_overdue: number; statement?: { date: string; kind: string; ref: string; po_no: string; debit: number; credit: number; balance: number }[]; }
 
 const inp = "border rounded px-2 py-1.5 text-sm w-full";
@@ -118,6 +121,12 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
   const [receiveOrder, setReceiveOrder] = useState<Order | null>(null);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
   const [payInvoice, setPayInvoice] = useState<Invoice | null>(null);
+  const [prodData, setProdData] = useState<ProductPurchases | null>(null);
+  const [prodKey, setProdKey] = useState("");
+  const [prodSup, setProdSup] = useState("");
+  const [prodFrom, setProdFrom] = useState("");
+  const [prodTo, setProdTo] = useState("");
+  const [prodSearch, setProdSearch] = useState("");
 
   const brandId = selectedBrand?.id || brands[0]?.id;
   const canApprove = APPROVERS.includes(user?.role || "");
@@ -142,12 +151,22 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
     apiGet(`/api/procurement/invoices?${q}`).then(setInvoices);
   };
   const loadLedger = () => apiGet(`/api/procurement/ledger${ledgerSup ? `?supplier_id=${ledgerSup}` : ""}`).then(setLedger);
-  const reload = () => { loadOrders(); loadInvoices(); loadLedger(); };
+  const prodParams = (withKey: boolean) => {
+    const q = new URLSearchParams();
+    if (prodSup) q.set("supplier_id", prodSup);
+    if (prodFrom) q.set("date_from", prodFrom);
+    if (prodTo) q.set("date_to", prodTo);
+    if (withKey && prodKey) q.set("key", prodKey);
+    return q;
+  };
+  const loadProducts = () => { if (tab === "products") apiGet(`/api/procurement/product-purchases?${prodParams(true)}`).then(setProdData); };
+  const reload = () => { loadOrders(); loadInvoices(); loadLedger(); loadProducts(); };
 
   useEffect(() => { loadRefs(); }, [selectedBrand?.id]);
   useEffect(() => { loadOrders(); }, [selectedBrand?.id, statusFilter, supFilter]);
   useEffect(() => { loadInvoices(); }, [selectedBrand?.id, supFilter]);
   useEffect(() => { loadLedger(); }, [selectedBrand?.id, ledgerSup]);
+  useEffect(() => { loadProducts(); }, [tab, selectedBrand?.id, prodSup, prodFrom, prodTo, prodKey]);
   useEffect(() => {
     if (params.get("new") === "1") { setEditOrder(null); setShowForm(true); params.delete("new"); setParams(params, { replace: true }); }
   }, []);
@@ -173,6 +192,12 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
   };
   const exportTab = (fmt: string) => {
     const ext = fmt === "excel" ? "xlsx" : fmt;
+    if (tab === "products") {
+      const q = prodParams(true);
+      q.set("lang", ar ? "ar" : "en");
+      apiDownload(`/api/procurement/export/products/${fmt}?${q}`, `product_purchases.${ext}`);
+      return;
+    }
     apiDownload(`/api/procurement/export/${tab}/${fmt}`, `purchase_${tab}.${ext}`);
   };
 
@@ -316,6 +341,119 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
           </table>
         </div>
       )}
+
+      {tab === "products" && prodData && (() => {
+        const sel = prodData.product;
+        const q = prodSearch.trim().toLowerCase();
+        const list = prodData.products.filter(p => !q || p.item_name.toLowerCase().includes(q) || p.item_name_ar.includes(prodSearch.trim()));
+        const pname = (p: ProductRow) => (ar ? (p.item_name_ar || p.item_name) : p.item_name);
+        return (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2 items-end">
+              <div>
+                <label className="block text-xs text-gray-500">{t("po_products_select")}</label>
+                <select className="border rounded px-2 py-1.5 text-sm min-w-[240px]" value={prodKey} onChange={e => setProdKey(e.target.value)}>
+                  <option value="">{t("po_all_products")}</option>
+                  {[...prodData.products].sort((a, b) => pname(a).localeCompare(pname(b))).map(p => (
+                    <option key={p.key} value={p.key}>{pname(p)} ({p.unit})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500">{t("po_supplier")}</label>
+                <select className="border rounded px-2 py-1.5 text-sm" value={prodSup} onChange={e => setProdSup(e.target.value)}>
+                  <option value="">{t("po_all_suppliers")}</option>
+                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500">{t("from")}</label>
+                <input type="date" className="border rounded px-2 py-1.5 text-sm" value={prodFrom} onChange={e => setProdFrom(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500">{t("to")}</label>
+                <input type="date" className="border rounded px-2 py-1.5 text-sm" value={prodTo} onChange={e => setProdTo(e.target.value)} />
+              </div>
+              {!prodKey && (
+                <input className="border rounded px-2 py-1.5 text-sm" placeholder={t("po_search_product")} value={prodSearch} onChange={e => setProdSearch(e.target.value)} />
+              )}
+              <button onClick={() => { setProdKey(""); setProdSup(""); setProdFrom(""); setProdTo(""); setProdSearch(""); }} className={`${btn} bg-gray-200`}>{t("clear")}</button>
+            </div>
+            <p className="text-xs text-gray-500">{t("po_products_hint")}</p>
+
+            {prodKey && sel && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <h3 className="text-lg font-semibold text-gray-800">{pname(sel)} <span className="text-sm text-gray-500">({sel.unit})</span></h3>
+                  <button onClick={() => setProdKey("")} className={`${btn} bg-gray-200`}>{t("po_all_products")}</button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {[
+                    [t("total_qty"), `${sel.total_qty} ${sel.unit}`],
+                    [t("po_avg_price"), kd(sel.avg_price)],
+                    [t("total_amount"), `KD ${kd(sel.total_amount)}`],
+                    [t("po_price_range"), `${kd(sel.min_price)} – ${kd(sel.max_price)}`],
+                    [t("po_last_price"), `${kd(sel.last_price)} (${sel.last_date})`],
+                  ].map(([l, v]) => (
+                    <div key={l} className="bg-white rounded-lg shadow p-3">
+                      <div className="text-xs text-gray-500">{l}</div>
+                      <div className="text-base font-bold text-gray-800">{v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-white rounded-lg shadow overflow-x-auto">
+                  <table className="w-full text-sm min-w-[700px]">
+                    <thead className="bg-gray-50 text-xs text-gray-600"><tr>
+                      <th className="text-start p-2">{t("date")}</th><th className="text-start p-2">{t("po_no")}</th><th className="text-start p-2">{t("po_supplier")}</th>
+                      <th className="text-start p-2">{t("po_packaging")}</th><th className="text-end p-2">{t("po_qty")}</th><th className="text-end p-2">{t("po_unit_price")}</th>
+                      <th className="text-end p-2">{t("total_amount")}</th><th className="text-start p-2">{t("po_prod_status")}</th>
+                    </tr></thead>
+                    <tbody>
+                      {(prodData.lines || []).map((l, i) => (
+                        <tr key={i} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => openDetail(l.order_id)}>
+                          <td className="p-2">{l.date}</td><td className="p-2 font-mono text-emerald-700">{l.po_no}</td><td className="p-2">{l.supplier_name}</td>
+                          <td className="p-2">{l.packaging}</td><td className="p-2 text-end">{l.quantity}</td><td className="p-2 text-end">{kd(l.unit_price)}</td>
+                          <td className="p-2 text-end font-semibold">{kd(l.amount)}</td><td className="p-2">{badge(l.status, l.status_label)}</td>
+                        </tr>
+                      ))}
+                      <tr className="border-t bg-emerald-50 font-bold">
+                        <td className="p-2" colSpan={4}>{t("grand_total")}</td><td className="p-2 text-end">{sel.total_qty}</td>
+                        <td className="p-2 text-end">{kd(sel.avg_price)}</td><td className="p-2 text-end">{kd(sel.total_amount)}</td><td></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {!prodKey && (
+              <div className="bg-white rounded-lg shadow overflow-x-auto">
+                <table className="w-full text-sm min-w-[800px]">
+                  <thead className="bg-gray-50 text-xs text-gray-600"><tr>
+                    <th className="text-start p-2">{t("po_item")}</th><th className="text-start p-2">{t("po_unit")}</th><th className="text-end p-2">{t("total_qty")}</th>
+                    <th className="text-end p-2">{t("po_avg_price")}</th><th className="text-end p-2">{t("po_last_price")}</th><th className="text-end p-2">{t("po_orders_count")}</th>
+                    <th className="text-end p-2">{t("total_amount")}</th>
+                  </tr></thead>
+                  <tbody>
+                    {list.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-gray-500">{t("po_none")}</td></tr>}
+                    {list.map(p => (
+                      <tr key={p.key} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => setProdKey(p.key)}>
+                        <td className="p-2 text-emerald-700 font-medium">{pname(p)}{p.item_name_ar && <span className="text-xs text-gray-400 ms-1">({ar ? p.item_name : p.item_name_ar})</span>}</td>
+                        <td className="p-2">{p.unit}</td><td className="p-2 text-end">{p.total_qty}</td><td className="p-2 text-end">{kd(p.avg_price)}</td>
+                        <td className="p-2 text-end">{kd(p.last_price)}</td><td className="p-2 text-end">{p.orders}</td><td className="p-2 text-end font-semibold">{kd(p.total_amount)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t bg-emerald-50 font-bold">
+                      <td className="p-2" colSpan={6}>{t("grand_total")}</td>
+                      <td className="p-2 text-end">{kd(list.reduce((a, p) => a + p.total_amount, 0))}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {tab === "ledger" && ledger && (
         <div className="space-y-4">

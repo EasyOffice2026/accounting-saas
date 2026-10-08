@@ -857,6 +857,76 @@ def supplier_ledger(brand_id: Optional[int] = None, supplier_id: Optional[int] =
     return out
 
 
+PURCHASED_STATUSES = ("received", "invoiced", "paid", "closed")
+
+
+def _product_key(name: Optional[str], unit: Optional[str]) -> str:
+    return f"{(name or '').strip().lower()}|{(unit or 'pcs').strip().lower()}"
+
+
+@router.get("/product-purchases")
+def product_purchases(brand_id: Optional[int] = None, supplier_id: Optional[int] = None,
+                      date_from: Optional[str] = None, date_to: Optional[str] = None, key: Optional[str] = None,
+                      db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Received Central Purchases per product (name + unit); with `key`, the purchase lines of that product."""
+    _require(user)
+    _check_brand(user, brand_id)
+    q = db.query(ProcOrderItem, ProcOrder).join(ProcOrder, ProcOrder.id == ProcOrderItem.order_id)\
+        .filter(ProcOrder.status.in_(PURCHASED_STATUSES))
+    allowed = user.get_allowed_brands()
+    if allowed is not None:
+        q = q.filter(ProcOrder.brand_id.in_(allowed))
+    if brand_id:
+        q = q.filter(ProcOrder.brand_id == brand_id)
+    if supplier_id:
+        q = q.filter(ProcOrder.supplier_id == supplier_id)
+    if date_from:
+        q = q.filter(ProcOrder.date >= _d(date_from))
+    if date_to:
+        q = q.filter(ProcOrder.date <= _d(date_to))
+    sups = {s.id: s.name for s in db.query(Supplier).all()}
+    products: dict = {}
+    orders: dict = {}
+    suppliers_by: dict = {}
+    lines = []
+    for it, o in q.order_by(ProcOrder.date.asc(), ProcOrder.id.asc(), ProcOrderItem.id.asc()).all():
+        qty = float(it.received_qty if it.received_qty is not None else (it.quantity or 0))
+        amount = float(it.received_total if it.received_total is not None else (it.total or 0))
+        k = _product_key(it.item_name, it.unit)
+        p = products.setdefault(k, {"key": k, "item_name": (it.item_name or "").strip(), "item_name_ar": it.item_name_ar or "",
+                                    "unit": it.unit or "pcs", "total_qty": 0.0, "total_amount": 0.0,
+                                    "min_price": None, "max_price": None, "last_price": 0.0, "last_date": ""})
+        if not p["item_name_ar"] and it.item_name_ar:
+            p["item_name_ar"] = it.item_name_ar
+        p["total_qty"] += qty
+        p["total_amount"] += amount
+        price = float(it.unit_price or 0)
+        p["min_price"] = price if p["min_price"] is None else min(p["min_price"], price)
+        p["max_price"] = price if p["max_price"] is None else max(p["max_price"], price)
+        p["last_price"], p["last_date"] = price, str(o.date)
+        orders.setdefault(k, set()).add(o.id)
+        suppliers_by.setdefault(k, set()).add(o.supplier_id)
+        if key and k == key:
+            lines.append({"date": str(o.date), "po_no": o.po_no, "order_id": o.id,
+                          "supplier_name": sups.get(o.supplier_id, ""), "packaging": it.packaging or "",
+                          "quantity": round(qty, 3), "unit_price": round(price, 3), "amount": round(amount, 3),
+                          "status": o.status, "status_label": STATUS_FLOW.get(o.status, o.status)})
+    rows = []
+    for k, p in products.items():
+        p["orders"] = len(orders[k])
+        p["suppliers"] = len(suppliers_by[k])
+        p["avg_price"] = round(p["total_amount"] / p["total_qty"], 3) if p["total_qty"] else 0.0
+        for f in ("total_qty", "total_amount", "min_price", "max_price", "last_price"):
+            p[f] = round(p[f] or 0, 3)
+        rows.append(p)
+    rows.sort(key=lambda r: -r["total_amount"])
+    out = {"products": rows, "total_amount": round(sum(r["total_amount"] for r in rows), 3)}
+    if key:
+        out["product"] = products.get(key)
+        out["lines"] = list(reversed(lines))
+    return out
+
+
 # ---------------------------------------------------------------- exports / print
 
 @router.get("/export/orders/{fmt}")
@@ -897,6 +967,36 @@ def export_ledger(fmt: str, brand_id: Optional[int] = None, db: Session = Depend
     data = [[r["supplier_name"], r["opening"], r["invoices"], r["open_invoices"], r["invoiced"], r["paid"], r["balance"], r["overdue"]]
             for r in led["suppliers"]]
     return _respond(fmt, header, data, "purchase_office_supplier_ledger", title="Purchase Office - Supplier Ledger")
+
+@router.get("/export/products/{fmt}")
+def export_product_purchases(fmt: str, brand_id: Optional[int] = None, supplier_id: Optional[int] = None,
+                             date_from: Optional[str] = None, date_to: Optional[str] = None,
+                             key: Optional[str] = None, lang: str = "en",
+                             db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    from app.routes.export import _respond
+    data = product_purchases(brand_id=brand_id, supplier_id=supplier_id, date_from=date_from, date_to=date_to,
+                             key=key, db=db, user=user)
+    is_ar = lang == "ar"
+    period = f" ({date_from or '...'} - {date_to or '...'})" if (date_from or date_to) else ""
+    p = data.get("product")
+    if key and p:
+        name = (p["item_name_ar"] or p["item_name"]) if is_ar else p["item_name"]
+        header = (["التاريخ", "رقم أمر الشراء", "المورد", "التعبئة", "الكمية", "سعر الوحدة", "المبلغ", "الحالة"] if is_ar
+                  else ["Date", "PO No", "Supplier", "Packaging", "Qty", "Unit Price", "Amount", "Status"])
+        rows = [[l["date"], l["po_no"], l["supplier_name"], l["packaging"], l["quantity"], f"{l['unit_price']:.3f}",
+                 f"{l['amount']:.3f}", l["status_label"]] for l in data["lines"]]
+        rows.append(["الإجمالي" if is_ar else "Total", "", "", p["unit"], p["total_qty"], f"{p['avg_price']:.3f}",
+                     f"{p['total_amount']:.3f}", ""])
+        title = (f"مشتريات الصنف: {name}{period}" if is_ar else f"Product Purchases: {name}{period}")
+        return _respond(fmt, header, rows, "product_purchases_detail", title=title, summary_rows=1, lang=lang)
+    header = (["الصنف", "الوحدة", "الكمية", "متوسط السعر", "أقل سعر", "أعلى سعر", "آخر سعر", "عدد الطلبات", "إجمالي المبلغ"] if is_ar
+              else ["Item", "Unit", "Total Qty", "Avg. Price", "Min Price", "Max Price", "Last Price", "Orders", "Total Amount"])
+    rows = [[(r["item_name_ar"] or r["item_name"]) if is_ar else r["item_name"], r["unit"], r["total_qty"],
+             f"{r['avg_price']:.3f}", f"{r['min_price']:.3f}", f"{r['max_price']:.3f}", f"{r['last_price']:.3f}",
+             r["orders"], f"{r['total_amount']:.3f}"] for r in data["products"]]
+    rows.append(["الإجمالي" if is_ar else "Total", "", "", "", "", "", "", "", f"{data['total_amount']:.3f}"])
+    title = (f"مشتريات الأصناف - المشتريات المركزية{period}" if is_ar else f"Central Purchases - Product Purchases{period}")
+    return _respond(fmt, header, rows, "product_purchases", title=title, summary_rows=1, lang=lang)
 
 
 @router.get("/suppliers/{supplier_id}/statement/{fmt}")

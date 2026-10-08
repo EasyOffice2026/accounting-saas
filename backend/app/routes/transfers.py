@@ -285,8 +285,9 @@ def receive_order(
 # --- Branch Summary (quantity & amount given to each branch) ---
 def _consumption_rows(db: Session, user: User, brand_id: Optional[int],
                       start_date: Optional[str], end_date: Optional[str]):
-    """Dispatched qty grouped by receiving branch and item, valued at the item's current unit price."""
-    from sqlalchemy import func
+    """Dispatched qty grouped by receiving branch and item. Lines in the item's current unit are
+    valued at its current price; lines recorded in another unit keep their transfer price."""
+    from sqlalchemy import case, func
     bb_ids = _brand_branch_ids(db, brand_id)
     q = db.query(
         TransferOrder.requesting_branch_id,
@@ -294,7 +295,11 @@ def _consumption_rows(db: Session, user: User, brand_id: Optional[int],
         TransferItem.name_ar.label("item_name_ar"),
         TransferItem.unit.label("unit"),
         func.sum(TransferOrderLine.dispatched_qty).label("total_qty"),
-        (func.sum(TransferOrderLine.dispatched_qty) * func.coalesce(TransferItem.unit_price, 0)).label("total_amount"),
+        func.sum(TransferOrderLine.dispatched_qty * case(
+            (func.lower(func.trim(TransferOrderLine.unit)) == func.lower(func.trim(TransferItem.unit)),
+             func.coalesce(TransferItem.unit_price, 0)),
+            else_=func.coalesce(TransferOrderLine.unit_price, 0),
+        )).label("total_amount"),
     ).join(
         TransferOrderLine, TransferOrderLine.transfer_order_id == TransferOrder.id
     ).join(
@@ -325,7 +330,6 @@ def _consumption_rows(db: Session, user: User, brand_id: Optional[int],
         TransferItem.name,
         TransferItem.name_ar,
         TransferItem.unit,
-        TransferItem.unit_price,
     )
     return q.all()
 

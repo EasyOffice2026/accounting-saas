@@ -257,6 +257,8 @@ export default {
   branch_consumption: "Branch Consumption",
   con_by_branch: "By Branch",
   con_by_product: "By Product",
+  con_product: "Product",
+  con_all_products: "All products",
   product_consumption: "Product-wise Consumption",
   avg_price: "Avg. Price",
   search_item: "Search item",

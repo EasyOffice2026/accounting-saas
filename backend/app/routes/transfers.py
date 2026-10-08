@@ -431,10 +431,34 @@ def _fmt_qty(v: float) -> str:
 @router.get("/product-summary/{fmt}")
 def export_product_consumption(fmt: str, brand_id: Optional[int] = None, branch_id: Optional[int] = None,
                                start_date: Optional[str] = None, end_date: Optional[str] = None,
+                               item_name: Optional[str] = None, unit: Optional[str] = None,
                                lang: str = "en", db: Session = Depends(get_db),
                                user: User = Depends(get_current_user)):
     data = _product_consumption(db, user, brand_id, start_date, end_date, branch_id)
     is_ar = lang == "ar"
+    period = f"{start_date or '...'} - {end_date or '...'}" if (start_date or end_date) else ("كل الفترات" if is_ar else "All dates")
+    if item_name:
+        p = next((x for x in data["products"] if x["item_name"] == item_name and (unit is None or x["unit"] == unit)), None)
+        if not p:
+            raise HTTPException(404, "Item not found")
+        name = (p["item_name_ar"] or p["item_name"]) if is_ar else p["item_name"]
+        header = (["الفرع", "الكمية", "الوحدة", "متوسط السعر", "المبلغ", "النسبة %"] if is_ar
+                  else ["Branch", "Qty", "Unit", "Avg. Price", "Amount", "Share %"])
+        rows = []
+        for b in sorted(data["branches"], key=lambda b: -p["by_branch"].get(b["branch_id"], {}).get("qty", 0)):
+            c = p["by_branch"].get(b["branch_id"])
+            if not c:
+                continue
+            bname = (b["branch_name_ar"] or b["branch_name"]) if is_ar else b["branch_name"]
+            share = c["qty"] / p["total_qty"] * 100 if p["total_qty"] else 0
+            rows.append([bname, _fmt_qty(c["qty"]), p["unit"], f"{(c['amount'] / c['qty']) if c['qty'] else 0:.3f}",
+                         f"{c['amount']:.3f}", f"{share:.1f}"])
+        avg = p["total_amount"] / p["total_qty"] if p["total_qty"] else 0
+        rows.append(["الإجمالي" if is_ar else "Total", _fmt_qty(p["total_qty"]), p["unit"], f"{avg:.3f}",
+                     f"{p['total_amount']:.3f}", "100"])
+        title = (f"استهلاك الصنف حسب الفرع: {name} ({period})" if is_ar
+                 else f"Branch Consumption: {name} ({period})")
+        return _respond(fmt, header, rows, "product_consumption_item", title, summary_rows=1, lang=lang)
     branch_names = [(b["branch_name_ar"] or b["branch_name"]) if is_ar else b["branch_name"] for b in data["branches"]]
     if is_ar:
         header = ["الصنف", "الوحدة", *branch_names, "إجمالي الكمية", "متوسط السعر", "إجمالي المبلغ"]
@@ -449,6 +473,5 @@ def export_product_consumption(fmt: str, brand_id: Optional[int] = None, branch_
                      _fmt_qty(p["total_qty"]), f"{avg:.3f}", f"{p['total_amount']:.3f}"])
     rows.append(["إجمالي المبلغ" if is_ar else "Total Amount", "",
                  *[f"{b['total_amount']:.3f}" for b in data["branches"]], "", "", f"{data['total_amount']:.3f}"])
-    period = f"{start_date or '...'} - {end_date or '...'}" if (start_date or end_date) else ("كل الفترات" if is_ar else "All dates")
     title = f"استهلاك الأصناف حسب الفرع ({period})" if is_ar else f"Product-wise Consumption by Branch ({period})"
     return _respond(fmt, header, rows, "product_consumption", title, summary_rows=1, lang=lang)

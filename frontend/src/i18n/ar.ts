@@ -257,6 +257,8 @@ export default {
   branch_consumption: "استهلاك الفروع",
   con_by_branch: "حسب الفرع",
   con_by_product: "حسب الصنف",
+  con_product: "الصنف",
+  con_all_products: "كل الأصناف",
   product_consumption: "استهلاك الأصناف حسب الفرع",
   avg_price: "متوسط السعر",
   search_item: "ابحث عن صنف",

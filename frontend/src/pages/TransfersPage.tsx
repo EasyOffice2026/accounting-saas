@@ -76,6 +76,7 @@ export default function TransfersPage() {
   const [conView, setConView] = useState<"branch" | "product">("branch");
   const [productCon, setProductCon] = useState<ProductConsumption | null>(null);
   const [conSearch, setConSearch] = useState("");
+  const [conProduct, setConProduct] = useState("");
   const [branchFilter, setBranchFilter] = useState<string>("");
 
 
@@ -93,6 +94,11 @@ export default function TransfersPage() {
     if (conStartDate) params.set("start_date", conStartDate);
     if (conEndDate) params.set("end_date", conEndDate);
     if (conBranchFilter !== "all") params.set("branch_id", conBranchFilter);
+    if (conProduct) {
+      const [name, unit] = conProduct.split("||");
+      params.set("item_name", name);
+      params.set("unit", unit);
+    }
     apiDownload(`/api/transfers/product-summary/${fmt}?${params}`,
       `product_consumption.${fmt === "excel" ? "xlsx" : "pdf"}`);
   };
@@ -765,6 +771,19 @@ export default function TransfersPage() {
                   </select>
                 </div>
               )}
+              {conView === "product" && productCon && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t("con_product")}</label>
+                  <select value={conProduct} onChange={e => setConProduct(e.target.value)}
+                    className="px-3 py-2 border rounded-lg text-sm min-w-[220px]">
+                    <option value="">{t("con_all_products")}</option>
+                    {[...productCon.products]
+                      .map(p => ({ key: `${p.item_name}||${p.unit}`, label: `${i18n.language === "ar" ? (p.item_name_ar || p.item_name) : p.item_name} (${p.unit})` }))
+                      .sort((a, b) => a.label.localeCompare(b.label))
+                      .map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                  </select>
+                </div>
+              )}
               {isOwnerManager && conView === "branch" && (
                 <label className="flex items-center gap-2 text-sm text-gray-700 pb-2 cursor-pointer">
                   <input type="checkbox" checked={conGroupView} onChange={e => setConGroupView(e.target.checked)}
@@ -786,15 +805,15 @@ export default function TransfersPage() {
                 {t("filter")}
               </button>
               <button onClick={() => {
-                setConStartDate(""); setConEndDate("");
+                setConStartDate(""); setConEndDate(""); setConProduct("");
                 loadConsumption("", "");
               }} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300">
                 {t("clear")}
               </button>
               {conView === "product" && (
                 <>
-                  <input value={conSearch} onChange={e => setConSearch(e.target.value)} placeholder={t("search_item")}
-                    className="px-3 py-2 border rounded-lg text-sm" />
+                  {!conProduct && <input value={conSearch} onChange={e => setConSearch(e.target.value)} placeholder={t("search_item")}
+                    className="px-3 py-2 border rounded-lg text-sm" />}
                   <button onClick={() => exportProductConsumption("excel")}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">{t("export_excel")}</button>
                   <button onClick={() => exportProductConsumption("pdf")}
@@ -819,6 +838,56 @@ export default function TransfersPage() {
             const rowAmt = (p: ProductConsumption["products"][number]) =>
               cols.reduce((s, b) => s + (p.by_branch[String(b.branch_id)]?.amount || 0), 0);
             const fmtQty = (v: number) => (v ? String(Math.round(v * 1000) / 1000) : "-");
+            const selected = conProduct ? productCon.products.find(p => `${p.item_name}||${p.unit}` === conProduct) : undefined;
+            if (selected) {
+              const brRows = cols.map(b => ({ b, c: selected.by_branch[String(b.branch_id)] })).filter(r => r.c);
+              const tq = brRows.reduce((a, r) => a + r.c.qty, 0);
+              const ta = brRows.reduce((a, r) => a + r.c.amount, 0);
+              return (
+                <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+                  <div className="px-5 py-3 bg-gray-50 border-b flex items-center justify-between flex-wrap gap-2">
+                    <span className="font-semibold text-gray-800">
+                      {isAr ? (selected.item_name_ar || selected.item_name) : selected.item_name}
+                      <span className="text-sm text-gray-500 ms-1">({selected.unit})</span>
+                    </span>
+                    <span className="text-sm font-bold text-emerald-700">{t("total_qty")}: {fmtQty(tq)} · {t("total_amount")}: {ta.toFixed(3)}</span>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-start">{t("branch")}</th>
+                        <th className="px-3 py-2 text-end">{t("total_qty")}</th>
+                        <th className="px-3 py-2 text-start">{t("unit")}</th>
+                        <th className="px-3 py-2 text-end">{t("avg_price")}</th>
+                        <th className="px-3 py-2 text-end">{t("total_amount")}</th>
+                        <th className="px-3 py-2 text-end">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {brRows.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-400">{t("no_data")}</td></tr>}
+                      {[...brRows].sort((a, z) => z.c.qty - a.c.qty).map(({ b, c }) => (
+                        <tr key={b.branch_id} className="border-t">
+                          <td className="px-4 py-2 font-medium">{isAr ? (b.branch_name_ar || b.branch_name) : b.branch_name}</td>
+                          <td className="px-3 py-2 text-end font-mono font-semibold">{fmtQty(c.qty)}</td>
+                          <td className="px-3 py-2">{selected.unit}</td>
+                          <td className="px-3 py-2 text-end font-mono">{c.qty ? (c.amount / c.qty).toFixed(3) : "0.000"}</td>
+                          <td className="px-3 py-2 text-end font-mono font-semibold">{c.amount.toFixed(3)}</td>
+                          <td className="px-3 py-2 text-end text-gray-500">{tq ? ((c.qty / tq) * 100).toFixed(1) : "0.0"}%</td>
+                        </tr>
+                      ))}
+                      <tr className="border-t bg-emerald-50 font-bold">
+                        <td className="px-4 py-2">{t("grand_total")}</td>
+                        <td className="px-3 py-2 text-end font-mono">{fmtQty(tq)}</td>
+                        <td className="px-3 py-2">{selected.unit}</td>
+                        <td className="px-3 py-2 text-end font-mono">{tq ? (ta / tq).toFixed(3) : "0.000"}</td>
+                        <td className="px-3 py-2 text-end font-mono text-emerald-700">{ta.toFixed(3)}</td>
+                        <td className="px-3 py-2 text-end">100%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              );
+            }
             if (rows.length === 0) {
               return <div className="bg-white rounded-xl shadow-sm border p-8 text-center text-gray-400">{t("no_data")}</div>;
             }

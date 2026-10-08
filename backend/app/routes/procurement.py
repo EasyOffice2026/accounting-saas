@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import date, datetime, timezone
 from typing import Optional
-import os, uuid, json
+import os, re, uuid, json
 
 from app.database import get_db, UPLOAD_DIR
 from app.models.procurement import ProcOrder, ProcOrderItem, ProcInvoice, ProcPayment, ProcOrderLog
@@ -887,9 +887,11 @@ PURCHASED_STATUSES = ("received", "invoiced", "paid", "closed")
 STATUS_AR = {"received": "مستلم", "invoiced": "مفوتر", "paid": "مدفوع", "closed": "مغلق"}
 
 
-def _product_key(name: Optional[str], unit: Optional[str]) -> str:
-    norm = " ".join((name or "").replace("×", "x").lower().split())
-    return f"{norm}|{(unit or 'pcs').strip().lower()}"
+def _product_key(name: Optional[str], unit: Optional[str] = None) -> str:
+    """Same product whatever the spacing, punctuation, ×/X/*, trailing decimal zeros or unit typed on the PO line."""
+    s = (name or "").lower().replace("×", "x").replace("*", "x")
+    s = re.sub(r"(\d)\.(\d*?)0+(?!\d)", lambda m: m.group(1) + ("." + m.group(2) if m.group(2) else ""), s)
+    return re.sub(r"[^0-9a-z.\u0600-\u06ff]|\.(?!\d)", "", s)
 
 
 @router.get("/product-purchases")
@@ -918,13 +920,19 @@ def product_purchases(brand_id: Optional[int] = None, supplier_id: Optional[int]
     orders: dict = {}
     suppliers_by: dict = {}
     lines = []
+    name_counts: dict = {}
+    unit_counts: dict = {}
     for it, o in q.order_by(ProcOrder.date.asc(), ProcOrder.id.asc(), ProcOrderItem.id.asc()).all():
         qty = float(it.received_qty if it.received_qty is not None else (it.quantity or 0))
         amount = float(it.received_total if it.received_total is not None else (it.total or 0))
         cat_item = catalog.get(it.supplier_item_id) if it.supplier_item_id else None
         name = cat_item.item_name if cat_item and cat_item.item_name else it.item_name
         name_ar = (cat_item.item_name_ar if cat_item else None) or it.item_name_ar or ""
-        k = _product_key(name, it.unit)
+        k = _product_key(name)
+        nc = name_counts.setdefault(k, {})
+        nc[(name or "").strip()] = nc.get((name or "").strip(), 0) + 1
+        uc = unit_counts.setdefault(k, {})
+        uc[(it.unit or "pcs").strip()] = uc.get((it.unit or "pcs").strip(), 0) + 1
         p = products.setdefault(k, {"key": k, "item_name": (name or "").strip(), "item_name_ar": name_ar,
                                     "unit": it.unit or "pcs", "total_qty": 0.0, "total_amount": 0.0,
                                     "min_price": None, "max_price": None, "last_price": 0.0, "last_date": ""})
@@ -945,6 +953,8 @@ def product_purchases(brand_id: Optional[int] = None, supplier_id: Optional[int]
                           "status": o.status, "status_label": STATUS_FLOW.get(o.status, o.status)})
     rows = []
     for k, p in products.items():
+        p["item_name"] = max(name_counts[k].items(), key=lambda x: x[1])[0]
+        p["unit"] = max(unit_counts[k].items(), key=lambda x: x[1])[0]
         p["orders"] = len(orders[k])
         p["suppliers"] = len(suppliers_by[k])
         p["avg_price"] = round(p["total_amount"] / p["total_qty"], 3) if p["total_qty"] else 0.0

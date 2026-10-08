@@ -106,7 +106,7 @@ export default function TransfersPage() {
   const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   const isStaff = user?.role === "staff";
   const isCentralKitchen = branches.find(b => b.id === user?.branch_id)?.is_central_kitchen || false;
-  const canManageItems = isOwnerManager || isCentralKitchen;
+  const canManageItems = isOwnerManager;
   // Branches for each brand selector (branches with no brand, e.g. Central Kitchen, are always shown)
   const fromBranches = branches.filter(b => !fromBrandId || b.brand_id === Number(fromBrandId) || b.brand_id == null);
   const toBranches = branches.filter(b => !toBrandId || b.brand_id === Number(toBrandId) || b.brand_id == null);

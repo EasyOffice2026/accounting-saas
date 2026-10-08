@@ -13,6 +13,7 @@ class TransferItem(Base):
     unit_price = Column(Float, default=0)
     opening_stock = Column(Float, default=0)
     category = Column(String, default="food")  # food, packaging
+    sort_order = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True)
 
 

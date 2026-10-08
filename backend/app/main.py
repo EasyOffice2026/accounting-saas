@@ -387,6 +387,9 @@ def _migrate_columns():
             if "opening_stock" not in cols:
                 conn.execute(text("ALTER TABLE transfer_items ADD COLUMN opening_stock FLOAT DEFAULT 0"))
                 conn.commit()
+            if "sort_order" not in cols:
+                conn.execute(text("ALTER TABLE transfer_items ADD COLUMN sort_order INTEGER"))
+                conn.commit()
 
         # Transfer order lines: add unit_price
         if "transfer_order_lines" in insp.get_table_names():

@@ -45,6 +45,10 @@ export default function TransfersPage() {
   const [toBrandId, setToBrandId] = useState<number | "">("");
   const [tab, setTab] = useState<Tab>("requests");
   const [items, setItems] = useState<TItem[]>([]);
+  const itemPos = (name: string) => {
+    const i = items.findIndex(it => it.name === name);
+    return i < 0 ? items.length : i;
+  };
   const [orders, setOrders] = useState<TOrder[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -806,8 +810,8 @@ export default function TransfersPage() {
                     className="px-3 py-2 border rounded-lg text-sm min-w-[220px]">
                     <option value="">{t("con_all_products")}</option>
                     {[...productCon.products]
-                      .map(p => ({ key: `${p.item_name}||${p.unit}`, label: `${i18n.language === "ar" ? (p.item_name_ar || p.item_name) : p.item_name} (${p.unit})` }))
-                      .sort((a, b) => a.label.localeCompare(b.label))
+                      .map(p => ({ key: `${p.item_name}||${p.unit}`, pos: itemPos(p.item_name), label: `${i18n.language === "ar" ? (p.item_name_ar || p.item_name) : p.item_name} (${p.unit})` }))
+                      .sort((a, b) => a.pos - b.pos || a.label.localeCompare(b.label))
                       .map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
                   </select>
                 </div>

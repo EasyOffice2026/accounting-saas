@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Form, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from datetime import date, datetime, timezone
 from typing import Optional
 import json
@@ -15,10 +16,13 @@ from app.routes.export import _respond
 router = APIRouter(prefix="/api/transfers", tags=["transfers"])
 
 
+ITEM_ORDER = (TransferItem.sort_order.is_(None), TransferItem.sort_order, func.lower(TransferItem.name))
+
+
 # --- Transfer Items (Central Kitchen catalog) ---
 @router.get("/items")
 def list_transfer_items(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return db.query(TransferItem).filter(TransferItem.is_active == True).order_by(TransferItem.name).all()
+    return db.query(TransferItem).filter(TransferItem.is_active == True).order_by(*ITEM_ORDER).all()
 
 
 def _require_item_manager(user: User):
@@ -363,7 +367,7 @@ def inventory_stock(start_date: Optional[str] = None, end_date: Optional[str] = 
                     db: Session = Depends(get_db), _=Depends(get_current_user)):
     """Get stock status for all active items: opening_stock, total_dispatched, remaining."""
     from sqlalchemy import func
-    all_items = db.query(TransferItem).filter(TransferItem.is_active == True).order_by(TransferItem.name).all()
+    all_items = db.query(TransferItem).filter(TransferItem.is_active == True).order_by(*ITEM_ORDER).all()
     # Sum dispatched qty per item_id across all orders
     dq = db.query(
         TransferOrderLine.item_id,

@@ -860,8 +860,12 @@ def supplier_ledger(brand_id: Optional[int] = None, supplier_id: Optional[int] =
 PURCHASED_STATUSES = ("received", "invoiced", "paid", "closed")
 
 
+STATUS_AR = {"received": "مستلم", "invoiced": "مفوتر", "paid": "مدفوع", "closed": "مغلق"}
+
+
 def _product_key(name: Optional[str], unit: Optional[str]) -> str:
-    return f"{(name or '').strip().lower()}|{(unit or 'pcs').strip().lower()}"
+    norm = " ".join((name or "").replace("×", "x").lower().split())
+    return f"{norm}|{(unit or 'pcs').strip().lower()}"
 
 
 @router.get("/product-purchases")
@@ -885,6 +889,7 @@ def product_purchases(brand_id: Optional[int] = None, supplier_id: Optional[int]
     if date_to:
         q = q.filter(ProcOrder.date <= _d(date_to))
     sups = {s.id: s.name for s in db.query(Supplier).all()}
+    catalog = {i.id: i for i in db.query(SupplierItem).all()}
     products: dict = {}
     orders: dict = {}
     suppliers_by: dict = {}
@@ -892,12 +897,15 @@ def product_purchases(brand_id: Optional[int] = None, supplier_id: Optional[int]
     for it, o in q.order_by(ProcOrder.date.asc(), ProcOrder.id.asc(), ProcOrderItem.id.asc()).all():
         qty = float(it.received_qty if it.received_qty is not None else (it.quantity or 0))
         amount = float(it.received_total if it.received_total is not None else (it.total or 0))
-        k = _product_key(it.item_name, it.unit)
-        p = products.setdefault(k, {"key": k, "item_name": (it.item_name or "").strip(), "item_name_ar": it.item_name_ar or "",
+        cat_item = catalog.get(it.supplier_item_id) if it.supplier_item_id else None
+        name = cat_item.item_name if cat_item and cat_item.item_name else it.item_name
+        name_ar = (cat_item.item_name_ar if cat_item else None) or it.item_name_ar or ""
+        k = _product_key(name, it.unit)
+        p = products.setdefault(k, {"key": k, "item_name": (name or "").strip(), "item_name_ar": name_ar,
                                     "unit": it.unit or "pcs", "total_qty": 0.0, "total_amount": 0.0,
                                     "min_price": None, "max_price": None, "last_price": 0.0, "last_date": ""})
-        if not p["item_name_ar"] and it.item_name_ar:
-            p["item_name_ar"] = it.item_name_ar
+        if not p["item_name_ar"] and name_ar:
+            p["item_name_ar"] = name_ar
         p["total_qty"] += qty
         p["total_amount"] += amount
         price = float(it.unit_price or 0)
@@ -984,7 +992,8 @@ def export_product_purchases(fmt: str, brand_id: Optional[int] = None, supplier_
         header = (["التاريخ", "رقم أمر الشراء", "المورد", "التعبئة", "الكمية", "سعر الوحدة", "المبلغ", "الحالة"] if is_ar
                   else ["Date", "PO No", "Supplier", "Packaging", "Qty", "Unit Price", "Amount", "Status"])
         rows = [[l["date"], l["po_no"], l["supplier_name"], l["packaging"], l["quantity"], f"{l['unit_price']:.3f}",
-                 f"{l['amount']:.3f}", l["status_label"]] for l in data["lines"]]
+                 f"{l['amount']:.3f}", STATUS_AR.get(l["status"], l["status_label"]) if is_ar else l["status_label"]]
+                for l in data["lines"]]
         rows.append(["الإجمالي" if is_ar else "Total", "", "", p["unit"], p["total_qty"], f"{p['avg_price']:.3f}",
                      f"{p['total_amount']:.3f}", ""])
         title = (f"مشتريات الصنف: {name}{period}" if is_ar else f"Product Purchases: {name}{period}")

@@ -793,12 +793,12 @@ export default function TransfersPage() {
               )}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">{t("start_date")}</label>
-                <input type="date" value={conStartDate} onChange={e => setConStartDate(e.target.value)}
+                <input type="date" value={conStartDate} onChange={e => { setConStartDate(e.target.value); loadConsumption(e.target.value, conEndDate); }}
                   className="px-3 py-2 border rounded-lg text-sm" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">{t("end_date")}</label>
-                <input type="date" value={conEndDate} onChange={e => setConEndDate(e.target.value)}
+                <input type="date" value={conEndDate} onChange={e => { setConEndDate(e.target.value); loadConsumption(conStartDate, e.target.value); }}
                   className="px-3 py-2 border rounded-lg text-sm" />
               </div>
               <button onClick={() => loadConsumption(conStartDate, conEndDate)} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">

@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -46,3 +48,37 @@ def get_current_user(
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+PURCHASE_ROLES = ("purchase_officer", "purchase_manager")
+MODULE_RESTRICTED_ROLES = ("personnel", "personnel_manager") + PURCHASE_ROLES
+
+# API prefixes the Purchase Office roles may call; everything else under /api is refused server-side.
+PURCHASE_ALLOWED_PREFIXES = ("/api/auth/", "/api/procurement/", "/api/cash/", "/api/branches/", "/api/hr/brands", "/api/export/cash/",
+                             "/api/purchases/suppliers", "/api/purchases/categories")
+
+
+def get_business_user(user: User = Depends(get_current_user)) -> User:
+    """Sales / purchases / operating dashboard are not available to module-restricted roles."""
+    if user.role in MODULE_RESTRICTED_ROLES:
+        raise HTTPException(status_code=403, detail="Not available for this role")
+    return user
+
+
+class PurchaseScopeMiddleware(BaseHTTPMiddleware):
+    """Hard-limits Purchase Office logins to the procurement module + their cash box (role is in the JWT)."""
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        allowed = path.startswith(PURCHASE_ALLOWED_PREFIXES) and (
+            request.method == "GET" or path.startswith(("/api/auth/", "/api/procurement/", "/api/cash/", "/api/purchases/suppliers", "/api/purchases/categories")))
+        if path.startswith("/api/") and not allowed:
+            auth = request.headers.get("authorization", "")
+            if auth.lower().startswith("bearer "):
+                try:
+                    role = jwt.decode(auth[7:], SECRET_KEY, algorithms=[ALGORITHM]).get("role")
+                except JWTError:
+                    role = None
+                if role in PURCHASE_ROLES:
+                    return JSONResponse({"detail": "Not available for this role"}, status_code=403)
+        return await call_next(request)

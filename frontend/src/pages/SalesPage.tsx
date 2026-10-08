@@ -1,22 +1,25 @@
 import { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { apiGet, apiPost, apiDownload } from "../contexts/api";
+import { apiGet, apiPost, apiPut, apiDelete, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
+import DateRangeFilter, { type DateRange, dateRangeParams } from "../components/DateRangeFilter";
 
-interface Branch { id: number; name: string; name_ar: string; }
+interface Branch { id: number; name: string; name_ar: string; whatsapp_number?: string; whatsapp_group?: string; }
 interface Sale {
   id: number; branch_id: number; date: string;
   foodics_cash: number; foodics_knet: number; foodics_link: number; foodics_wamd: number;
-  foodics_talabat: number; foodics_keeta: number; foodics_jahez: number; foodics_other: number;
+  foodics_talabat: number; foodics_keeta: number; foodics_jahez: number; foodics_other: number; foodics_snoonu: number;
   physical_cash: number; physical_knet: number; physical_link: number; physical_wamd: number;
-  physical_talabat: number; physical_keeta: number; physical_jahez: number; physical_other: number;
+  physical_talabat: number; physical_keeta: number; physical_jahez: number; physical_other: number; physical_snoonu: number;
+  cancelled_cash: number; cancelled_knet: number; cancelled_link: number;
+  cancelled_talabat: number; cancelled_keeta: number; cancelled_jahez: number; cancelled_snoonu: number;
   attachment_path: string | null;
 }
 
 const displayChannels = ["cash", "knet", "link"] as const;
-const allChannels = ["cash", "knet", "link", "talabat", "jahez", "keeta"] as const;
+const allChannels = ["cash", "knet", "link", "talabat", "jahez", "keeta", "snoonu"] as const;
 
-function sumRow(s: Sale, prefix: "foodics" | "physical") {
+function sumRow(s: Sale, prefix: "foodics" | "physical" | "cancelled") {
   return allChannels.reduce((acc, ch) => acc + ((s as unknown as Record<string, number>)[`${prefix}_${ch}`] || 0), 0);
 }
 
@@ -26,16 +29,44 @@ export default function SalesPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
   const [branchFilter, setBranchFilter] = useState<string>("");
+  const [range, setRange] = useState<DateRange>({ from: "", to: "" });
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
 
+  // Form state for new table-style entry
+  const [formBranch, setFormBranch] = useState<number | null>(null);
+  const [formDate, setFormDate] = useState("");
+  const [formDateLocked, setFormDateLocked] = useState(false);
+  const [formData, setFormData] = useState<Record<string, number>>({});
+
+  const formChannels = ["cash", "knet", "link", "talabat", "keeta", "jahez", "snoonu"] as const;
+
+  const getFormVal = (prefix: string, ch: string) => formData[`${prefix}_${ch}`] || 0;
+  const setFormVal = (prefix: string, ch: string, val: number) => {
+    setFormData(prev => ({ ...prev, [`${prefix}_${ch}`]: val }));
+  };
+  const formRowFinal = (ch: string) => {
+    return getFormVal("foodics", ch) - getFormVal("physical", ch) - getFormVal("cancelled", ch);
+  };
+  const formColTotal = (prefix: string) => formChannels.reduce((s, ch) => s + getFormVal(prefix, ch), 0);
+  const formFinalTotal = () => formChannels.reduce((s, ch) => s + formRowFinal(ch), 0);
+
+  const fetchNextDate = async (bid: number) => {
+    try {
+      const res = await apiGet(`/api/sales/next-date?branch_id=${bid}`);
+      setFormDate(res.next_date);
+      setFormDateLocked(res.has_previous);
+    } catch { /* ignore */ }
+  };
+
   const isStaff = user?.role === "staff";
-  const isOwnerManager = user?.role === "owner" || user?.role === "manager";
+  const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
 
   // Foodics sync state
-  const [showFoodicsSync, setShowFoodicsSync] = useState(false);
+  const [showFoodicsSync] = useState(false);
   const [syncDate, setSyncDate] = useState(new Date().toISOString().slice(0, 10));
   const [syncEndDate, setSyncEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [syncing, setSyncing] = useState(false);
@@ -44,7 +75,7 @@ export default function SalesPage() {
   const [syncRange, setSyncRange] = useState(false);
 
   // WhatsApp report state
-  const [showReport, setShowReport] = useState(false);
+  const [showReport] = useState(false);
   const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
   const [reportPhone, setReportPhone] = useState("");
   const [reportPreview, setReportPreview] = useState("");
@@ -78,12 +109,13 @@ export default function SalesPage() {
 
   useEffect(() => {
     apiGet("/api/branches/").then(setBranches);
-    loadSales();
   }, []);
 
+  useEffect(() => { loadSales(branchFilter); }, [range]);
+
   const loadSales = (bid?: string) => {
-    const url = bid ? `/api/sales/?branch_id=${bid}` : "/api/sales/";
-    apiGet(url).then(setSales);
+    const parts = [...(bid ? [`branch_id=${bid}`] : []), ...dateRangeParams(range)];
+    apiGet(`/api/sales/${parts.length ? `?${parts.join("&")}` : ""}`).then(setSales);
   };
 
   const handleFilter = (bid: string) => {
@@ -91,22 +123,67 @@ export default function SalesPage() {
     loadSales(bid);
   };
 
+  const resetForm = () => {
+    setShowForm(false);
+    setEditingSaleId(null);
+    setFormData({});
+    setFormDate("");
+    setFormDateLocked(false);
+    setFormBranch(null);
+  };
+
+  const startEdit = (s: Sale) => {
+    const data: Record<string, number> = {};
+    allChannels.forEach(ch => {
+      data[`foodics_${ch}`] = (s as unknown as Record<string, number>)[`foodics_${ch}`] || 0;
+      data[`physical_${ch}`] = (s as unknown as Record<string, number>)[`physical_${ch}`] || 0;
+      data[`cancelled_${ch}`] = (s as unknown as Record<string, number>)[`cancelled_${ch}`] || 0;
+    });
+    setFormData(data);
+    setFormBranch(s.branch_id);
+    setFormDate(s.date);
+    setFormDateLocked(false);
+    setEditingSaleId(s.id);
+    setShowForm(true);
+    setError("");
+  };
+
+  const handleDelete = async (s: Sale) => {
+    if (!window.confirm(`${t("confirm_delete") || "Delete this record?"} (${s.date})`)) return;
+    try {
+      const res = await apiDelete(`/api/sales/${s.id}`);
+      if (res.detail) { alert(res.detail); return; }
+      loadSales(branchFilter);
+    } catch { alert("Failed to delete"); }
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!window.confirm(t("confirm_transaction"))) return;
     setError("");
     const fd = new FormData(e.currentTarget);
     try {
-      const res = await apiPost("/api/sales/", fd);
+      const res = editingSaleId
+        ? await apiPut(`/api/sales/${editingSaleId}`, fd)
+        : await apiPost("/api/sales/", fd);
       if (res.detail) {
         setError(t("duplicate_date_error"));
         return;
       }
-      setShowForm(false);
+      resetForm();
       loadSales(branchFilter);
     } catch {
       setError(t("duplicate_date_error"));
     }
   };
+
+  // Auto-fetch next date when form opens for staff users
+  useEffect(() => {
+    if (showForm && !editingSaleId && user?.branch_id) {
+      setFormBranch(user.branch_id);
+      fetchNextDate(user.branch_id);
+    }
+  }, [showForm, editingSaleId, user?.branch_id]);
 
   const branchName = (id: number) => {
     const b = branches.find(br => br.id === id);
@@ -114,7 +191,8 @@ export default function SalesPage() {
   };
 
   const exportData = (fmt: string) => {
-    const params = branchFilter ? `?branch_id=${branchFilter}` : "";
+    const parts = [...(branchFilter ? [`branch_id=${branchFilter}`] : []), ...dateRangeParams(range)];
+    const params = parts.length ? `?${parts.join("&")}` : "";
     const ext = fmt === "excel" ? "xlsx" : fmt;
     apiDownload(`/api/export/sales/${fmt}${params}`, `sales.${ext}`);
   };
@@ -124,18 +202,6 @@ export default function SalesPage() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("sales")}</h2>
         <div className="flex gap-2">
-          {isOwnerManager && (
-            <button onClick={() => setShowFoodicsSync(!showFoodicsSync)}
-              className="px-3 py-1.5 bg-orange-600 text-white rounded text-xs hover:bg-orange-700 flex items-center gap-1">
-              🔄 {t("sync_foodics")}
-            </button>
-          )}
-          {isOwnerManager && (
-            <button onClick={() => { setShowReport(!showReport); if (!showReport) previewReport(); }}
-              className="px-3 py-1.5 bg-green-700 text-white rounded text-xs hover:bg-green-800 flex items-center gap-1">
-              📱 {t("send_daily_report")}
-            </button>
-          )}
           <button onClick={() => exportData("csv")}
             className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">
             {t("export_csv")}
@@ -148,7 +214,7 @@ export default function SalesPage() {
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
             {t("export_pdf")}
           </button>
-          <button onClick={() => setShowForm(!showForm)}
+          <button onClick={() => { if (showForm) { resetForm(); } else { setEditingSaleId(null); setFormData({}); setShowForm(true); } }}
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
             {showForm ? t("cancel") : t("add_new")}
           </button>
@@ -268,15 +334,16 @@ export default function SalesPage() {
         </div>
       )}
 
-      {!isStaff && (
-        <div className="mb-4">
+      <div className="mb-4 flex items-center gap-4 flex-wrap">
+        {!isStaff && (
           <select value={branchFilter} onChange={e => handleFilter(e.target.value)}
             className="px-3 py-2 border rounded-lg text-sm">
             <option value="">{t("all_branches")}</option>
             {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
           </select>
-        </div>
-      )}
+        )}
+        <DateRangeFilter value={range} onChange={setRange} />
+      </div>
 
       {error && (
         <div className="bg-red-50 border border-red-300 text-red-700 px-4 py-2 rounded mb-4 text-sm">{error}</div>
@@ -284,13 +351,22 @@ export default function SalesPage() {
 
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
+          <h3 className="font-semibold">{editingSaleId ? t("edit") : t("add_new")}</h3>
+          {/* Branch & Date row */}
           <div className="grid grid-cols-2 gap-4">
             {user?.branch_id ? (
               <input type="hidden" name="branch_id" value={user.branch_id} />
             ) : (
               <div>
                 <label className="block text-sm font-medium mb-1">{t("branch")}</label>
-                <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm">
+                <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm"
+                  value={formBranch ?? ""}
+                  onChange={e => {
+                    const bid = Number(e.target.value);
+                    setFormBranch(bid);
+                    if (bid) fetchNextDate(bid);
+                  }}>
+                  <option value="">{t("select")}</option>
                   {branches.filter(b => !b.name.includes("Central")).map(b => (
                     <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>
                   ))}
@@ -299,52 +375,98 @@ export default function SalesPage() {
             )}
             <div>
               <label className="block text-sm font-medium mb-1">{t("date")}</label>
-              <input type="date" name="sale_date" required className="w-full px-3 py-2 border rounded-lg text-sm" />
+              <input type="date" name="sale_date" required
+                value={formDate}
+                readOnly={formDateLocked}
+                onChange={e => !formDateLocked && setFormDate(e.target.value)}
+                className={`w-full px-3 py-2 border rounded-lg text-sm ${formDateLocked ? "bg-gray-100 cursor-not-allowed" : ""}`} />
+              {formDateLocked && (
+                <p className="text-[10px] text-orange-600 mt-1">{t("date_sequential_note") || "Date is auto-set to maintain sequence. No days can be skipped."}</p>
+              )}
             </div>
           </div>
 
-          <h3 className="font-semibold text-emerald-700">{t("foodics_data")}</h3>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-            {allChannels.map(ch => (
-              <div key={`f_${ch}`}>
-                <label className="block text-xs text-gray-500 mb-1">{t(ch)}</label>
-                <input type="number" step="0.001" name={`foodics_${ch}`} defaultValue="0"
-                  className="w-full px-2 py-1.5 border rounded text-sm" />
-              </div>
-            ))}
+          {/* Table-style data entry: rows = channels, cols = POS, Physical, Cancelled, Final */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border px-3 py-2 text-left w-28"></th>
+                  <th className="border px-3 py-2 text-center text-emerald-700 font-semibold">{t("point_of_sale") || "Point of Sale"}</th>
+                  <th className="border px-3 py-2 text-center text-blue-700 font-semibold">{t("physical") || "Physical"}</th>
+                  <th className="border px-3 py-2 text-center text-red-700 font-semibold">{t("cancelled") || "Cancelled"}</th>
+                  <th className="border px-3 py-2 text-center text-gray-800 font-bold">{t("final_sales") || "Final Sales"}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {formChannels.map(ch => {
+                  const final = formRowFinal(ch);
+                  return (
+                    <tr key={ch} className="hover:bg-gray-50">
+                      <td className="border px-3 py-2 font-medium text-gray-700">{t(ch)}</td>
+                      <td className="border px-1 py-1">
+                        <input type="number" step="0.001" name={`foodics_${ch}`}
+                          value={getFormVal("foodics", ch) || ""}
+                          onChange={e => setFormVal("foodics", ch, parseFloat(e.target.value) || 0)}
+                          placeholder="0.000"
+                          className="w-full px-2 py-1.5 text-center text-sm border-0 focus:ring-2 focus:ring-emerald-300 rounded" />
+                      </td>
+                      <td className="border px-1 py-1">
+                        <input type="number" step="0.001" name={`physical_${ch}`}
+                          value={getFormVal("physical", ch) || ""}
+                          onChange={e => setFormVal("physical", ch, parseFloat(e.target.value) || 0)}
+                          placeholder="0.000"
+                          className="w-full px-2 py-1.5 text-center text-sm border-0 focus:ring-2 focus:ring-blue-300 rounded" />
+                      </td>
+                      <td className="border px-1 py-1">
+                        <input type="number" step="0.001" name={`cancelled_${ch}`}
+                          value={getFormVal("cancelled", ch) || ""}
+                          onChange={e => setFormVal("cancelled", ch, parseFloat(e.target.value) || 0)}
+                          placeholder="0.000"
+                          className="w-full px-2 py-1.5 text-center text-sm border-0 focus:ring-2 focus:ring-red-300 rounded" />
+                      </td>
+                      <td className={`border px-3 py-2 text-center font-mono font-bold ${final < 0 ? "text-red-600 bg-red-50" : final > 0 ? "text-orange-600 bg-orange-50" : "text-green-600 bg-green-50"}`}>
+                        {final.toFixed(3)}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {/* Totals row */}
+                <tr className="bg-gray-100 font-bold">
+                  <td className="border px-3 py-2">{t("total")}</td>
+                  <td className="border px-3 py-2 text-center font-mono text-emerald-700">{formColTotal("foodics").toFixed(3)}</td>
+                  <td className="border px-3 py-2 text-center font-mono text-blue-700">{formColTotal("physical").toFixed(3)}</td>
+                  <td className="border px-3 py-2 text-center font-mono text-red-700">{formColTotal("cancelled").toFixed(3)}</td>
+                  <td className={`border px-3 py-2 text-center font-mono ${formFinalTotal() < 0 ? "text-red-600" : formFinalTotal() > 0 ? "text-orange-600" : "text-green-600"}`}>
+                    {formFinalTotal().toFixed(3)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
 
-          <h3 className="font-semibold text-blue-700">{t("physical_data")}</h3>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-            {allChannels.map(ch => (
-              <div key={`p_${ch}`}>
-                <label className="block text-xs text-gray-500 mb-1">{t(ch)}</label>
-                <input type="number" step="0.001" name={`physical_${ch}`} defaultValue="0"
-                  className="w-full px-2 py-1.5 border rounded text-sm" />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">{t("notes")}</label>
+              <textarea name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">{t("attachment")}</label>
+              <div className="flex gap-2">
+                <input type="file" name="attachment" ref={fileRef} className="text-sm" accept="image/*,.pdf" />
+                <input type="file" name="camera_attachment" ref={cameraRef} capture="environment" accept="image/*"
+                  className="hidden" onChange={e => {
+                    if (e.target.files?.[0] && fileRef.current) {
+                      const dt = new DataTransfer();
+                      dt.items.add(e.target.files[0]);
+                      fileRef.current.files = dt.files;
+                    }
+                  }} />
+                <button type="button" onClick={() => cameraRef.current?.click()}
+                  className="px-3 py-1.5 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
+                  {t("take_picture")}
+                </button>
               </div>
-            ))}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">{t("notes")}</label>
-            <textarea name="notes" className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">{t("attachment")}</label>
-            <div className="flex gap-2">
-              <input type="file" name="attachment" ref={fileRef} className="text-sm" accept="image/*,.pdf" />
-              <input type="file" name="camera_attachment" ref={cameraRef} capture="environment" accept="image/*"
-                className="hidden" onChange={e => {
-                  if (e.target.files?.[0] && fileRef.current) {
-                    const dt = new DataTransfer();
-                    dt.items.add(e.target.files[0]);
-                    fileRef.current.files = dt.files;
-                  }
-                }} />
-              <button type="button" onClick={() => cameraRef.current?.click()}
-                className="px-3 py-1.5 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
-                📷 {t("take_picture")}
-              </button>
             </div>
           </div>
           <button type="submit"
@@ -362,12 +484,13 @@ export default function SalesPage() {
               <th rowSpan={2} className="px-2 py-2 text-left border-r sticky left-0 bg-gray-50 z-10">{t("date")}</th>
               <th rowSpan={2} className="px-2 py-2 text-left border-r">{t("branch")}</th>
               <th colSpan={displayChannels.length + 1} className="px-2 py-1 text-center border-r bg-emerald-50 text-emerald-700">
-                {t("foodics_data")}
+                {t("pos_data")}
               </th>
               <th colSpan={displayChannels.length + 1} className="px-2 py-1 text-center border-r bg-blue-50 text-blue-700">
                 {t("physical_data")}
               </th>
               <th rowSpan={2} className="px-2 py-2 text-right">{t("difference")}</th>
+              <th rowSpan={2} className="px-2 py-2 text-center">{t("actions")}</th>
             </tr>
             <tr>
               {displayChannels.map(ch => (
@@ -382,11 +505,12 @@ export default function SalesPage() {
           </thead>
           <tbody>
             {sales.length === 0 ? (
-              <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+              <tr><td colSpan={12} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
             ) : sales.map(s => {
               const foodics = sumRow(s, "foodics");
               const physical = sumRow(s, "physical");
-              const diff = physical - foodics;
+              const cancelled = sumRow(s, "cancelled");
+              const diff = physical - (foodics - cancelled);
               return (
                 <tr key={s.id} className="border-b hover:bg-gray-50">
                   <td className="px-2 py-2 sticky left-0 bg-white border-r font-medium">{s.date}</td>
@@ -409,6 +533,41 @@ export default function SalesPage() {
                   </td>
                   <td className={`px-2 py-2 text-right font-mono font-bold ${diff !== 0 ? "text-red-600" : "text-green-600"}`}>
                     {diff.toFixed(3)}
+                  </td>
+                  <td className="px-2 py-2 text-center whitespace-nowrap">
+                    <button onClick={() => startEdit(s)}
+                      className="px-2 py-1 bg-blue-500 text-white rounded text-[10px] hover:bg-blue-600" title={t("edit")}>
+                      ✏️
+                    </button>
+                    <button onClick={() => handleDelete(s)}
+                      className="ml-1 px-2 py-1 bg-red-500 text-white rounded text-[10px] hover:bg-red-600" title={t("delete")}>
+                      🗑️
+                    </button>
+                    <button onClick={async () => {
+                      const br = branches.find(b => b.id === s.branch_id);
+                      if (!br?.whatsapp_group && !br?.whatsapp_number) { alert(t("no_whatsapp") || "No WhatsApp group or number configured for this branch"); return; }
+                      try {
+                        const fd = new FormData();
+                        fd.append("branch_id", String(s.branch_id));
+                        fd.append("report_date", s.date);
+                        fd.append("lang", i18n.language);
+                        const res = await fetch("/api/whatsapp/send-sales", {
+                          method: "POST", body: fd,
+                          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+                        });
+                        if (!res.ok) { const err = await res.json(); alert(err.detail || "Failed"); return; }
+                        alert(t("whatsapp_sent") || "Sent!");
+                      } catch { alert("Failed to send"); }
+                    }}
+                      className="ml-1 px-2 py-1 bg-green-500 text-white rounded text-[10px] hover:bg-green-600" title="Send to WhatsApp">
+                      📱
+                    </button>
+                    {s.attachment_path && (
+                      <a href={`/uploads/${s.attachment_path}`} target="_blank" rel="noopener noreferrer"
+                        className="ml-1 px-2 py-1 bg-gray-600 text-white rounded text-[10px] hover:bg-gray-700" title={t("attachment")}>
+                        📎
+                      </a>
+                    )}
                   </td>
                 </tr>
               );

@@ -13,7 +13,7 @@ import httpx
 
 OPENAI_MODEL = os.environ.get("INVOICE_SCAN_MODEL", "gpt-5-mini")
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
-MAX_PAGES = 3
+MAX_PAGES = 10
 PDF_DPI = 130
 
 PROMPT = """You read supplier invoices from Kuwait (Arabic and/or English, printed or handwritten, sometimes photographed at an angle).
@@ -147,19 +147,47 @@ def _normalize(raw: dict) -> dict:
     }
 
 
+def merge_pages_to_pdf(pages: list[tuple[bytes, str, str]]) -> bytes:
+    """Combine uploaded invoice pages (images and/or PDFs) into one PDF, in order."""
+    import pymupdf
+
+    out = pymupdf.open()
+    for data, content_type, filename in pages:
+        is_pdf = content_type == "application/pdf" or filename.lower().endswith(".pdf")
+        if is_pdf:
+            src = pymupdf.open(stream=data, filetype="pdf")
+        else:
+            ext = (os.path.splitext(filename)[1].lstrip(".") or content_type.split("/")[-1] or "jpeg").lower()
+            img = pymupdf.open(stream=data, filetype=ext)
+            src = pymupdf.open("pdf", img.convert_to_pdf())
+        out.insert_pdf(src)
+    return out.tobytes(garbage=3, deflate=True)
+
+
 def extract_invoice(data: bytes, content_type: str, filename: str) -> dict:
+    return extract_invoice_pages([(data, content_type, filename)])
+
+
+def extract_invoice_pages(pages: list[tuple[bytes, str, str]]) -> dict:
     key = os.environ.get("OPENAI_API_KEY")
     if not key:
         raise ScanNotConfigured()
-    parts = _image_parts(data, content_type or "", filename or "")
+    parts: list[dict] = []
+    for data, content_type, filename in pages:
+        parts.extend(_image_parts(data, content_type or "", filename or ""))
+    parts = parts[:MAX_PAGES]
     if not parts:
         raise ScanFailed("Unsupported file")
+    instruction = "Extract this invoice." if len(parts) == 1 else (
+        f"These {len(parts)} images are consecutive pages of ONE invoice, in order. Combine the line items of all "
+        "pages into one list (skip carried-forward / page subtotal rows, never repeat a line) and take the header "
+        "from the first page and the final total payable from the last page.")
     body = {
         "model": OPENAI_MODEL,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": PROMPT},
-            {"role": "user", "content": [{"type": "text", "text": "Extract this invoice."}] + parts},
+            {"role": "user", "content": [{"type": "text", "text": instruction}] + parts},
         ],
     }
     if not OPENAI_MODEL.startswith("gpt-5"):

@@ -127,6 +127,22 @@ def _save_upload(f: Optional[UploadFile]) -> Optional[str]:
     return fname
 
 
+def _save_pages(files: Optional[list[UploadFile]]) -> Optional[str]:
+    """Save scanned invoice pages as one attachment (a single PDF when there are several pages)."""
+    pages = [f for f in (files or []) if f and f.filename]
+    if len(pages) <= 1:
+        return _save_upload(pages[0]) if pages else None
+    try:
+        pdf = invoice_scan.merge_pages_to_pdf([(f.file.read(), f.content_type or "", f.filename or "") for f in pages])
+    except Exception:
+        raise HTTPException(400, "Could not combine the invoice pages into one PDF")
+    fname = f"proc_{uuid.uuid4().hex}.pdf"
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    with open(os.path.join(UPLOAD_DIR, fname), "wb") as out:
+        out.write(pdf)
+    return fname
+
+
 def _d(s: Optional[str]) -> Optional[date]:
     return date.fromisoformat(s) if s else None
 
@@ -378,18 +394,24 @@ def scan_status(user: User = Depends(get_current_user)):
 
 
 @router.post("/scan-invoice")
-def scan_invoice(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Read an uploaded supplier invoice and return suggested order data for the user to review."""
+def scan_invoice(file: Optional[UploadFile] = File(None), files: Optional[list[UploadFile]] = File(None),
+                 db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Read an uploaded supplier invoice (one or more pages) and return suggested order data for review."""
     _require(user)
     if not invoice_scan.is_configured():
         raise HTTPException(503, "Scanning not configured")
-    data = file.file.read()
-    if not data:
+    uploads = [f for f in ([file] if file else []) + (files or []) if f and f.filename]
+    if not uploads:
         raise HTTPException(400, "Empty file")
-    if len(data) > 15 * 1024 * 1024:
-        raise HTTPException(400, "File too large (max 15 MB)")
+    if len(uploads) > invoice_scan.MAX_PAGES:
+        raise HTTPException(400, f"Too many pages (max {invoice_scan.MAX_PAGES})")
+    pages = [(f.file.read(), f.content_type or "", f.filename or "") for f in uploads]
+    if any(not d for d, _, _ in pages):
+        raise HTTPException(400, "Empty file")
+    if sum(len(d) for d, _, _ in pages) > 30 * 1024 * 1024:
+        raise HTTPException(400, "Files too large (max 30 MB in total)")
     try:
-        ext = invoice_scan.extract_invoice(data, file.content_type or "", file.filename or "")
+        ext = invoice_scan.extract_invoice_pages(pages)
     except invoice_scan.ScanNotConfigured:
         raise HTTPException(503, "Scanning not configured")
     except invoice_scan.ScanFailed as e:
@@ -488,6 +510,7 @@ def create_order(brand_id: int = Form(...), supplier_id: int = Form(...), catego
                  order_date: str = Form(...), expected_date: str = Form(""), payment_type: str = Form("cash"),
                  delivery_location: str = Form(""), items: str = Form("[]"), notes: str = Form(""),
                  submit: bool = Form(False), attachment: Optional[UploadFile] = File(None),
+                 attachments: Optional[list[UploadFile]] = File(None),
                  db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _require(user)
     _check_brand(user, brand_id)
@@ -501,7 +524,7 @@ def create_order(brand_id: int = Form(...), supplier_id: int = Form(...), catego
                   expected_date=_d(expected_date), payment_type=payment_type,
                   delivery_location=delivery_location.strip() or None, notes=notes or None,
                   total=round(sum(l.total for l in lines), 3), status="draft", created_by=user.id,
-                  attachment_path=_save_upload(attachment))
+                  attachment_path=_save_upload(attachment) or _save_pages(attachments))
     db.add(o)
     db.flush()
     for l in lines:
@@ -520,6 +543,7 @@ def update_order(order_id: int, supplier_id: int = Form(...), category_id: Optio
                  order_date: str = Form(...), expected_date: str = Form(""), payment_type: str = Form("cash"),
                  delivery_location: str = Form(""), items: str = Form("[]"), notes: str = Form(""),
                  submit: bool = Form(False), attachment: Optional[UploadFile] = File(None),
+                 attachments: Optional[list[UploadFile]] = File(None),
                  db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _require(user)
     o = _get_order(db, user, order_id)
@@ -536,7 +560,7 @@ def update_order(order_id: int, supplier_id: int = Form(...), category_id: Optio
     o.date, o.expected_date, o.payment_type = _d(order_date) or o.date, _d(expected_date), payment_type
     o.delivery_location, o.notes = delivery_location.strip() or None, notes or None
     o.total = round(sum(l.total for l in lines), 3)
-    att = _save_upload(attachment)
+    att = _save_upload(attachment) or _save_pages(attachments)
     if att:
         o.attachment_path = att
     if submit:

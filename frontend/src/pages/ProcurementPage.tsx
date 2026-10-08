@@ -58,6 +58,8 @@ async function post(path: string, fd: FormData, method = "POST") {
   return data;
 }
 
+const MAX_SCAN_PAGES = 10;
+
 function FileBtn({ label, file, onChange }: { label: string; file: File | null; onChange: (f: File | null) => void }) {
   const id = useMemo(() => `f${Math.random().toString(36).slice(2)}`, []);
   return (
@@ -98,21 +100,22 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
 
   const [showForm, setShowForm] = useState(false);
   const [editOrder, setEditOrder] = useState<Order | null>(null);
-  const [scan, setScan] = useState<{ result: ScanResult; file: File } | null>(null);
+  const [scan, setScan] = useState<{ result: ScanResult; files: File[] } | null>(null);
+  const [scanPages, setScanPages] = useState<File[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanErr, setScanErr] = useState("");
   const scanInputId = useMemo(() => `scan${Math.random().toString(36).slice(2)}`, []);
 
-  const scanFile = async (f: File | null) => {
-    if (!f) return;
+  const scanFiles = async () => {
+    if (!scanPages.length) return;
     setScanErr(""); setScanning(true);
-    const fd = new FormData(); fd.set("file", f);
+    const fd = new FormData(); scanPages.forEach(f => fd.append("files", f));
     try {
       const res = await apiFetch("/api/procurement/scan-invoice", { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
       if (res.status === 503) throw new Error(t("scan_not_configured"));
       if (!res.ok) throw new Error(data.detail || t("scan_failed"));
-      setScan({ result: data as ScanResult, file: f }); setEditOrder(null); setShowForm(true);
+      setScan({ result: data as ScanResult, files: scanPages }); setScanPages([]); setEditOrder(null); setShowForm(true);
     } catch (e) { setScanErr(e instanceof Error ? e.message : t("scan_failed")); }
     finally { setScanning(false); }
   };
@@ -242,12 +245,47 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
           <label htmlFor={scanInputId} className={`${btn} bg-indigo-600 text-white inline-flex items-center gap-1 cursor-pointer ${scanning ? "opacity-60 pointer-events-none" : ""}`} title={t("scan_hint")}>
             <ScanLine size={16} />{scanning ? t("scan_reading") : t("scan_invoice")}
           </label>
-          <input id={scanInputId} type="file" accept="image/*,application/pdf" className="hidden" disabled={scanning}
-            onChange={e => { scanFile(e.target.files?.[0] || null); e.target.value = ""; }} />
+          <input id={scanInputId} type="file" accept="image/*,application/pdf" multiple className="hidden" disabled={scanning}
+            onChange={e => {
+              const picked = Array.from(e.target.files || []);
+              if (picked.length) { setScanErr(""); setScanPages(prev => [...prev, ...picked].slice(0, MAX_SCAN_PAGES)); }
+              e.target.value = "";
+            }} />
           <button onClick={() => { setScan(null); setEditOrder(null); setShowForm(true); }} className={`${btn} bg-emerald-600 text-white inline-flex items-center gap-1`}><Plus size={16} />{t("po_new_order")}</button>
         </div>
       </div>
-      {scanErr && <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded px-3 py-2 text-sm flex justify-between"><span>{scanErr}</span><button onClick={() => setScanErr("")}><X size={14} /></button></div>}
+      {scanPages.length > 0 && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="flex justify-between items-center px-5 py-3 bg-indigo-700 text-white">
+              <h2 className="text-lg font-bold">{t("scan_invoice")} · {scanPages.length} {t("scan_pages")}</h2>
+              <button onClick={() => { setScanPages([]); setScanErr(""); }} disabled={scanning}><X size={20} /></button>
+            </div>
+            <div className="p-5 space-y-3 text-sm">
+              <ol className="space-y-1 max-h-48 overflow-y-auto">
+                {scanPages.map((p, i) => (
+                  <li key={i} className="flex items-center justify-between gap-2 border rounded px-3 py-1.5">
+                    <span className="truncate">{t("scan_page")} {i + 1}: {p.name}</span>
+                    {!scanning && <button onClick={() => setScanPages(prev => prev.filter((_, j) => j !== i))}><Trash2 size={14} className="text-red-600" /></button>}
+                  </li>
+                ))}
+              </ol>
+              <div className="font-semibold text-gray-800">{t("scan_more_q")}</div>
+              <div className="text-xs text-gray-500">{t("scan_pages_hint")}</div>
+              {scanErr && <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded px-3 py-2 text-xs">{scanErr}</div>}
+              <div className="flex flex-wrap gap-2 justify-end">
+                <label htmlFor={scanInputId} className={`${btn} border border-indigo-600 text-indigo-700 inline-flex items-center gap-1 cursor-pointer ${scanning || scanPages.length >= MAX_SCAN_PAGES ? "opacity-50 pointer-events-none" : ""}`}>
+                  <Plus size={16} />{t("scan_add_page")}
+                </label>
+                <button onClick={scanFiles} disabled={scanning} className={`${btn} bg-indigo-600 text-white inline-flex items-center gap-1 disabled:opacity-60`}>
+                  <ScanLine size={16} />{scanning ? t("scan_reading") : t("scan_now")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {scanErr && !scanPages.length && <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded px-3 py-2 text-sm flex justify-between"><span>{scanErr}</span><button onClick={() => setScanErr("")}><X size={14} /></button></div>}
 
       <div className="flex gap-1 border-b">
         {PROC_TABS.map(k => (
@@ -676,7 +714,7 @@ export default function ProcurementPage({ embedded = false }: { embedded?: boole
 
 function OrderForm({ brandId, order, suppliers, categories, locations, ar, scan, onClose, onSaved }: {
   brandId: number; order: Order | null; suppliers: Supplier[]; categories: Category[]; locations: { name: string; name_ar: string }[]; ar: boolean;
-  scan?: { result: ScanResult; file: File } | null; onClose: () => void; onSaved: () => void;
+  scan?: { result: ScanResult; files: File[] } | null; onClose: () => void; onSaved: () => void;
 }) {
   const { t } = useTranslation();
   const sr = scan?.result;
@@ -687,13 +725,14 @@ function OrderForm({ brandId, order, suppliers, categories, locations, ar, scan,
   const [expected, setExpected] = useState(order?.expected_date || "");
   const [location, setLocation] = useState(order?.delivery_location || "");
   const [notes, setNotes] = useState(order?.notes || (sr ? [sr.invoice_number ? `${t("po_invoice_no")} ${sr.invoice_number}` : "", sr.notes].filter(Boolean).join(" · ") : ""));
-  const [file, setFile] = useState<File | null>(scan?.file || null);
+  const [file, setFile] = useState<File | null>(null);
+  const [scanPages] = useState<File[]>(scan?.files || []);
   const [items, setItems] = useState<SupItem[]>([]);
   const [lines, setLines] = useState<Line[]>(sr && sr.lines.length
     ? sr.lines.map(l => ({ supplier_item_id: l.supplier_item_id, item_name: l.item_name, item_name_ar: l.item_name_ar, packaging: l.packaging, unit: l.unit, quantity: String(l.quantity), unit_price: String(l.unit_price) }))
     : [emptyLine()]);
-  const [previewUrl] = useState(() => scan?.file ? URL.createObjectURL(scan.file) : "");
-  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+  const [previewUrls] = useState(() => scanPages.map(f => URL.createObjectURL(f)));
+  useEffect(() => () => { previewUrls.forEach(u => URL.revokeObjectURL(u)); }, [previewUrls]);
   const scanWarn = (w: string) => ({
     supplier_unmatched: `${t("scan_w_supplier")}${sr?.supplier_name_raw ? `: ${sr.supplier_name_raw}` : ""}`,
     items_unmatched: t("scan_w_items"), no_lines: t("scan_w_no_lines"), handwritten: t("scan_w_handwritten"),
@@ -738,6 +777,7 @@ function OrderForm({ brandId, order, suppliers, categories, locations, ar, scan,
     fd.set("delivery_location", location); fd.set("notes", notes); fd.set("submit", submit ? "true" : "false");
     fd.set("items", JSON.stringify(valid.map(l => ({ ...l, quantity: parseFloat(l.quantity), unit_price: parseFloat(l.unit_price) || 0 }))));
     if (file) fd.set("attachment", file);
+    else scanPages.forEach(p => fd.append("attachments", p));
     setSaving(true);
     try {
       await post(order ? `/api/procurement/orders/${order.id}` : "/api/procurement/orders", fd, order ? "PUT" : "POST");
@@ -770,9 +810,18 @@ function OrderForm({ brandId, order, suppliers, categories, locations, ar, scan,
                   </ul>
                 )}
               </div>
-              {previewUrl && (scan?.file.type === "application/pdf"
-                ? <a href={previewUrl} target="_blank" rel="noreferrer" className="border rounded flex items-center justify-center text-xs text-indigo-700 underline h-28">{scan.file.name}</a>
-                : <a href={previewUrl} target="_blank" rel="noreferrer"><img src={previewUrl} alt="" className="border rounded max-h-40 object-contain w-full bg-gray-50" /></a>)}
+              {previewUrls.length > 0 && (
+                <div className={`grid gap-2 max-h-56 overflow-y-auto ${previewUrls.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+                  {scanPages.map((f, i) => (
+                    <a key={i} href={previewUrls[i]} target="_blank" rel="noreferrer" className="block relative">
+                      {f.type === "application/pdf"
+                        ? <span className="border rounded flex items-center justify-center text-xs text-indigo-700 underline h-28 px-1 text-center break-all">{f.name}</span>
+                        : <img src={previewUrls[i]} alt="" className="border rounded max-h-40 object-contain w-full bg-gray-50" />}
+                      {previewUrls.length > 1 && <span className="absolute top-1 start-1 bg-indigo-600 text-white text-[10px] rounded px-1">{t("scan_page")} {i + 1}</span>}
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -836,6 +885,7 @@ function OrderForm({ brandId, order, suppliers, categories, locations, ar, scan,
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="block"><span className="text-xs text-gray-600">{t("notes")}</span><textarea className={inp} rows={2} value={notes} onChange={e => setNotes(e.target.value)} /></label>
             <div><span className="text-xs text-gray-600 block mb-1">{t("po_attachment")}</span><FileBtn label={t("po_attachment")} file={file} onChange={setFile} />
+              {!file && scanPages.length > 0 && <div className="text-xs text-indigo-700 mt-1">{scanPages.length} {t("scan_pages_attached")}</div>}
               {order?.attachment && !file && <a href={order.attachment} target="_blank" rel="noreferrer" className="text-xs text-emerald-700 underline block mt-1">{t("po_attachment")}</a>}</div>
           </div>
           {error && <div className="text-red-700 text-sm">{error}</div>}

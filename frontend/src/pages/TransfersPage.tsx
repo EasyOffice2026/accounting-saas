@@ -23,6 +23,15 @@ interface BranchConsumption {
   total_amount: number;
 }
 
+interface ProductConsumption {
+  branches: { branch_id: number; branch_name: string; branch_name_ar: string; total_amount: number }[];
+  products: {
+    item_name: string; item_name_ar: string | null; unit: string;
+    by_branch: Record<string, { qty: number; amount: number }>; total_qty: number; total_amount: number;
+  }[];
+  total_amount: number;
+}
+
 type Tab = "items" | "requests" | "history" | "consumption";
 
 export default function TransfersPage() {
@@ -64,9 +73,29 @@ export default function TransfersPage() {
   const [conBranchFilter, setConBranchFilter] = useState<string>("all");
   const [conGroupView, setConGroupView] = useState(false);
   const [conExpanded, setConExpanded] = useState<Record<string, boolean>>({});
+  const [conView, setConView] = useState<"branch" | "product">("branch");
+  const [productCon, setProductCon] = useState<ProductConsumption | null>(null);
+  const [conSearch, setConSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState<string>("");
 
 
+
+  const loadConsumption = (start: string, end: string) => {
+    const params = new URLSearchParams();
+    if (start) params.set("start_date", start);
+    if (end) params.set("end_date", end);
+    apiGet(`/api/transfers/branch-summary?${params}`).then(setConsumption);
+    apiGet(`/api/transfers/product-summary?${params}`).then(setProductCon);
+  };
+
+  const exportProductConsumption = (fmt: "excel" | "pdf") => {
+    const params = new URLSearchParams({ lang: i18n.language === "ar" ? "ar" : "en" });
+    if (conStartDate) params.set("start_date", conStartDate);
+    if (conEndDate) params.set("end_date", conEndDate);
+    if (conBranchFilter !== "all") params.set("branch_id", conBranchFilter);
+    apiDownload(`/api/transfers/product-summary/${fmt}?${params}`,
+      `product_consumption.${fmt === "excel" ? "xlsx" : "pdf"}`);
+  };
 
   const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   const isStaff = user?.role === "staff";
@@ -258,12 +287,7 @@ export default function TransfersPage() {
         {(["requests", "items", "history", "consumption"] as Tab[]).map(tb => (
           <button key={tb} onClick={() => {
             setTab(tb);
-            if (tb === "consumption") {
-              const params = new URLSearchParams();
-              if (conStartDate) params.set("start_date", conStartDate);
-              if (conEndDate) params.set("end_date", conEndDate);
-              apiGet(`/api/transfers/branch-summary?${params}`).then(setConsumption);
-            }
+            if (tb === "consumption") loadConsumption(conStartDate, conEndDate);
           }}
             className={`px-4 py-2 rounded-md text-sm font-medium transition ${
               tab === tb ? "bg-white shadow text-emerald-700" : "text-gray-500 hover:text-gray-700"
@@ -719,6 +743,14 @@ export default function TransfersPage() {
         <div className="space-y-4">
           <div className="bg-white rounded-xl shadow-sm border p-4">
             <div className="flex items-end gap-3 flex-wrap">
+              <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                {(["branch", "product"] as const).map(v => (
+                  <button key={v} onClick={() => setConView(v)}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium ${conView === v ? "bg-white shadow text-emerald-700" : "text-gray-500 hover:text-gray-700"}`}>
+                    {v === "branch" ? t("con_by_branch") : t("con_by_product")}
+                  </button>
+                ))}
+              </div>
               {isOwnerManager && (
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">{t("branch")}</label>
@@ -733,7 +765,7 @@ export default function TransfersPage() {
                   </select>
                 </div>
               )}
-              {isOwnerManager && (
+              {isOwnerManager && conView === "branch" && (
                 <label className="flex items-center gap-2 text-sm text-gray-700 pb-2 cursor-pointer">
                   <input type="checkbox" checked={conGroupView} onChange={e => setConGroupView(e.target.checked)}
                     className="w-4 h-4" />
@@ -750,24 +782,110 @@ export default function TransfersPage() {
                 <input type="date" value={conEndDate} onChange={e => setConEndDate(e.target.value)}
                   className="px-3 py-2 border rounded-lg text-sm" />
               </div>
-              <button onClick={() => {
-                const params = new URLSearchParams();
-                if (conStartDate) params.set("start_date", conStartDate);
-                if (conEndDate) params.set("end_date", conEndDate);
-                apiGet(`/api/transfers/branch-summary?${params}`).then(setConsumption);
-              }} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
+              <button onClick={() => loadConsumption(conStartDate, conEndDate)} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
                 {t("filter")}
               </button>
               <button onClick={() => {
                 setConStartDate(""); setConEndDate("");
-                apiGet("/api/transfers/branch-summary").then(setConsumption);
+                loadConsumption("", "");
               }} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300">
                 {t("clear")}
               </button>
+              {conView === "product" && (
+                <>
+                  <input value={conSearch} onChange={e => setConSearch(e.target.value)} placeholder={t("search_item")}
+                    className="px-3 py-2 border rounded-lg text-sm" />
+                  <button onClick={() => exportProductConsumption("excel")}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">{t("export_excel")}</button>
+                  <button onClick={() => exportProductConsumption("pdf")}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">{t("export_pdf")}</button>
+                </>
+              )}
             </div>
           </div>
 
-          {(() => {
+          {conView === "product" && (() => {
+            if (!productCon) return null;
+            const isAr = i18n.language === "ar";
+            const cols = conBranchFilter === "all"
+              ? productCon.branches
+              : productCon.branches.filter(b => b.branch_id === Number(conBranchFilter));
+            const q = conSearch.trim().toLowerCase();
+            const rows = productCon.products
+              .filter(p => cols.some(b => p.by_branch[String(b.branch_id)]))
+              .filter(p => !q || p.item_name.toLowerCase().includes(q) || (p.item_name_ar || "").includes(conSearch.trim()));
+            const rowQty = (p: ProductConsumption["products"][number]) =>
+              cols.reduce((s, b) => s + (p.by_branch[String(b.branch_id)]?.qty || 0), 0);
+            const rowAmt = (p: ProductConsumption["products"][number]) =>
+              cols.reduce((s, b) => s + (p.by_branch[String(b.branch_id)]?.amount || 0), 0);
+            const fmtQty = (v: number) => (v ? String(Math.round(v * 1000) / 1000) : "-");
+            if (rows.length === 0) {
+              return <div className="bg-white rounded-xl shadow-sm border p-8 text-center text-gray-400">{t("no_data")}</div>;
+            }
+            const grand = rows.reduce((s, p) => s + rowAmt(p), 0);
+            return (
+              <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+                <div className="px-5 py-3 bg-gray-50 border-b flex items-center justify-between">
+                  <span className="font-semibold text-gray-800">{t("product_consumption")}</span>
+                  <span className="text-sm font-bold text-emerald-700">{t("grand_total")}: {grand.toFixed(3)}</span>
+                </div>
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-start sticky start-0 bg-gray-50">{t("item_name")}</th>
+                      <th className="px-3 py-2 text-start">{t("unit")}</th>
+                      {cols.map(b => (
+                        <th key={b.branch_id} className="px-3 py-2 text-end whitespace-nowrap">
+                          {isAr ? (b.branch_name_ar || b.branch_name) : b.branch_name}
+                        </th>
+                      ))}
+                      <th className="px-3 py-2 text-end">{t("total_qty")}</th>
+                      <th className="px-3 py-2 text-end">{t("avg_price")}</th>
+                      <th className="px-3 py-2 text-end">{t("total_amount")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(p => {
+                      const tq = rowQty(p), ta = rowAmt(p);
+                      return (
+                        <tr key={`${p.item_name}||${p.unit}`} className="border-t">
+                          <td className="px-4 py-2 sticky start-0 bg-white">
+                            {isAr ? (p.item_name_ar || p.item_name) : p.item_name}
+                            {isAr && p.item_name_ar && <span className="text-xs text-gray-400 ms-1">({p.item_name})</span>}
+                            {!isAr && p.item_name_ar && <span className="text-xs text-gray-400 ms-1" dir="rtl">({p.item_name_ar})</span>}
+                          </td>
+                          <td className="px-3 py-2">{p.unit}</td>
+                          {cols.map(b => {
+                            const c = p.by_branch[String(b.branch_id)];
+                            return (
+                              <td key={b.branch_id} className="px-3 py-2 text-end font-mono" title={c ? c.amount.toFixed(3) : ""}>
+                                {fmtQty(c?.qty || 0)}
+                              </td>
+                            );
+                          })}
+                          <td className="px-3 py-2 text-end font-mono font-semibold">{fmtQty(tq)}</td>
+                          <td className="px-3 py-2 text-end font-mono">{tq > 0 ? (ta / tq).toFixed(3) : "0.000"}</td>
+                          <td className="px-3 py-2 text-end font-mono font-semibold">{ta.toFixed(3)}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="border-t bg-emerald-50 font-bold">
+                      <td colSpan={2} className="px-4 py-2 sticky start-0 bg-emerald-50">{t("total_amount")}</td>
+                      {cols.map(b => (
+                        <td key={b.branch_id} className="px-3 py-2 text-end font-mono">
+                          {rows.reduce((s, p) => s + (p.by_branch[String(b.branch_id)]?.amount || 0), 0).toFixed(3)}
+                        </td>
+                      ))}
+                      <td colSpan={2}></td>
+                      <td className="px-3 py-2 text-end font-mono text-emerald-700">{grand.toFixed(3)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+
+          {conView === "branch" && (() => {
             const filtered = conBranchFilter === "all"
               ? consumption
               : consumption.filter(bc => bc.branch_id === Number(conBranchFilter));

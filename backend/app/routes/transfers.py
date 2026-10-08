@@ -10,6 +10,7 @@ from app.models.branch import Branch
 from app.models.user import User
 from app.utils.auth import get_current_user
 from app.routes.hr import _brand_branch_ids
+from app.routes.export import _respond
 
 router = APIRouter(prefix="/api/transfers", tags=["transfers"])
 
@@ -275,12 +276,9 @@ def receive_order(
 
 
 # --- Branch Summary (quantity & amount given to each branch) ---
-@router.get("/branch-summary")
-def branch_transfer_summary(brand_id: Optional[int] = None,
-                            start_date: Optional[str] = None, end_date: Optional[str] = None,
-                            db: Session = Depends(get_db),
-                            user: User = Depends(get_current_user)):
-    """Get total quantity and amount of items dispatched to each branch."""
+def _consumption_rows(db: Session, user: User, brand_id: Optional[int],
+                      start_date: Optional[str], end_date: Optional[str]):
+    """Dispatched qty/amount grouped by receiving branch and item."""
     from sqlalchemy import func
     bb_ids = _brand_branch_ids(db, brand_id)
     q = db.query(
@@ -318,7 +316,16 @@ def branch_transfer_summary(brand_id: Optional[int] = None,
         TransferOrderLine.item_name_ar,
         TransferOrderLine.unit,
     )
-    rows = q.all()
+    return q.all()
+
+
+@router.get("/branch-summary")
+def branch_transfer_summary(brand_id: Optional[int] = None,
+                            start_date: Optional[str] = None, end_date: Optional[str] = None,
+                            db: Session = Depends(get_db),
+                            user: User = Depends(get_current_user)):
+    """Get total quantity and amount of items dispatched to each branch."""
+    rows = _consumption_rows(db, user, brand_id, start_date, end_date)
     branches = {b.id: {"name": b.name, "name_ar": b.name_ar} for b in db.query(Branch).all()}
     result = {}
     for r in rows:
@@ -365,3 +372,83 @@ def inventory_stock(start_date: Optional[str] = None, end_date: Optional[str] = 
             "category": item.category,
         })
     return result
+
+
+def _product_consumption(db: Session, user: User, brand_id: Optional[int], start_date: Optional[str],
+                         end_date: Optional[str], branch_id: Optional[int]) -> dict:
+    rows = _consumption_rows(db, user, brand_id, start_date, end_date)
+    if branch_id:
+        rows = [r for r in rows if r.requesting_branch_id == branch_id]
+    branch_by_id = {b.id: b for b in db.query(Branch).all()}
+    products: dict[tuple, dict] = {}
+    for r in rows:
+        bid = r.requesting_branch_id
+        qty, amount = float(r.total_qty or 0), float(r.total_amount or 0)
+        p = products.setdefault((r.item_name, r.unit), {
+            "item_name": r.item_name, "item_name_ar": r.item_name_ar, "unit": r.unit,
+            "by_branch": {}, "total_qty": 0.0, "total_amount": 0.0,
+        })
+        if not p["item_name_ar"] and r.item_name_ar:
+            p["item_name_ar"] = r.item_name_ar
+        cell = p["by_branch"].setdefault(bid, {"qty": 0.0, "amount": 0.0})
+        cell["qty"] += qty
+        cell["amount"] += amount
+        p["total_qty"] += qty
+        p["total_amount"] += amount
+    for p in products.values():
+        p["total_qty"] = round(p["total_qty"], 3)
+        p["total_amount"] = round(p["total_amount"], 3)
+        for cell in p["by_branch"].values():
+            cell["qty"] = round(cell["qty"], 3)
+            cell["amount"] = round(cell["amount"], 3)
+    used = sorted({r.requesting_branch_id for r in rows},
+                  key=lambda bid: branch_by_id[bid].name if bid in branch_by_id else "")
+    branches = [{
+        "branch_id": bid,
+        "branch_name": branch_by_id[bid].name if bid in branch_by_id else "",
+        "branch_name_ar": (branch_by_id[bid].name_ar or "") if bid in branch_by_id else "",
+        "total_amount": round(sum(p["by_branch"].get(bid, {}).get("amount", 0) for p in products.values()), 3),
+    } for bid in used]
+    return {
+        "branches": branches,
+        "products": sorted(products.values(), key=lambda p: (p["item_name"] or "").lower()),
+        "total_amount": round(sum(p["total_amount"] for p in products.values()), 3),
+    }
+
+
+@router.get("/product-summary")
+def product_consumption_summary(brand_id: Optional[int] = None, branch_id: Optional[int] = None,
+                                start_date: Optional[str] = None, end_date: Optional[str] = None,
+                                db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Dispatched qty/amount per item, broken down by receiving branch."""
+    return _product_consumption(db, user, brand_id, start_date, end_date, branch_id)
+
+
+def _fmt_qty(v: float) -> str:
+    return f"{v:.3f}".rstrip("0").rstrip(".") if v else "-"
+
+
+@router.get("/product-summary/{fmt}")
+def export_product_consumption(fmt: str, brand_id: Optional[int] = None, branch_id: Optional[int] = None,
+                               start_date: Optional[str] = None, end_date: Optional[str] = None,
+                               lang: str = "en", db: Session = Depends(get_db),
+                               user: User = Depends(get_current_user)):
+    data = _product_consumption(db, user, brand_id, start_date, end_date, branch_id)
+    is_ar = lang == "ar"
+    branch_names = [(b["branch_name_ar"] or b["branch_name"]) if is_ar else b["branch_name"] for b in data["branches"]]
+    if is_ar:
+        header = ["الصنف", "الوحدة", *branch_names, "إجمالي الكمية", "متوسط السعر", "إجمالي المبلغ"]
+    else:
+        header = ["Item", "Unit", *branch_names, "Total Qty", "Avg. Price", "Total Amount"]
+    rows = []
+    for p in data["products"]:
+        name = (p["item_name_ar"] or p["item_name"]) if is_ar else p["item_name"]
+        avg = p["total_amount"] / p["total_qty"] if p["total_qty"] else 0
+        rows.append([name, p["unit"],
+                     *[_fmt_qty(p["by_branch"].get(b["branch_id"], {}).get("qty", 0)) for b in data["branches"]],
+                     _fmt_qty(p["total_qty"]), f"{avg:.3f}", f"{p['total_amount']:.3f}"])
+    rows.append(["إجمالي المبلغ" if is_ar else "Total Amount", "",
+                 *[f"{b['total_amount']:.3f}" for b in data["branches"]], "", "", f"{data['total_amount']:.3f}"])
+    period = f"{start_date or '...'} - {end_date or '...'}" if (start_date or end_date) else ("كل الفترات" if is_ar else "All dates")
+    title = f"استهلاك الأصناف حسب الفرع ({period})" if is_ar else f"Product-wise Consumption by Branch ({period})"
+    return _respond(fmt, header, rows, "product_consumption", title, summary_rows=1, lang=lang)

@@ -4,6 +4,7 @@ import { apiGet, apiFetch, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 import PaymentChannelsPanel from "../components/PaymentChannelsPanel";
 import DailyCashSummary from "../components/DailyCashSummary";
+import SalesProceedsPanel from "../components/SalesProceedsPanel";
 
 const DAILY_ROLES = ["owner", "manager", "accountant"];
 
@@ -31,7 +32,7 @@ export default function CashPage() {
   const [summary, setSummary] = useState<CashSummary | null>(null);
   const [transactions, setTransactions] = useState<CashTxn[]>([]);
   const [tab, setTab] = useState<"summary" | "transactions">("summary");
-  const [mode, setMode] = useState<"cash" | "daily" | "channels">("cash");
+  const [mode, setMode] = useState<"cash" | "daily" | "proceeds" | "channels">("cash");
   const [showTxnForm, setShowTxnForm] = useState(false);
   const [txnType, setTxnType] = useState<"cash_in" | "cash_out">("cash_in");
 
@@ -111,6 +112,10 @@ export default function CashPage() {
               className={`px-4 py-1.5 text-sm rounded-md ${mode === "daily" ? "bg-white shadow font-semibold text-emerald-700" : "text-gray-600"}`}>
               {t("daily_cash_summary")}
             </button>}
+            {canSeeDaily && <button onClick={() => setMode("proceeds")}
+              className={`px-4 py-1.5 text-sm rounded-md ${mode === "proceeds" ? "bg-white shadow font-semibold text-emerald-700" : "text-gray-600"}`}>
+              {t("sales_proceeds")}
+            </button>}
             <button onClick={() => setMode("channels")}
               className={`px-4 py-1.5 text-sm rounded-md ${mode === "channels" ? "bg-white shadow font-semibold text-emerald-700" : "text-gray-600"}`}>
               {t("payment_channels")}
@@ -135,6 +140,7 @@ export default function CashPage() {
 
       {mode === "channels" && canSeeChannels && <PaymentChannelsPanel />}
       {mode === "daily" && canSeeDaily && <DailyCashSummary />}
+      {mode === "proceeds" && canSeeDaily && <SalesProceedsPanel />}
 
       {mode === "cash" && <>
       <div className="flex gap-3 mb-4 flex-wrap items-end">

@@ -14,6 +14,7 @@ from typing import Optional
 
 from app.database import get_db
 from app.models.channel import PaymentChannel, ChannelTransaction
+from app.models.proceeds import ProceedsReceipt, METHOD_LABELS
 from app.models.expense import Expense
 from app.models.procurement import ProcPayment, ProcInvoice
 from app.models.purchase import Supplier
@@ -72,10 +73,19 @@ def _manual_total(db: Session, channel_id: int, txn_type: str, date_to: Optional
     return float(q.scalar())
 
 
+def _proceeds_total(db: Session, channel_id: int, date_to: Optional[date] = None) -> float:
+    q = db.query(func.coalesce(func.sum(ProceedsReceipt.amount), 0)).filter(
+        ProceedsReceipt.channel_id == channel_id, ProceedsReceipt.date >= CHANNEL_START_DATE)
+    if date_to:
+        q = q.filter(ProceedsReceipt.date <= date_to)
+    return float(q.scalar())
+
+
 def channel_balance(db: Session, ch: PaymentChannel, date_to: Optional[date] = None) -> float:
     return round(
         (ch.opening_balance or 0)
         + _manual_total(db, ch.id, "deposit", date_to)
+        + _proceeds_total(db, ch.id, date_to)
         - _manual_total(db, ch.id, "withdrawal", date_to)
         - _payments_total(db, ch.id, date_to), 3)
 
@@ -177,6 +187,7 @@ def delete_channel(channel_id: int, db: Session = Depends(get_db), user: User = 
         db.query(Expense.id).filter(Expense.channel_id == ch.id).first()
         or db.query(ProcPayment.id).filter(ProcPayment.channel_id == ch.id).first()
         or db.query(ChannelTransaction.id).filter(ChannelTransaction.channel_id == ch.id).first()
+        or db.query(ProceedsReceipt.id).filter(ProceedsReceipt.channel_id == ch.id).first()
     )
     if used:
         ch.is_active = False
@@ -262,6 +273,20 @@ def _statement(db: Session, ch: PaymentChannel, date_from: Optional[str], date_t
             "date": p.date, "id": f"proc-{p.id}", "source": "supplier_payment",
             "description": f"{sup} — Inv {inv_no or ''}".strip(" —"), "head": "Purchase Office",
             "credit": 0, "debit": p.amount, "notes": p.reference,
+        })
+    rcpt_rows = (
+        db.query(ProceedsReceipt, Branch.name)
+        .outerjoin(Branch, Branch.id == ProceedsReceipt.branch_id)
+        .filter(ProceedsReceipt.channel_id == ch.id, ProceedsReceipt.date >= CHANNEL_START_DATE).all()
+    )
+    for r, bname in rcpt_rows:
+        label = METHOD_LABELS.get(r.method, (r.method, r.method))[0]
+        fees = f"Fees {r.fees:.3f}" if r.fees else ""
+        entries.append({
+            "date": r.date, "id": f"rcpt-{r.id}", "source": "sales_proceeds",
+            "description": f"{label} sales proceeds", "head": bname or "All branches",
+            "credit": r.amount or 0, "debit": 0,
+            "notes": " · ".join(x for x in (r.reference or "", fees) if x) or None,
         })
     entries.sort(key=lambda x: (x["date"], x["id"]))
 

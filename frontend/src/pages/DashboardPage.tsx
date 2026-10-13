@@ -50,7 +50,7 @@ export default function DashboardPage() {
 
   const cards = data ? [
     { label: t("total_sales"), value: `KD ${data.total_sales.toLocaleString()}`, icon: DollarSign, color: "bg-emerald-500" },
-    { label: t("total_purchases"), value: `KD ${data.total_purchases.toLocaleString()}`, icon: ShoppingCart, color: "bg-blue-500" },
+    { label: t("branch_purchases"), value: `KD ${data.total_purchases.toLocaleString()}`, icon: ShoppingCart, color: "bg-blue-500" },
     { label: t("total_central_purchases"), value: `KD ${(data.total_central_purchases ?? 0).toLocaleString()}`, icon: Truck, color: "bg-indigo-500" },
     { label: t("total_expenses"), value: `KD ${data.total_expenses.toLocaleString()}`, icon: Receipt, color: "bg-orange-500" },
     { label: t("total_transfers"), value: `KD ${data.total_transfers.toLocaleString()}`, icon: ArrowLeftRight, color: "bg-violet-500" },
@@ -60,7 +60,7 @@ export default function DashboardPage() {
 
   const pieData = data ? [
     { name: t("total_sales"), value: data.total_sales },
-    { name: t("total_purchases"), value: data.total_purchases },
+    { name: t("branch_purchases"), value: data.total_purchases },
     { name: t("total_expenses"), value: data.total_expenses },
     { name: t("total_transfers"), value: data.total_transfers },
   ].filter(d => d.value > 0) : [];
@@ -146,7 +146,7 @@ export default function DashboardPage() {
                 <tr>
                   <th className="px-4 py-3 text-left">{t("branch")}</th>
                   <th className="px-4 py-3 text-right">{t("total_sales")}</th>
-                  <th className="px-4 py-3 text-right">{t("total_purchases")}</th>
+                  <th className="px-4 py-3 text-right">{t("branch_purchases")}</th>
                   <th className="px-4 py-3 text-right">{t("total_expenses")}</th>
                   <th className="px-4 py-3 text-right">{t("total_transfers")}</th>
                   <th className="px-4 py-3 text-right">{t("difference")}</th>

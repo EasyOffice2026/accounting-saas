@@ -1030,4 +1030,5 @@ export default {
   proceeds_by_branch: "Sales by Branch",
   channel_src_sales_proceeds: "Sales Proceeds",
   total_central_purchases: "Central Purchases",
+  sales_day_locked: "This day is locked. Branches can change sales only until 03:00 AM of the next day. Please ask management.",
 };

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
 import os, uuid
 
@@ -14,6 +14,19 @@ from app.routes.hr import _brand_branch_ids
 from app.utils.dates import apply_date_range
 
 router = APIRouter(prefix="/api/sales", tags=["sales"], dependencies=[Depends(get_business_user)])
+
+SALES_ADMIN_ROLES = ("owner", "manager", "accountant")
+
+
+def _check_day_open(user: User, d: date):
+    """Branch logins may change a day's sales only until 03:00 Kuwait time (00:00 UTC) the next day."""
+    if user.role in SALES_ADMIN_ROLES:
+        return
+    if datetime.now(timezone.utc) >= datetime.combine(d + timedelta(days=1), time(0, 0), tzinfo=timezone.utc):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Sales for {d.isoformat()} are locked after 03:00 AM of the next day. Please ask management to change it.",
+        )
 
 
 @router.get("/")
@@ -57,6 +70,7 @@ def create_sale(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    _check_day_open(user, date.fromisoformat(sale_date))
     # Prevent duplicate date per branch
     existing = db.query(Sale).filter(
         Sale.branch_id == branch_id,
@@ -112,7 +126,7 @@ def create_sale(
 
 
 def _can_modify_sale(user: User, sale: Sale):
-    if user.role in ("owner", "manager", "accountant"):
+    if user.role in SALES_ADMIN_ROLES:
         return True
     if user.role == "staff" and user.branch_id and sale.branch_id == user.branch_id:
         return True
@@ -150,6 +164,8 @@ def update_sale(
         raise HTTPException(status_code=403, detail="Not allowed")
 
     new_date = date.fromisoformat(sale_date)
+    _check_day_open(user, sale.date)
+    _check_day_open(user, new_date)
     duplicate = db.query(Sale).filter(
         Sale.branch_id == branch_id,
         Sale.date == new_date,
@@ -197,6 +213,7 @@ def delete_sale(sale_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Sale not found")
     if not _can_modify_sale(user, sale):
         raise HTTPException(status_code=403, detail="Not allowed")
+    _check_day_open(user, sale.date)
     db.delete(sale)
     db.commit()
     return {"ok": True}

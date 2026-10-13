@@ -64,6 +64,12 @@ export default function SalesPage() {
 
   const isStaff = user?.role === "staff";
   const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
+  // Branch logins can change a day's sales until 03:00 Kuwait time (00:00 UTC) the next day.
+  const isDayLocked = (d: string) => {
+    if (isOwnerManager) return false;
+    const [y, m, day] = d.split("-").map(Number);
+    return Date.now() >= Date.UTC(y, m - 1, day + 1);
+  };
 
   // Foodics sync state
   const [showFoodicsSync] = useState(false);
@@ -167,7 +173,7 @@ export default function SalesPage() {
         ? await apiPut(`/api/sales/${editingSaleId}`, fd)
         : await apiPost("/api/sales/", fd);
       if (res.detail) {
-        setError(t("duplicate_date_error"));
+        setError(String(res.detail).includes("locked") ? t("sales_day_locked") : t("duplicate_date_error"));
         return;
       }
       resetForm();
@@ -535,6 +541,9 @@ export default function SalesPage() {
                     {diff.toFixed(3)}
                   </td>
                   <td className="px-2 py-2 text-center whitespace-nowrap">
+                    {isDayLocked(s.date) ? (
+                      <span className="px-2 py-1 text-[10px] text-gray-400" title={t("sales_day_locked")}>🔒</span>
+                    ) : (<>
                     <button onClick={() => startEdit(s)}
                       className="px-2 py-1 bg-blue-500 text-white rounded text-[10px] hover:bg-blue-600" title={t("edit")}>
                       ✏️
@@ -543,6 +552,7 @@ export default function SalesPage() {
                       className="ml-1 px-2 py-1 bg-red-500 text-white rounded text-[10px] hover:bg-red-600" title={t("delete")}>
                       🗑️
                     </button>
+                    </>)}
                     <button onClick={async () => {
                       const br = branches.find(b => b.id === s.branch_id);
                       if (!br?.whatsapp_group && !br?.whatsapp_number) { alert(t("no_whatsapp") || "No WhatsApp group or number configured for this branch"); return; }

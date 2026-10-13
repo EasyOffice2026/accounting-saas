@@ -1030,4 +1030,5 @@ export default {
   proceeds_by_branch: "المبيعات حسب الفرع",
   channel_src_sales_proceeds: "متحصلات المبيعات",
   total_central_purchases: "المشتريات المركزية",
+  sales_day_locked: "هذا اليوم مقفل. يمكن للفروع تعديل المبيعات حتى الساعة 03:00 صباحاً من اليوم التالي فقط. يرجى مراجعة الإدارة.",
 };

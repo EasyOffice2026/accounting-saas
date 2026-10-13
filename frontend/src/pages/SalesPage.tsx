@@ -64,11 +64,11 @@ export default function SalesPage() {
 
   const isStaff = user?.role === "staff";
   const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
-  // Branch logins can change a day's sales until 03:00 Kuwait time (00:00 UTC) the next day.
+  // Branch logins can change a day's sales until 12:00 noon Kuwait time (09:00 UTC) the next day.
   const isDayLocked = (d: string) => {
     if (isOwnerManager) return false;
     const [y, m, day] = d.split("-").map(Number);
-    return Date.now() >= Date.UTC(y, m - 1, day + 1);
+    return Date.now() >= Date.UTC(y, m - 1, day + 1, 9);
   };
 
   // Foodics sync state

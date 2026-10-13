@@ -19,13 +19,13 @@ SALES_ADMIN_ROLES = ("owner", "manager", "accountant")
 
 
 def _check_day_open(user: User, d: date):
-    """Branch logins may change a day's sales only until 03:00 Kuwait time (00:00 UTC) the next day."""
+    """Branch logins may change a day's sales only until 12:00 noon Kuwait time (09:00 UTC) the next day."""
     if user.role in SALES_ADMIN_ROLES:
         return
-    if datetime.now(timezone.utc) >= datetime.combine(d + timedelta(days=1), time(0, 0), tzinfo=timezone.utc):
+    if datetime.now(timezone.utc) >= datetime.combine(d + timedelta(days=1), time(9, 0), tzinfo=timezone.utc):
         raise HTTPException(
             status_code=403,
-            detail=f"Sales for {d.isoformat()} are locked after 03:00 AM of the next day. Please ask management to change it.",
+            detail=f"Sales for {d.isoformat()} are locked after 12:00 PM (noon) of the next day. Please ask management to change it.",
         )
 
 

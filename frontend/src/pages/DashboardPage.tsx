@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiGet } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 import DateRangeFilter, { type DateRange, dateRangeParams } from "../components/DateRangeFilter";
-import { DollarSign, ShoppingCart, Receipt, Users, Banknote, ArrowLeftRight } from "lucide-react";
+import { DollarSign, ShoppingCart, Receipt, Users, Banknote, ArrowLeftRight, Truck } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 interface BranchData {
@@ -16,6 +16,7 @@ interface DashboardData {
   total_purchases: number;
   total_expenses: number;
   total_transfers: number;
+  total_central_purchases: number;
   employee_count: number;
   sales_count: number;
   branch_data: BranchData[];
@@ -50,6 +51,7 @@ export default function DashboardPage() {
   const cards = data ? [
     { label: t("total_sales"), value: `KD ${data.total_sales.toLocaleString()}`, icon: DollarSign, color: "bg-emerald-500" },
     { label: t("total_purchases"), value: `KD ${data.total_purchases.toLocaleString()}`, icon: ShoppingCart, color: "bg-blue-500" },
+    { label: t("total_central_purchases"), value: `KD ${(data.total_central_purchases ?? 0).toLocaleString()}`, icon: Truck, color: "bg-indigo-500" },
     { label: t("total_expenses"), value: `KD ${data.total_expenses.toLocaleString()}`, icon: Receipt, color: "bg-orange-500" },
     { label: t("total_transfers"), value: `KD ${data.total_transfers.toLocaleString()}`, icon: ArrowLeftRight, color: "bg-violet-500" },
     { label: t("employee_count"), value: data.employee_count.toString(), icon: Users, color: "bg-purple-500" },
@@ -82,7 +84,7 @@ export default function DashboardPage() {
         <div className="text-center py-8 text-gray-400">Loading...</div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mb-6">
             {cards.map(({ label, value, icon: Icon, color }) => (
               <div key={label} className="bg-white rounded-lg shadow-sm border p-3">
                 <div className="flex items-center justify-between">

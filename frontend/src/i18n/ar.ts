@@ -1029,4 +1029,5 @@ export default {
   proceeds_age_31_plus: "أكثر من 30 يوم",
   proceeds_by_branch: "المبيعات حسب الفرع",
   channel_src_sales_proceeds: "متحصلات المبيعات",
+  total_central_purchases: "المشتريات المركزية",
 };

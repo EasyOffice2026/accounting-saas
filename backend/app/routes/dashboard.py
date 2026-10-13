@@ -6,6 +6,7 @@ from typing import Optional
 from app.database import get_db
 from app.models.sale import Sale
 from app.models.purchase import PurchaseOrder
+from app.models.procurement import ProcOrder
 from app.models.expense import Expense
 from app.models.hr import Employee
 from app.models.branch import Branch
@@ -13,6 +14,7 @@ from app.models.transfer import TransferOrder, TransferOrderLine
 from app.models.user import User
 from app.utils.auth import get_current_user, get_business_user
 from app.routes.hr import _brand_branch_ids, _exclude_left_employees
+from app.routes.procurement import PURCHASED_STATUSES
 from app.utils.dates import apply_date_range
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(get_business_user)])
@@ -79,6 +81,12 @@ def dashboard(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
 
     transfers_by_branch = _transfers_by_branch(db, date_from, date_to)
 
+    central_q = db.query(func.coalesce(func.sum(ProcOrder.total), 0)).filter(
+        ProcOrder.status.in_(PURCHASED_STATUSES))
+    if brand_id:
+        central_q = central_q.filter(ProcOrder.brand_id == brand_id)
+    total_central_purchases = float(dated(central_q, ProcOrder).scalar() or 0)
+
     employee_count = apply_branch(
         _exclude_left_employees(db.query(func.count(Employee.id))),
         Employee,
@@ -110,6 +118,7 @@ def dashboard(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
         "total_purchases": total_purchases,
         "total_expenses": total_expenses,
         "total_transfers": round(total_transfers, 3),
+        "total_central_purchases": round(total_central_purchases, 3),
         "employee_count": employee_count,
         "sales_count": sales_count,
         "branch_data": branch_data,

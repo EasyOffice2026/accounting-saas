@@ -1029,4 +1029,5 @@ export default {
   proceeds_age_31_plus: "over 30 days",
   proceeds_by_branch: "Sales by Branch",
   channel_src_sales_proceeds: "Sales Proceeds",
+  total_central_purchases: "Central Purchases",
 };

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiGet } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 import DateRangeFilter, { type DateRange, dateRangeParams } from "../components/DateRangeFilter";
-import { DollarSign, ShoppingCart, Receipt, Users, Banknote, ArrowLeftRight, Truck } from "lucide-react";
+import { DollarSign, ShoppingCart, Receipt, Users, ArrowLeftRight, Truck } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 interface BranchData {
@@ -55,7 +55,6 @@ export default function DashboardPage() {
     { label: t("total_expenses"), value: `KD ${data.total_expenses.toLocaleString()}`, icon: Receipt, color: "bg-orange-500" },
     { label: t("total_transfers"), value: `KD ${data.total_transfers.toLocaleString()}`, icon: ArrowLeftRight, color: "bg-violet-500" },
     { label: t("employee_count"), value: data.employee_count.toString(), icon: Users, color: "bg-purple-500" },
-    { label: t("sales_count"), value: data.sales_count.toString(), icon: Banknote, color: "bg-teal-500" },
   ] : [];
 
   const pieData = data ? [
@@ -84,7 +83,7 @@ export default function DashboardPage() {
         <div className="text-center py-8 text-gray-400">Loading...</div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
             {cards.map(({ label, value, icon: Icon, color }) => (
               <div key={label} className="bg-white rounded-lg shadow-sm border p-3">
                 <div className="flex items-center justify-between">

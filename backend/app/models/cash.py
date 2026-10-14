@@ -14,6 +14,7 @@ class CashTransaction(Base):
     amount = Column(Float, nullable=False)
     reference = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
+    channel_id = Column(Integer, ForeignKey("payment_channels.id"), nullable=True)  # bank the cash came from / went to
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

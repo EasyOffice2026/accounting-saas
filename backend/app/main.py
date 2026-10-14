@@ -340,7 +340,7 @@ def _migrate_columns():
                 conn.commit()
 
         # Payment channels (banks/cards): channel_id on every payment record
-        for tbl in ["expenses", "salary_payments", "contract_payments", "renewal_requests", "proc_payments"]:
+        for tbl in ["expenses", "salary_payments", "contract_payments", "renewal_requests", "proc_payments", "cash_transactions"]:
             if tbl in insp.get_table_names():
                 cols = [c["name"] for c in insp.get_columns(tbl)]
                 if "channel_id" not in cols:

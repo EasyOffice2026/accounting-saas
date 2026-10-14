@@ -1031,4 +1031,10 @@ export default {
   channel_src_sales_proceeds: "متحصلات المبيعات",
   total_central_purchases: "المشتريات المركزية",
   sales_day_locked: "هذا اليوم مقفل. يمكن للفروع تعديل المبيعات حتى الساعة 12:00 ظهراً من اليوم التالي فقط. يرجى مراجعة الإدارة.",
+  payment_channel: "قناة الدفع",
+  cash_from_channel: "من قناة الدفع",
+  cash_to_channel: "إلى قناة الدفع",
+  cash_not_from_bank: "ليس من بنك (نقداً باليد)",
+  cash_not_to_bank: "ليس إلى بنك (نقداً باليد)",
+  channel_src_cash_box: "صندوق النقد",
 };

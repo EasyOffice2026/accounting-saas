@@ -1031,4 +1031,10 @@ export default {
   channel_src_sales_proceeds: "Sales Proceeds",
   total_central_purchases: "Central Purchases",
   sales_day_locked: "This day is locked. Branches can change sales only until 12:00 PM (noon) of the next day. Please ask management.",
+  payment_channel: "Payment Channel",
+  cash_from_channel: "From Payment Channel",
+  cash_to_channel: "To Payment Channel",
+  cash_not_from_bank: "Not from a bank (cash by hand)",
+  cash_not_to_bank: "Not to a bank (cash by hand)",
+  channel_src_cash_box: "Cash Box",
 };

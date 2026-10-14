@@ -5,12 +5,13 @@ import { useAuth } from "../contexts/AuthContext";
 import PaymentChannelsPanel from "../components/PaymentChannelsPanel";
 import DailyCashSummary from "../components/DailyCashSummary";
 import SalesProceedsPanel from "../components/SalesProceedsPanel";
+import { useChannels, channelLabel, CHANNEL_START_DATE } from "../components/ChannelSelect";
 
 const DAILY_ROLES = ["owner", "manager", "accountant"];
 
 const CHANNEL_VIEW_ROLES = ["owner", "manager", "accountant", "personnel_manager", "purchase_manager"];
 
-interface Branch { id: number; name: string; name_ar: string; }
+interface Branch { id: number; name: string; name_ar: string; brand_id: number | null; }
 interface CashSummary {
   date: string; branch_id: number;
   opening_balance: number; cash_sales: number; petty_cash_in: number;
@@ -21,6 +22,7 @@ interface CashTxn {
   id: number; branch_id: number; date: string;
   txn_type: string; category: string; amount: number;
   reference: string; notes: string; balance: number;
+  channel_id: number | null; channel_name: string | null;
 }
 
 export default function CashPage() {
@@ -35,6 +37,8 @@ export default function CashPage() {
   const [mode, setMode] = useState<"cash" | "daily" | "proceeds" | "channels">("cash");
   const [showTxnForm, setShowTxnForm] = useState(false);
   const [txnType, setTxnType] = useState<"cash_in" | "cash_out">("cash_in");
+  const [txnDate, setTxnDate] = useState(selectedDate);
+  const { channels } = useChannels();
 
   const categoriesFor = (type: string) =>
     type === "cash_in"
@@ -77,6 +81,7 @@ export default function CashPage() {
       amount: fd.get("amount") as string,
       reference: fd.get("reference") as string || "",
       notes: fd.get("notes") as string || "",
+      channel_id: fd.get("channel_id") as string || "",
     });
     await apiFetch(`/api/cash/transactions?${params}`, { method: "POST" });
     setShowTxnForm(false);
@@ -92,6 +97,9 @@ export default function CashPage() {
     const ext = fmt === "excel" ? "xlsx" : fmt;
     apiDownload(`/api/export/cash/${fmt}?branch_id=${branchId}`, `cash_management.${ext}`);
   };
+
+  const branchBrand = branches.find(b => String(b.id) === branchId)?.brand_id;
+  const boxChannels = channels.filter(c => !c.brand_id || !branchBrand || c.brand_id === branchBrand);
 
   const isStaff = user?.role === "staff";
   const readOnly = user?.role === "personnel" || user?.role === "purchase_officer" || isStaff;
@@ -254,7 +262,7 @@ export default function CashPage() {
       {tab === "transactions" && !readOnly && (
         <div>
           <div className="mb-4">
-            <button onClick={() => setShowTxnForm(!showTxnForm)}
+            <button onClick={() => { setTxnDate(selectedDate); setShowTxnForm(!showTxnForm); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
               {showTxnForm ? t("cancel") : t("add_transaction")}
             </button>
@@ -265,7 +273,7 @@ export default function CashPage() {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">{t("date")}</label>
-                  <input type="date" name="txn_date" defaultValue={selectedDate}
+                  <input type="date" name="txn_date" value={txnDate} onChange={e => setTxnDate(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
@@ -282,6 +290,19 @@ export default function CashPage() {
                   <select name="category" key={txnType} className="w-full px-3 py-2 border rounded-lg text-sm">
                     {categoriesFor(txnType).map(c => (
                       <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    {txnType === "cash_in" ? t("cash_from_channel") : t("cash_to_channel")}
+                  </label>
+                  <select name="channel_id" key={`ch-${txnType}`} defaultValue="" disabled={txnDate < CHANNEL_START_DATE}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">{txnDate < CHANNEL_START_DATE ? t("channel_not_applicable")
+                      : txnType === "cash_in" ? t("cash_not_from_bank") : t("cash_not_to_bank")}</option>
+                    {boxChannels.map(c => (
+                      <option key={c.id} value={c.id}>{channelLabel(c, i18n.language)}</option>
                     ))}
                   </select>
                 </div>
@@ -313,6 +334,7 @@ export default function CashPage() {
                   <th className="px-4 py-3 text-left">{t("date")}</th>
                   <th className="px-4 py-3 text-left">{t("type")}</th>
                   <th className="px-4 py-3 text-left">{t("category")}</th>
+                  <th className="px-4 py-3 text-left">{t("payment_channel")}</th>
                   <th className="px-4 py-3 text-right">{t("cash_in")}</th>
                   <th className="px-4 py-3 text-right">{t("cash_out")}</th>
                   <th className="px-4 py-3 text-right font-bold">{t("balance")}</th>
@@ -321,7 +343,7 @@ export default function CashPage() {
               </thead>
               <tbody>
                 {transactions.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t("no_data")}</td></tr>
                 ) : transactions.map(txn => (
                   <tr key={txn.id} className={`border-b hover:bg-gray-50 ${txn.txn_type === "opening_balance" ? "bg-blue-50" : ""}`}>
                     <td className="px-4 py-3">{txn.date}</td>
@@ -333,6 +355,7 @@ export default function CashPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">{txn.category === "deposit" ? t("bank_deposit") : (t(txn.category) || txn.category)}</td>
+                    <td className="px-4 py-3 text-xs text-gray-600">{txn.channel_name || "-"}</td>
                     <td className="px-4 py-3 text-right font-medium text-green-600">
                       {(txn.txn_type === "cash_in" || txn.txn_type === "opening_balance") ? `KD ${txn.amount.toFixed(3)}` : "-"}
                     </td>

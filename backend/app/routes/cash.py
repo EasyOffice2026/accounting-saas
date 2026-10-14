@@ -10,6 +10,9 @@ from app.models.expense import Expense
 from app.utils.auth import get_current_user
 from app.models.user import User
 from app.routes.hr import _brand_branch_ids
+from app.routes.channels import channel_for_cash_box
+from app.models.branch import Branch
+from app.models.channel import PaymentChannel
 
 PERSONNEL_ROLES = ("personnel", "personnel_manager", "purchase_officer", "purchase_manager")  # office-box-only roles
 VIEW_ONLY_ROLES = ("personnel", "purchase_officer", "staff")  # branch cash entries are made by management / accountants only
@@ -60,6 +63,8 @@ def list_transactions(
     if date_to:
         q = q.filter(CashTransaction.date <= date_to)
     rows = q.order_by(CashTransaction.date.asc(), CashTransaction.id.asc()).all()
+    ch_names = {c.id: c.name for c in db.query(PaymentChannel).filter(
+        PaymentChannel.id.in_({r.channel_id for r in rows if r.channel_id})).all()}
     # Calculate running balance
     balance = 0.0
     result = []
@@ -76,6 +81,7 @@ def list_transactions(
             "id": r.id, "branch_id": r.branch_id, "date": str(r.date),
             "txn_type": r.txn_type, "category": r.category,
             "amount": r.amount, "reference": r.reference, "notes": r.notes,
+            "channel_id": r.channel_id, "channel_name": ch_names.get(r.channel_id),
             "balance": round(balance, 3),
         })
     return result
@@ -90,20 +96,25 @@ def create_transaction(
     amount: float = Query(...),
     reference: str = Query(None),
     notes: str = Query(None),
+    channel_id: str = Query(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     if user.role in VIEW_ONLY_ROLES:
         raise HTTPException(403, "This role has view-only access to petty cash")
     _guard_personnel(db, user, branch_id)
+    branch = db.query(Branch).filter(Branch.id == branch_id).first()
+    if not branch:
+        raise HTTPException(404, "Branch not found")
     # An "opening_balance" category anchors the running balance, so store it
     # with the special opening_balance txn_type regardless of the chosen type.
     if category == "opening_balance":
         txn_type = "opening_balance"
+    cid = channel_for_cash_box(db, channel_id, user, branch) if txn_type in ("cash_in", "cash_out") else None
     t = CashTransaction(
         branch_id=branch_id, date=date_cls.fromisoformat(txn_date), txn_type=txn_type,
         category=category, amount=amount, reference=reference,
-        notes=notes, created_by=user.id,
+        notes=notes, channel_id=cid, created_by=user.id,
     )
     db.add(t)
     db.commit()

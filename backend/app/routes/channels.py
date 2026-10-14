@@ -2,9 +2,10 @@
 
 A channel's balance = opening + deposits − withdrawals − payments booked against it.
 Payments are pulled from the Expense table (branch/office expenses, contracts, payroll,
-renewals all mirror there) plus Purchase Office supplier payments. Only records dated on/after
-CHANNEL_START_DATE count, so history before the go-live is untouched. Branch cash boxes are
-never affected by channel payments.
+renewals all mirror there) plus Purchase Office supplier payments. Cash Box transactions linked
+to a channel move money between the box and the channel: Cash In (petty cash) is taken from the
+channel, Cash Out (bank deposit / withdrawal) is paid into it. Only records dated on/after
+CHANNEL_START_DATE count, so history before the go-live is untouched.
 """
 from fastapi import APIRouter, Depends, HTTPException, Form, Query
 from sqlalchemy.orm import Session
@@ -16,6 +17,7 @@ from app.database import get_db
 from app.models.channel import PaymentChannel, ChannelTransaction
 from app.models.proceeds import ProceedsReceipt, METHOD_LABELS
 from app.models.expense import Expense
+from app.models.cash import CashTransaction
 from app.models.procurement import ProcPayment, ProcInvoice
 from app.models.purchase import Supplier
 from app.models.branch import Branch
@@ -81,13 +83,35 @@ def _proceeds_total(db: Session, channel_id: int, date_to: Optional[date] = None
     return float(q.scalar())
 
 
+def _cash_box_total(db: Session, channel_id: int, txn_type: str, date_to: Optional[date] = None) -> float:
+    q = db.query(func.coalesce(func.sum(CashTransaction.amount), 0)).filter(
+        CashTransaction.channel_id == channel_id, CashTransaction.txn_type == txn_type,
+        CashTransaction.date >= CHANNEL_START_DATE)
+    if date_to:
+        q = q.filter(CashTransaction.date <= date_to)
+    return float(q.scalar())
+
+
 def channel_balance(db: Session, ch: PaymentChannel, date_to: Optional[date] = None) -> float:
     return round(
         (ch.opening_balance or 0)
         + _manual_total(db, ch.id, "deposit", date_to)
         + _proceeds_total(db, ch.id, date_to)
+        + _cash_box_total(db, ch.id, "cash_out", date_to)
+        - _cash_box_total(db, ch.id, "cash_in", date_to)
         - _manual_total(db, ch.id, "withdrawal", date_to)
         - _payments_total(db, ch.id, date_to), 3)
+
+
+def channel_for_cash_box(db: Session, channel_id: str, user: User, branch: Branch) -> Optional[int]:
+    """Validate a channel picked on a Cash Box transaction: it must belong to the branch's brand."""
+    cid = channel_for_payment(db, channel_id, user)
+    if cid is None:
+        return None
+    ch = _channel_or_404(db, cid)
+    if ch.brand_id and branch.brand_id and ch.brand_id != branch.brand_id:
+        raise HTTPException(403, "Payment channel belongs to another brand")
+    return cid
 
 
 def _serialize(db: Session, ch: PaymentChannel, with_balance: bool = True) -> dict:
@@ -188,6 +212,7 @@ def delete_channel(channel_id: int, db: Session = Depends(get_db), user: User = 
         or db.query(ProcPayment.id).filter(ProcPayment.channel_id == ch.id).first()
         or db.query(ChannelTransaction.id).filter(ChannelTransaction.channel_id == ch.id).first()
         or db.query(ProceedsReceipt.id).filter(ProceedsReceipt.channel_id == ch.id).first()
+        or db.query(CashTransaction.id).filter(CashTransaction.channel_id == ch.id).first()
     )
     if used:
         ch.is_active = False
@@ -287,6 +312,22 @@ def _statement(db: Session, ch: PaymentChannel, date_from: Optional[str], date_t
             "description": f"{label} sales proceeds", "head": bname or "All branches",
             "credit": r.amount or 0, "debit": 0,
             "notes": " · ".join(x for x in (r.reference or "", fees) if x) or None,
+        })
+    cash_rows = (
+        db.query(CashTransaction, Branch.name)
+        .join(Branch, Branch.id == CashTransaction.branch_id)
+        .filter(CashTransaction.channel_id == ch.id, CashTransaction.date >= CHANNEL_START_DATE,
+                CashTransaction.txn_type.in_(("cash_in", "cash_out"))).all()
+    )
+    for c, bname in cash_rows:
+        label = {"petty_cash": "Petty Cash", "deposit": "Bank Deposit", "withdrawal": "Withdrawal"}.get(
+            c.category, c.category.replace("_", " ").title())
+        entries.append({
+            "date": c.date, "id": f"cash-{c.id}", "source": "cash_box",
+            "description": f"{label}: {bname}", "head": bname,
+            "credit": c.amount if c.txn_type == "cash_out" else 0,
+            "debit": c.amount if c.txn_type == "cash_in" else 0,
+            "notes": " · ".join(x for x in (c.reference or "", c.notes or "") if x) or None,
         })
     entries.sort(key=lambda x: (x["date"], x["id"]))
 

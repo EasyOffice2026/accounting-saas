@@ -18,9 +18,17 @@ router = APIRouter(prefix="/api/sales", tags=["sales"], dependencies=[Depends(ge
 SALES_ADMIN_ROLES = ("owner", "manager", "accountant")
 
 
-def _check_day_open(user: User, d: date):
-    """Branch logins may change a day's sales only until 12:00 noon Kuwait time (09:00 UTC) the next day."""
-    if user.role in SALES_ADMIN_ROLES:
+def branch_sales_unlocked(db: Session, branch_id: Optional[int]) -> bool:
+    if not branch_id:
+        return False
+    until = db.query(Branch.sales_unlock_until).filter(Branch.id == branch_id).scalar()
+    return until is not None and datetime.now(timezone.utc).replace(tzinfo=None) < until
+
+
+def _check_day_open(db: Session, user: User, d: date):
+    """Branch logins may change a day's sales only until 12:00 noon Kuwait time (09:00 UTC) the next day,
+    unless management has temporarily unlocked the branch."""
+    if user.role in SALES_ADMIN_ROLES or branch_sales_unlocked(db, user.branch_id):
         return
     if datetime.now(timezone.utc) >= datetime.combine(d + timedelta(days=1), time(9, 0), tzinfo=timezone.utc):
         raise HTTPException(
@@ -70,7 +78,7 @@ def create_sale(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _check_day_open(user, date.fromisoformat(sale_date))
+    _check_day_open(db, user, date.fromisoformat(sale_date))
     # Prevent duplicate date per branch
     existing = db.query(Sale).filter(
         Sale.branch_id == branch_id,
@@ -164,8 +172,8 @@ def update_sale(
         raise HTTPException(status_code=403, detail="Not allowed")
 
     new_date = date.fromisoformat(sale_date)
-    _check_day_open(user, sale.date)
-    _check_day_open(user, new_date)
+    _check_day_open(db, user, sale.date)
+    _check_day_open(db, user, new_date)
     duplicate = db.query(Sale).filter(
         Sale.branch_id == branch_id,
         Sale.date == new_date,
@@ -213,7 +221,7 @@ def delete_sale(sale_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Sale not found")
     if not _can_modify_sale(user, sale):
         raise HTTPException(status_code=403, detail="Not allowed")
-    _check_day_open(user, sale.date)
+    _check_day_open(db, user, sale.date)
     db.delete(sale)
     db.commit()
     return {"ok": True}

@@ -67,6 +67,7 @@ export default function SalesPage() {
   // Branch logins can change a day's sales until 12:00 noon Kuwait time (09:00 UTC) the next day.
   const isDayLocked = (d: string) => {
     if (isOwnerManager) return false;
+    if (user?.sales_unlock_until && Date.now() < Date.parse(user.sales_unlock_until)) return false;
     const [y, m, day] = d.split("-").map(Number);
     return Date.now() >= Date.UTC(y, m - 1, day + 1, 9);
   };

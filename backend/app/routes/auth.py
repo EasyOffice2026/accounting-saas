@@ -30,6 +30,11 @@ def resolve_allowed_brands(db: Session, user: User) -> list[int] | None:
 
 
 def _user_payload(db: Session, user: User) -> dict:
+    unlock = None
+    if user.branch_id:
+        until = db.query(Branch.sales_unlock_until).filter(Branch.id == user.branch_id).scalar()
+        if until is not None:
+            unlock = until.isoformat() + "Z"
     return {
         "id": user.id,
         "username": user.username,
@@ -38,6 +43,7 @@ def _user_payload(db: Session, user: User) -> dict:
         "branch_id": user.branch_id,
         "allowed_tabs": user.get_allowed_tabs(),
         "allowed_brands": resolve_allowed_brands(db, user),
+        "sales_unlock_until": unlock,
     }
 
 

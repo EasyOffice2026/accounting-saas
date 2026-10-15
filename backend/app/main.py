@@ -285,6 +285,9 @@ def _migrate_columns():
             if "whatsapp_group" not in cols:
                 conn.execute(text("ALTER TABLE branches ADD COLUMN whatsapp_group TEXT"))
                 conn.commit()
+            if "sales_unlock_until" not in cols:
+                conn.execute(text("ALTER TABLE branches ADD COLUMN sales_unlock_until DATETIME"))
+                conn.commit()
 
         # Contracts table
         if "contracts" not in insp.get_table_names():

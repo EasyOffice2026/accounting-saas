@@ -9,6 +9,7 @@ interface UserInfo {
   branch_id: number | null;
   allowed_tabs: string[] | null;
   allowed_brands: number[] | null;
+  sales_unlock_until?: string | null;
 }
 
 interface AuthCtx {

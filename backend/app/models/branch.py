@@ -14,4 +14,5 @@ class Branch(Base):
     whatsapp_number = Column(String, nullable=True)
     whatsapp_group = Column(String, nullable=True)  # Group ID e.g. 120363XXX@g.us
     is_active = Column(Boolean, default=True)
+    sales_unlock_until = Column(DateTime, nullable=True)  # UTC; branch may change past sales until then
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

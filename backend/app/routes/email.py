@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/email", tags=["email"])
 
 @router.get("/smtp-settings")
 def get_smtp_settings(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Only owner/manager can view SMTP settings")
     settings = db.query(SmtpSettings).first()
     if not settings:
@@ -41,7 +41,7 @@ def save_smtp_settings(
     use_tls: bool = Form(True),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Only owner/manager can update SMTP settings")
     settings = db.query(SmtpSettings).first()
     if settings:
@@ -67,7 +67,7 @@ def save_smtp_settings(
 
 @router.post("/test")
 def test_smtp(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Only owner/manager can test SMTP")
     settings = db.query(SmtpSettings).first()
     if not settings:

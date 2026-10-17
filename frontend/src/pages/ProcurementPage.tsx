@@ -1,0 +1,1010 @@
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
+import { apiGet, apiFetch, apiDownload } from "../contexts/api";
+import { useAuth } from "../contexts/AuthContext";
+import { useBrand } from "../contexts/BrandContext";
+import { Plus, Printer, Paperclip, X, Trash2, ScanLine } from "lucide-react";
+import { PO_STATUS_CLS } from "./PurchaseDashboardPage";
+import SupplierMasterTabs from "../components/SupplierMasterTabs";
+import ChannelSelect from "../components/ChannelSelect";
+
+type ProcTab = "orders" | "catalog" | "categories" | "invoices" | "ledger" | "products";
+const PROC_TABS: ProcTab[] = ["orders", "catalog", "categories", "invoices", "ledger", "products"];
+const TAB_KEY: Record<ProcTab, string> = { orders: "po_orders", catalog: "supplier_catalog", categories: "purchase_categories", invoices: "po_invoices", ledger: "po_ledger", products: "po_products" };
+
+interface Supplier { id: number; name: string; payment_type: string; category_id: number | null; category_name: string; }
+interface SupItem { id: number; item_name: string; item_name_ar: string; packaging: string; unit: string; unit_price: number; }
+interface Category { id: number; name: string; name_ar: string; }
+interface Line { supplier_item_id: number | null; item_name: string; item_name_ar: string; packaging: string; unit: string; quantity: string; unit_price: string; }
+interface OrderItem { id: number; supplier_item_id: number | null; item_name: string; item_name_ar: string; packaging: string; unit: string; quantity: number; unit_price: number; total: number; received_qty: number | null; received_total: number | null; }
+interface Payment { id: number; date: string; amount: number; method: string; reference: string; notes: string; created_by_name: string; }
+interface Invoice {
+  id: number; order_id: number; po_no: string; supplier_id: number; supplier_name: string; payment_type: string; invoice_number: string;
+  date: string; due_date: string; total_amount: number; paid_amount: number; balance: number; status: string; notes: string; attachment: string;
+  days_overdue: number; payments: Payment[];
+}
+interface Order {
+  id: number; po_no: string; brand_id: number; supplier_id: number; supplier_name: string; category_id: number | null; category_name: string;
+  date: string; expected_date: string; payment_type: string; delivery_location: string; total: number; notes: string; status: string; status_label: string;
+  attachment: string; created_by: number | null; created_by_name: string; created_at: string; submitted_at: string; approved_by_name: string; approved_at: string;
+  approval_comment: string; ordered_at: string; received_date: string; received_by_name: string; receiving_notes: string; receiving_attachment: string;
+  invoice_id: number | null; invoice_status: string; invoice_paid: number; invoice_total: number; item_count: number;
+  items?: OrderItem[]; logs?: { status: string; label: string; comment: string; user_name: string; at: string }[]; invoice?: Invoice | null;
+}
+interface ScanLineOut { supplier_item_id: number | null; item_name: string; item_name_ar: string; packaging: string; unit: string; quantity: number; unit_price: number; amount: number; item_code: string; matched: boolean; }
+interface ScanResult {
+  supplier_id: number | null; supplier_name: string; supplier_name_raw: string; invoice_number: string; invoice_date: string; due_date: string; payment_type: string;
+  lines: ScanLineOut[]; discount: number; total: number; lines_total: number; warnings: string[]; duplicate: { po_no: string; date: string; total: number } | null; notes: string;
+}
+interface LedgerRow { supplier_id: number; supplier_name: string; invoices: number; opening: number; invoiced: number; paid: number; balance: number; overdue: number; open_invoices: number; }
+interface ProductRow { key: string; item_name: string; item_name_ar: string; unit: string; total_qty: number; total_amount: number; avg_price: number; min_price: number; max_price: number; last_price: number; last_date: string; orders: number; suppliers: number; }
+interface ProductLine { date: string; po_no: string; order_id: number; supplier_name: string; packaging: string; quantity: number; unit_price: number; amount: number; status: string; status_label: string; }
+interface ProductPurchases { products: ProductRow[]; total_amount: number; product?: ProductRow | null; lines?: ProductLine[]; }
+interface Ledger { suppliers: LedgerRow[]; total_balance: number; total_overdue: number; statement?: { date: string; kind: string; ref: string; po_no: string; debit: number; credit: number; balance: number }[]; }
+
+const inp = "border rounded px-2 py-1.5 text-sm w-full";
+const btn = "px-3 py-1.5 rounded text-sm font-medium";
+const kd = (v: number | null | undefined) => (v || 0).toFixed(3);
+const today = () => new Date().toISOString().slice(0, 10);
+const emptyLine = (): Line => ({ supplier_item_id: null, item_name: "", item_name_ar: "", packaging: "", unit: "pcs", quantity: "1", unit_price: "0" });
+const APPROVERS = ["owner", "accountant", "purchase_manager"];
+const METHODS = ["purchase_petty_cash", "bank_transfer", "knet", "cheque"] as const;
+
+async function post(path: string, fd: FormData, method = "POST") {
+  const res = await apiFetch(path, { method, body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || "Action failed");
+  return data;
+}
+
+const MAX_SCAN_PAGES = 10;
+
+function FileBtn({ label, file, onChange }: { label: string; file: File | null; onChange: (f: File | null) => void }) {
+  const id = useMemo(() => `f${Math.random().toString(36).slice(2)}`, []);
+  return (
+    <div className="flex items-center gap-2">
+      <label htmlFor={id} className="inline-flex items-center gap-1 px-3 py-1.5 border rounded text-sm cursor-pointer bg-gray-50 hover:bg-gray-100">
+        <Paperclip size={14} /> {label}
+      </label>
+      <input id={id} type="file" className="hidden" onChange={e => onChange(e.target.files?.[0] || null)} />
+      {file && <span className="text-xs text-gray-600 inline-flex items-center gap-1">{file.name}<button type="button" onClick={() => onChange(null)}><X size={12} /></button></span>}
+    </div>
+  );
+}
+
+export default function ProcurementPage({ embedded = false }: { embedded?: boolean }) {
+  const { t, i18n } = useTranslation();
+  const ar = i18n.language === "ar";
+  const { user } = useAuth();
+  const { selectedBrand, brands } = useBrand();
+  const [params, setParams] = useSearchParams();
+  const [tab, setTab] = useState<ProcTab>((params.get("tab") as ProcTab) || "orders");
+  const [showSupplierForm, setShowSupplierForm] = useState(false);
+
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [locations, setLocations] = useState<{ name: string; name_ar: string }[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [ledger, setLedger] = useState<Ledger | null>(null);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [supFilter, setSupFilter] = useState("");
+  const [ledgerSup, setLedgerSup] = useState("");
+  const [soaFrom, setSoaFrom] = useState("");
+  const [soaTo, setSoaTo] = useState("");
+  const [openingForm, setOpeningForm] = useState<{ supplier_id: string; amount: string; as_of: string; notes: string } | null>(null);
+
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const [showForm, setShowForm] = useState(false);
+  const [editOrder, setEditOrder] = useState<Order | null>(null);
+  const [scan, setScan] = useState<{ result: ScanResult; files: File[] } | null>(null);
+  const [scanPages, setScanPages] = useState<File[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [scanErr, setScanErr] = useState("");
+  const scanInputId = useMemo(() => `scan${Math.random().toString(36).slice(2)}`, []);
+
+  const scanFiles = async () => {
+    if (!scanPages.length) return;
+    setScanErr(""); setScanning(true);
+    const fd = new FormData(); scanPages.forEach(f => fd.append("files", f));
+    try {
+      const res = await apiFetch("/api/procurement/scan-invoice", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 503) throw new Error(t("scan_not_configured"));
+      if (!res.ok) throw new Error(data.detail || t("scan_failed"));
+      setScan({ result: data as ScanResult, files: scanPages }); setScanPages([]); setEditOrder(null); setShowForm(true);
+    } catch (e) { setScanErr(e instanceof Error ? e.message : t("scan_failed")); }
+    finally { setScanning(false); }
+  };
+  const [detail, setDetail] = useState<Order | null>(null);
+  const [approveOrder, setApproveOrder] = useState<Order | null>(null);
+  const [receiveOrder, setReceiveOrder] = useState<Order | null>(null);
+  const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
+  const [payInvoice, setPayInvoice] = useState<Invoice | null>(null);
+  const [prodData, setProdData] = useState<ProductPurchases | null>(null);
+  const [prodKey, setProdKey] = useState("");
+  const [prodSup, setProdSup] = useState("");
+  const [prodFrom, setProdFrom] = useState("");
+  const [prodTo, setProdTo] = useState("");
+  const [prodSearch, setProdSearch] = useState("");
+
+  const brandId = selectedBrand?.id || brands[0]?.id;
+  const canApprove = APPROVERS.includes(user?.role || "");
+  const canPay = canApprove;
+  const isOfficer = user?.role === "purchase_officer";
+  const isMaster = tab === "catalog" || tab === "categories";
+
+  const loadRefs = () => {
+    apiGet("/api/procurement/suppliers").then(setSuppliers);
+    apiGet("/api/procurement/categories").then(setCategories);
+    apiGet("/api/procurement/delivery-locations").then(setLocations);
+  };
+  const loadOrders = () => {
+    const q = new URLSearchParams();
+    if (statusFilter) q.set("status", statusFilter);
+    if (supFilter) q.set("supplier_id", supFilter);
+    apiGet(`/api/procurement/orders?${q}`).then(setOrders);
+  };
+  const loadInvoices = () => {
+    const q = new URLSearchParams();
+    if (supFilter) q.set("supplier_id", supFilter);
+    apiGet(`/api/procurement/invoices?${q}`).then(setInvoices);
+  };
+  const loadLedger = () => apiGet(`/api/procurement/ledger${ledgerSup ? `?supplier_id=${ledgerSup}` : ""}`).then(setLedger);
+  const prodParams = (withKey: boolean) => {
+    const q = new URLSearchParams();
+    if (prodSup) q.set("supplier_id", prodSup);
+    if (prodFrom) q.set("date_from", prodFrom);
+    if (prodTo) q.set("date_to", prodTo);
+    if (withKey && prodKey) q.set("key", prodKey);
+    return q;
+  };
+  const loadProducts = () => { if (tab === "products") apiGet(`/api/procurement/product-purchases?${prodParams(true)}`).then(setProdData); };
+  const reload = () => { loadOrders(); loadInvoices(); loadLedger(); loadProducts(); };
+
+  useEffect(() => { loadRefs(); }, [selectedBrand?.id]);
+  useEffect(() => { loadOrders(); }, [selectedBrand?.id, statusFilter, supFilter]);
+  useEffect(() => { loadInvoices(); }, [selectedBrand?.id, supFilter]);
+  useEffect(() => { loadLedger(); }, [selectedBrand?.id, ledgerSup]);
+  useEffect(() => { loadProducts(); }, [tab, selectedBrand?.id, prodSup, prodFrom, prodTo, prodKey]);
+  useEffect(() => {
+    if (params.get("new") === "1") { setEditOrder(null); setShowForm(true); params.delete("new"); setParams(params, { replace: true }); }
+  }, []);
+
+  const openDetail = async (id: number) => setDetail(await apiGet(`/api/procurement/orders/${id}`));
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true); setErr("");
+    try { await fn(); reload(); } catch (e) { setErr(e instanceof Error ? e.message : t("po_error")); alert(e instanceof Error ? e.message : t("po_error")); }
+    finally { setBusy(false); }
+  };
+  const submitOrder = (o: Order) => { if (window.confirm(t("po_confirm_submit"))) run(() => post(`/api/procurement/orders/${o.id}/submit`, new FormData())); };
+  const markOrdered = (o: Order) => run(() => post(`/api/procurement/orders/${o.id}/order`, new FormData()));
+  const cancelOrder = (o: Order) => { if (window.confirm(t("po_confirm_cancel"))) run(() => post(`/api/procurement/orders/${o.id}/cancel`, new FormData())); };
+  const deleteOrder = (o: Order) => { if (window.confirm(t("po_confirm_delete"))) run(() => post(`/api/procurement/orders/${o.id}`, new FormData(), "DELETE")); };
+  const printPO = (o: Order) => apiDownload(`/api/procurement/orders/${o.id}/form.pdf`, `${o.po_no}.pdf`);
+  const printStatement = (fmt: "pdf" | "excel") => {
+    if (!ledgerSup || !brandId) return;
+    const q = new URLSearchParams({ brand_id: String(brandId), lang: i18n.language === "ar" ? "ar" : "en" });
+    if (soaFrom) q.set("date_from", soaFrom);
+    if (soaTo) q.set("date_to", soaTo);
+    const name = suppliers.find(s => String(s.id) === ledgerSup)?.name || "supplier";
+    apiDownload(`/api/procurement/suppliers/${ledgerSup}/statement/${fmt}?${q}`, `Statement_${name}.${fmt === "excel" ? "xlsx" : "pdf"}`);
+  };
+  const exportTab = (fmt: string) => {
+    const ext = fmt === "excel" ? "xlsx" : fmt;
+    if (tab === "products") {
+      const q = prodParams(true);
+      q.set("lang", ar ? "ar" : "en");
+      apiDownload(`/api/procurement/export/products/${fmt}?${q}`, `product_purchases.${ext}`);
+      return;
+    }
+    apiDownload(`/api/procurement/export/${tab}/${fmt}`, `purchase_${tab}.${ext}`);
+  };
+
+  const badge = (status: string, label: string) => <span className={`px-2 py-0.5 rounded text-xs font-semibold ${PO_STATUS_CLS[status] || "bg-gray-100"}`}>{label}</span>;
+  const methodLabel = (m: string) => ({ purchase_petty_cash: t("po_pm_petty"), bank_transfer: t("po_pm_bank"), knet: t("po_pm_knet"), cheque: t("po_pm_cheque") } as Record<string, string>)[m] || m;
+
+  const actionsFor = (o: Order) => {
+    const a: React.ReactNode[] = [];
+    const mine = o.created_by === user?.id;
+    if (o.status === "draft" || o.status === "returned") {
+      a.push(<button key="e" onClick={() => { setEditOrder(o); setShowForm(true); }} className={`${btn} bg-gray-100`}>{t("po_edit")}</button>);
+      a.push(<button key="s" disabled={busy} onClick={() => submitOrder(o)} className={`${btn} bg-amber-500 text-white`}>{t("po_submit")}</button>);
+      if (o.status === "draft") a.push(<button key="d" onClick={() => deleteOrder(o)} className={`${btn} bg-red-50 text-red-700`}><Trash2 size={14} /></button>);
+    }
+    if (o.status === "pending" && canApprove && (user?.role === "owner" || !mine))
+      a.push(<button key="a" onClick={() => setApproveOrder(o)} className={`${btn} bg-blue-600 text-white`}>{t("po_approve")}</button>);
+    if (o.status === "approved") a.push(<button key="o" disabled={busy} onClick={() => markOrdered(o)} className={`${btn} bg-indigo-600 text-white`}>{t("po_mark_ordered")}</button>);
+    if (o.status === "approved" || o.status === "ordered")
+      a.push(<button key="r" onClick={async () => setReceiveOrder(await apiGet(`/api/procurement/orders/${o.id}`))} className={`${btn} bg-purple-600 text-white`}>{t("po_receive")}</button>);
+    if (o.status === "received" && !o.invoice_id) a.push(<button key="i" onClick={() => setInvoiceOrder(o)} className={`${btn} bg-cyan-600 text-white`}>{t("po_record_invoice")}</button>);
+    if (o.invoice_id && o.invoice_status !== "paid" && canPay)
+      a.push(<button key="p" onClick={async () => { const d: Order = await apiGet(`/api/procurement/orders/${o.id}`); if (d.invoice) setPayInvoice(d.invoice); }} className={`${btn} bg-green-600 text-white`}>{t("po_pay")}</button>);
+    if (["pending", "approved", "ordered"].includes(o.status) && (canApprove || mine))
+      a.push(<button key="c" onClick={() => cancelOrder(o)} className={`${btn} bg-gray-100 text-red-700`}>{t("po_cancel_order")}</button>);
+    return a;
+  };
+
+  return (
+    <div className="p-4 md:p-6 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          {!embedded && <h1 className="text-2xl font-bold text-gray-800">{t("procurement")}</h1>}
+          <p className="text-xs text-gray-500">{t("po_delivery_hint")}</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {isMaster ? null : <>
+            <button onClick={() => exportTab("csv")} className={`${btn} bg-green-600 text-white text-xs`}>{t("export_csv")}</button>
+            <button onClick={() => exportTab("excel")} className={`${btn} bg-blue-600 text-white text-xs`}>{t("export_excel")}</button>
+            <button onClick={() => exportTab("pdf")} className={`${btn} bg-red-600 text-white text-xs`}>{t("export_pdf")}</button>
+          </>}
+          <button onClick={() => { setTab("catalog"); setShowSupplierForm(true); }} className={`${btn} bg-blue-600 text-white inline-flex items-center gap-1`}><Plus size={16} />{t("supplier")}</button>
+          <label htmlFor={scanInputId} className={`${btn} bg-indigo-600 text-white inline-flex items-center gap-1 cursor-pointer ${scanning ? "opacity-60 pointer-events-none" : ""}`} title={t("scan_hint")}>
+            <ScanLine size={16} />{scanning ? t("scan_reading") : t("scan_invoice")}
+          </label>
+          <input id={scanInputId} type="file" accept="image/*,application/pdf" multiple className="hidden" disabled={scanning}
+            onChange={e => {
+              const picked = Array.from(e.target.files || []);
+              if (picked.length) { setScanErr(""); setScanPages(prev => [...prev, ...picked].slice(0, MAX_SCAN_PAGES)); }
+              e.target.value = "";
+            }} />
+          <button onClick={() => { setScan(null); setEditOrder(null); setShowForm(true); }} className={`${btn} bg-emerald-600 text-white inline-flex items-center gap-1`}><Plus size={16} />{t("po_new_order")}</button>
+        </div>
+      </div>
+      {scanPages.length > 0 && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="flex justify-between items-center px-5 py-3 bg-indigo-700 text-white">
+              <h2 className="text-lg font-bold">{t("scan_invoice")} · {scanPages.length} {t("scan_pages")}</h2>
+              <button onClick={() => { setScanPages([]); setScanErr(""); }} disabled={scanning}><X size={20} /></button>
+            </div>
+            <div className="p-5 space-y-3 text-sm">
+              <ol className="space-y-1 max-h-48 overflow-y-auto">
+                {scanPages.map((p, i) => (
+                  <li key={i} className="flex items-center justify-between gap-2 border rounded px-3 py-1.5">
+                    <span className="truncate">{t("scan_page")} {i + 1}: {p.name}</span>
+                    {!scanning && <button onClick={() => setScanPages(prev => prev.filter((_, j) => j !== i))}><Trash2 size={14} className="text-red-600" /></button>}
+                  </li>
+                ))}
+              </ol>
+              <div className="font-semibold text-gray-800">{t("scan_more_q")}</div>
+              <div className="text-xs text-gray-500">{t("scan_pages_hint")}</div>
+              {scanErr && <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded px-3 py-2 text-xs">{scanErr}</div>}
+              <div className="flex flex-wrap gap-2 justify-end">
+                <label htmlFor={scanInputId} className={`${btn} border border-indigo-600 text-indigo-700 inline-flex items-center gap-1 cursor-pointer ${scanning || scanPages.length >= MAX_SCAN_PAGES ? "opacity-50 pointer-events-none" : ""}`}>
+                  <Plus size={16} />{t("scan_add_page")}
+                </label>
+                <button onClick={scanFiles} disabled={scanning} className={`${btn} bg-indigo-600 text-white inline-flex items-center gap-1 disabled:opacity-60`}>
+                  <ScanLine size={16} />{scanning ? t("scan_reading") : t("scan_now")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {scanErr && !scanPages.length && <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded px-3 py-2 text-sm flex justify-between"><span>{scanErr}</span><button onClick={() => setScanErr("")}><X size={14} /></button></div>}
+
+      <div className="flex gap-1 border-b">
+        {PROC_TABS.map(k => (
+          <button key={k} onClick={() => setTab(k)} className={`px-4 py-2 text-sm rounded-t-lg ${tab === k ? "bg-emerald-600 text-white" : "bg-gray-200"}`}>
+            {t(TAB_KEY[k])}
+          </button>
+        ))}
+      </div>
+      {err && <div className="text-sm text-red-700">{err}</div>}
+
+      {isMaster && (
+        <SupplierMasterTabs tab={tab as "catalog" | "categories"} canDelete={!isOfficer} canManageCategories
+          showSupplierForm={showSupplierForm} onCloseSupplierForm={() => setShowSupplierForm(false)} onChanged={loadRefs} />
+      )}
+
+      {(tab === "orders" || tab === "invoices") && (
+        <div className="flex flex-wrap gap-2">
+          <select className="border rounded px-2 py-1.5 text-sm" value={supFilter} onChange={e => setSupFilter(e.target.value)}>
+            <option value="">{t("po_all_suppliers")}</option>
+            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          {tab === "orders" && (
+            <select className="border rounded px-2 py-1.5 text-sm" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+              <option value="">{t("po_all_status")}</option>
+              {["draft", "pending", "approved", "returned", "ordered", "received", "invoiced", "paid", "rejected", "cancelled"].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          )}
+        </div>
+      )}
+
+      {tab === "orders" && (
+        <div className="bg-white rounded-lg shadow overflow-x-auto">
+          <table className="w-full text-sm min-w-[900px]">
+            <thead className="bg-gray-50 text-xs text-gray-600">
+              <tr>
+                <th className="text-start p-2">{t("po_no")}</th><th className="text-start p-2">{t("date")}</th><th className="text-start p-2">{t("po_supplier")}</th>
+                <th className="text-start p-2">{t("po_cash_credit")}</th><th className="text-start p-2">{t("po_delivery_location")}</th>
+                <th className="text-end p-2">{t("total")}</th><th className="text-start p-2">{t("status")}</th><th className="text-end p-2">{t("actions")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.length === 0 && <tr><td colSpan={8} className="p-4 text-center text-gray-500">{t("po_none")}</td></tr>}
+              {orders.map(o => (
+                <tr key={o.id} className="border-t hover:bg-gray-50">
+                  <td className="p-2"><button onClick={() => openDetail(o.id)} className="font-mono text-xs text-emerald-700 hover:underline">{o.po_no}</button></td>
+                  <td className="p-2 text-xs">{o.date}</td>
+                  <td className="p-2">{o.supplier_name}<div className="text-xs text-gray-500">{o.item_count} {t("po_items").toLowerCase()} · {o.created_by_name}</div></td>
+                  <td className="p-2">{o.payment_type === "cash" ? t("po_cash") : t("po_credit")}</td>
+                  <td className="p-2 text-xs text-gray-600">{o.delivery_location || "—"}</td>
+                  <td className="p-2 text-end font-semibold">{kd(o.total)}</td>
+                  <td className="p-2">{badge(o.status, o.status_label)}{o.invoice_id && o.invoice_status !== "paid" && <div className="text-xs text-gray-500">{t("po_paid")} {kd(o.invoice_paid)}/{kd(o.invoice_total)}</div>}</td>
+                  <td className="p-2"><div className="flex gap-1 justify-end flex-wrap">
+                    <button onClick={() => printPO(o)} className={`${btn} bg-gray-100`} title={t("po_print")}><Printer size={14} /></button>
+                    {actionsFor(o)}
+                  </div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === "invoices" && (
+        <div className="bg-white rounded-lg shadow overflow-x-auto">
+          <table className="w-full text-sm min-w-[900px]">
+            <thead className="bg-gray-50 text-xs text-gray-600">
+              <tr>
+                <th className="text-start p-2">{t("po_invoice_no")}</th><th className="text-start p-2">{t("po_no")}</th><th className="text-start p-2">{t("po_supplier")}</th>
+                <th className="text-start p-2">{t("po_invoice_date")}</th><th className="text-start p-2">{t("po_due_date")}</th>
+                <th className="text-end p-2">{t("total")}</th><th className="text-end p-2">{t("po_paid")}</th><th className="text-end p-2">{t("po_balance")}</th>
+                <th className="text-start p-2">{t("status")}</th><th className="text-end p-2">{t("actions")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoices.length === 0 && <tr><td colSpan={10} className="p-4 text-center text-gray-500">{t("po_none")}</td></tr>}
+              {invoices.map(i => (
+                <tr key={i.id} className="border-t hover:bg-gray-50">
+                  <td className="p-2 font-mono text-xs">{i.invoice_number || "—"}</td>
+                  <td className="p-2">{i.order_id ? <button onClick={() => openDetail(i.order_id)} className="font-mono text-xs text-emerald-700 hover:underline">{i.po_no}</button> : <span className="text-xs text-amber-700">{t("po_opening_balance")}</span>}</td>
+                  <td className="p-2">{i.supplier_name}<div className="text-xs text-gray-500">{i.payment_type === "cash" ? t("po_cash") : t("po_credit")}</div></td>
+                  <td className="p-2 text-xs">{i.date}</td>
+                  <td className="p-2 text-xs">{i.due_date || "—"}{i.days_overdue > 0 && <div className="text-red-600">{i.days_overdue} {t("po_days_overdue").toLowerCase()}</div>}</td>
+                  <td className="p-2 text-end">{kd(i.total_amount)}</td>
+                  <td className="p-2 text-end text-green-700">{kd(i.paid_amount)}</td>
+                  <td className="p-2 text-end font-semibold text-red-700">{kd(i.balance)}</td>
+                  <td className="p-2">{badge(i.status === "partial" ? "invoiced" : i.status === "paid" ? "paid" : "pending", i.status)}</td>
+                  <td className="p-2 text-end">{i.status !== "paid" && canPay && <button onClick={() => setPayInvoice(i)} className={`${btn} bg-green-600 text-white`}>{t("po_pay")}</button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === "products" && prodData && (() => {
+        const sel = prodData.product;
+        const q = prodSearch.trim().toLowerCase();
+        const list = prodData.products.filter(p => !q || p.item_name.toLowerCase().includes(q) || p.item_name_ar.includes(prodSearch.trim()));
+        const pname = (p: ProductRow) => (ar ? (p.item_name_ar || p.item_name) : p.item_name);
+        return (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2 items-end">
+              <div>
+                <label className="block text-xs text-gray-500">{t("po_products_select")}</label>
+                <select className="border rounded px-2 py-1.5 text-sm min-w-[240px]" value={prodKey} onChange={e => setProdKey(e.target.value)}>
+                  <option value="">{t("po_all_products")}</option>
+                  {[...prodData.products].sort((a, b) => pname(a).localeCompare(pname(b))).map(p => (
+                    <option key={p.key} value={p.key}>{pname(p)} ({p.unit})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500">{t("po_supplier")}</label>
+                <select className="border rounded px-2 py-1.5 text-sm" value={prodSup} onChange={e => setProdSup(e.target.value)}>
+                  <option value="">{t("po_all_suppliers")}</option>
+                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500">{t("from")}</label>
+                <input type="date" className="border rounded px-2 py-1.5 text-sm" value={prodFrom} onChange={e => setProdFrom(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500">{t("to")}</label>
+                <input type="date" className="border rounded px-2 py-1.5 text-sm" value={prodTo} onChange={e => setProdTo(e.target.value)} />
+              </div>
+              {!prodKey && (
+                <input className="border rounded px-2 py-1.5 text-sm" placeholder={t("po_search_product")} value={prodSearch} onChange={e => setProdSearch(e.target.value)} />
+              )}
+              <button onClick={() => { setProdKey(""); setProdSup(""); setProdFrom(""); setProdTo(""); setProdSearch(""); }} className={`${btn} bg-gray-200`}>{t("clear")}</button>
+            </div>
+            <p className="text-xs text-gray-500">{t("po_products_hint")}</p>
+
+            {prodKey && sel && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <h3 className="text-lg font-semibold text-gray-800">{pname(sel)} <span className="text-sm text-gray-500">({sel.unit})</span></h3>
+                  <button onClick={() => setProdKey("")} className={`${btn} bg-gray-200`}>{t("po_all_products")}</button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {[
+                    [t("total_qty"), `${sel.total_qty} ${sel.unit}`],
+                    [t("po_avg_price"), kd(sel.avg_price)],
+                    [t("total_amount"), `KD ${kd(sel.total_amount)}`],
+                    [t("po_price_range"), `${kd(sel.min_price)} – ${kd(sel.max_price)}`],
+                    [t("po_last_price"), `${kd(sel.last_price)} (${sel.last_date})`],
+                  ].map(([l, v]) => (
+                    <div key={l} className="bg-white rounded-lg shadow p-3">
+                      <div className="text-xs text-gray-500">{l}</div>
+                      <div className="text-base font-bold text-gray-800">{v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-white rounded-lg shadow overflow-x-auto">
+                  <table className="w-full text-sm min-w-[700px]">
+                    <thead className="bg-gray-50 text-xs text-gray-600"><tr>
+                      <th className="text-start p-2">{t("date")}</th><th className="text-start p-2">{t("po_no")}</th><th className="text-start p-2">{t("po_supplier")}</th>
+                      <th className="text-start p-2">{t("po_packaging")}</th><th className="text-end p-2">{t("po_qty")}</th><th className="text-end p-2">{t("po_unit_price")}</th>
+                      <th className="text-end p-2">{t("total_amount")}</th><th className="text-start p-2">{t("po_prod_status")}</th>
+                    </tr></thead>
+                    <tbody>
+                      {(prodData.lines || []).map((l, i) => (
+                        <tr key={i} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => openDetail(l.order_id)}>
+                          <td className="p-2">{l.date}</td><td className="p-2 font-mono text-emerald-700">{l.po_no}</td><td className="p-2">{l.supplier_name}</td>
+                          <td className="p-2">{l.packaging}</td><td className="p-2 text-end">{l.quantity}</td><td className="p-2 text-end">{kd(l.unit_price)}</td>
+                          <td className="p-2 text-end font-semibold">{kd(l.amount)}</td><td className="p-2">{badge(l.status, l.status_label)}</td>
+                        </tr>
+                      ))}
+                      <tr className="border-t bg-emerald-50 font-bold">
+                        <td className="p-2" colSpan={4}>{t("grand_total")}</td><td className="p-2 text-end">{sel.total_qty}</td>
+                        <td className="p-2 text-end">{kd(sel.avg_price)}</td><td className="p-2 text-end">{kd(sel.total_amount)}</td><td></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {!prodKey && (
+              <div className="bg-white rounded-lg shadow overflow-x-auto">
+                <table className="w-full text-sm min-w-[800px]">
+                  <thead className="bg-gray-50 text-xs text-gray-600"><tr>
+                    <th className="text-start p-2">{t("po_item")}</th><th className="text-start p-2">{t("po_unit")}</th><th className="text-end p-2">{t("total_qty")}</th>
+                    <th className="text-end p-2">{t("po_avg_price")}</th><th className="text-end p-2">{t("po_last_price")}</th><th className="text-end p-2">{t("po_orders_count")}</th>
+                    <th className="text-end p-2">{t("total_amount")}</th>
+                  </tr></thead>
+                  <tbody>
+                    {list.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-gray-500">{t("po_none")}</td></tr>}
+                    {list.map(p => (
+                      <tr key={p.key} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => setProdKey(p.key)}>
+                        <td className="p-2 text-emerald-700 font-medium">{pname(p)}{p.item_name_ar && <span className="text-xs text-gray-400 ms-1">({ar ? p.item_name : p.item_name_ar})</span>}</td>
+                        <td className="p-2">{p.unit}</td><td className="p-2 text-end">{p.total_qty}</td><td className="p-2 text-end">{kd(p.avg_price)}</td>
+                        <td className="p-2 text-end">{kd(p.last_price)}</td><td className="p-2 text-end">{p.orders}</td><td className="p-2 text-end font-semibold">{kd(p.total_amount)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t bg-emerald-50 font-bold">
+                      <td className="p-2" colSpan={6}>{t("grand_total")}</td>
+                      <td className="p-2 text-end">{kd(list.reduce((a, p) => a + p.total_amount, 0))}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {tab === "ledger" && ledger && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-4 items-center">
+            <select className="border rounded px-2 py-1.5 text-sm" value={ledgerSup} onChange={e => setLedgerSup(e.target.value)}>
+              <option value="">{t("po_all_suppliers")}</option>
+              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <div className="text-sm">{t("po_outstanding")}: <b className="text-red-700">KD {kd(ledger.total_balance)}</b></div>
+            <div className="text-sm">{t("po_overdue")}: <b className="text-red-700">KD {kd(ledger.total_overdue)}</b></div>
+            {canApprove && brandId && (
+              <button onClick={() => {
+                const cur = ledger.suppliers.find(r => String(r.supplier_id) === ledgerSup);
+                setOpeningForm({ supplier_id: ledgerSup, amount: cur ? String(cur.opening || "") : "", as_of: new Date().toISOString().slice(0, 10), notes: "" });
+              }} className={`${btn} bg-amber-600 text-white ms-auto`}>{t("po_set_opening")}</button>
+            )}
+          </div>
+          <div className="bg-white rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm min-w-[700px]">
+              <thead className="bg-gray-50 text-xs text-gray-600"><tr>
+                <th className="text-start p-2">{t("po_supplier")}</th><th className="text-end p-2">{t("po_opening_balance")}</th><th className="text-end p-2">{t("po_invoices")}</th><th className="text-end p-2">{t("po_invoiced")}</th>
+                <th className="text-end p-2">{t("po_paid")}</th><th className="text-end p-2">{t("po_balance")}</th><th className="text-end p-2">{t("po_overdue")}</th><th className="text-end p-2">{t("po_open_invoices")}</th>
+              </tr></thead>
+              <tbody>
+                {ledger.suppliers.length === 0 && <tr><td colSpan={8} className="p-4 text-center text-gray-500">{t("po_none")}</td></tr>}
+                {ledger.suppliers.map(r => (
+                  <tr key={r.supplier_id} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => setLedgerSup(String(r.supplier_id))}>
+                    <td className="p-2">{r.supplier_name}</td><td className="p-2 text-end">{r.opening ? kd(r.opening) : ""}</td><td className="p-2 text-end">{r.invoices}</td><td className="p-2 text-end">{kd(r.invoiced)}</td>
+                    <td className="p-2 text-end text-green-700">{kd(r.paid)}</td><td className="p-2 text-end font-semibold text-red-700">{kd(r.balance)}</td>
+                    <td className="p-2 text-end">{kd(r.overdue)}</td><td className="p-2 text-end">{r.open_invoices}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {ledgerSup ? (
+            <div className="bg-white rounded-lg shadow p-3 flex flex-wrap items-end gap-3 text-sm">
+              <div className="font-semibold">{t("po_soa")}</div>
+              <label className="flex flex-col text-xs text-gray-600">{t("from_date")}
+                <input type="date" className="border rounded px-2 py-1 text-sm" value={soaFrom} onChange={e => setSoaFrom(e.target.value)} />
+              </label>
+              <label className="flex flex-col text-xs text-gray-600">{t("to_date")}
+                <input type="date" className="border rounded px-2 py-1 text-sm" value={soaTo} onChange={e => setSoaTo(e.target.value)} />
+              </label>
+              <button onClick={() => printStatement("pdf")} className={`${btn} bg-red-600 text-white text-xs`}>{t("po_soa")} · PDF</button>
+              <button onClick={() => printStatement("excel")} className={`${btn} bg-blue-600 text-white text-xs`}>{t("po_soa")} · Excel</button>
+            </div>
+          ) : (
+            <div className="text-xs text-gray-500">{t("po_soa_select")}</div>
+          )}
+          {ledger.statement && (
+            <div className="bg-white rounded-lg shadow overflow-x-auto">
+              <div className="px-3 py-2 font-semibold text-sm border-b">{t("po_statement")}</div>
+              <table className="w-full text-sm min-w-[600px]">
+                <thead className="bg-gray-50 text-xs text-gray-600"><tr>
+                  <th className="text-start p-2">{t("date")}</th><th className="text-start p-2">{t("po_no")}</th><th className="text-start p-2">{t("po_reference")}</th>
+                  <th className="text-end p-2">DR</th><th className="text-end p-2">CR</th><th className="text-end p-2">{t("po_balance")}</th>
+                </tr></thead>
+                <tbody>
+                  {ledger.statement.map((s, i) => (
+                    <tr key={i} className="border-t">
+                      <td className="p-2 text-xs">{s.date}</td><td className="p-2 font-mono text-xs">{s.po_no}</td>
+                      <td className="p-2 text-xs">{s.kind === "opening" ? t("po_opening_balance") : s.kind === "invoice" ? `${t("po_invoice_no")} ${s.ref}` : `${t("po_pay")} · ${methodLabel(s.ref) !== s.ref ? methodLabel(s.ref) : s.ref}`}</td>
+                      <td className="p-2 text-end">{s.debit ? kd(s.debit) : ""}</td><td className="p-2 text-end text-green-700">{s.credit ? kd(s.credit) : ""}</td>
+                      <td className="p-2 text-end font-semibold">{kd(s.balance)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {openingForm && brandId && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <form className="bg-white rounded-lg shadow-xl w-full max-w-md p-5 space-y-3 text-sm" onSubmit={async e => {
+            e.preventDefault();
+            if (!openingForm.supplier_id) return;
+            setBusy(true); setErr("");
+            const fd = new FormData();
+            fd.set("brand_id", String(brandId)); fd.set("supplier_id", openingForm.supplier_id);
+            fd.set("amount", openingForm.amount || "0"); fd.set("as_of", openingForm.as_of); fd.set("notes", openingForm.notes);
+            try {
+              const res = await apiFetch("/api/procurement/opening-balances", { method: "POST", body: fd });
+              const d = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(d.detail || "Error");
+              setOpeningForm(null); reload();
+            } catch (ex) { setErr(ex instanceof Error ? ex.message : "Error"); } finally { setBusy(false); }
+          }}>
+            <div className="flex justify-between items-center"><h2 className="font-bold text-base">{t("po_set_opening")}</h2><button type="button" onClick={() => setOpeningForm(null)} className="text-gray-500">✕</button></div>
+            <p className="text-xs text-gray-500">{t("po_opening_hint")}</p>
+            <label className="block">{t("po_supplier")}
+              <select required className="mt-1 w-full border rounded px-2 py-1.5" value={openingForm.supplier_id} onChange={e => {
+                const cur = ledger?.suppliers.find(r => String(r.supplier_id) === e.target.value);
+                setOpeningForm({ ...openingForm, supplier_id: e.target.value, amount: cur?.opening ? String(cur.opening) : "" });
+              }}>
+                <option value="">—</option>
+                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">{t("amount")} (KD)<input required type="number" step="0.001" min="0" className="mt-1 w-full border rounded px-2 py-1.5" value={openingForm.amount} onChange={e => setOpeningForm({ ...openingForm, amount: e.target.value })} /></label>
+              <label className="block">{t("po_as_of")}<input required type="date" className="mt-1 w-full border rounded px-2 py-1.5" value={openingForm.as_of} onChange={e => setOpeningForm({ ...openingForm, as_of: e.target.value })} /></label>
+            </div>
+            <label className="block">{t("notes")}<input className="mt-1 w-full border rounded px-2 py-1.5" value={openingForm.notes} onChange={e => setOpeningForm({ ...openingForm, notes: e.target.value })} /></label>
+            {err && <div className="text-red-600 text-xs">{err}</div>}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setOpeningForm(null)} className={`${btn} bg-gray-100`}>{t("cancel")}</button>
+              <button type="submit" disabled={busy} className={`${btn} bg-amber-600 text-white`}>{t("save")}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showForm && brandId && (
+        <OrderForm brandId={brandId} order={editOrder} suppliers={suppliers} categories={categories} locations={locations} ar={ar} scan={scan}
+          onClose={() => { setShowForm(false); setEditOrder(null); setScan(null); }} onSaved={() => { setShowForm(false); setEditOrder(null); setScan(null); reload(); }} />
+      )}
+
+      {detail && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center overflow-y-auto p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl p-5 space-y-4 my-4 text-sm">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-bold flex items-center gap-2">{detail.po_no} {badge(detail.status, detail.status_label)}</h2>
+              <div className="flex gap-2">
+                <button onClick={() => printPO(detail)} className={`${btn} bg-gray-100 inline-flex gap-1 items-center`}><Printer size={14} />{t("po_print")}</button>
+                <button onClick={() => setDetail(null)} className="text-gray-500">✕</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              {[
+                [t("po_supplier"), detail.supplier_name], [t("date"), detail.date], [t("po_cash_credit"), detail.payment_type === "cash" ? t("po_cash") : t("po_credit")],
+                [t("po_category"), detail.category_name || "—"], [t("po_delivery_location"), detail.delivery_location || "—"], [t("po_expected_date"), detail.expected_date || "—"],
+                [t("po_prepared_by"), detail.created_by_name], [t("po_approved_by"), detail.approved_by_name ? `${detail.approved_by_name} · ${detail.approved_at}` : "—"],
+              ].map(([l, v], i) => <div key={i} className="bg-gray-50 rounded p-2"><div className="text-gray-500">{l}</div><div className="font-medium">{v}</div></div>)}
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs"><tr>
+                <th className="text-start p-2">{t("po_item")}</th><th className="text-start p-2">{t("po_packaging")}</th><th className="text-end p-2">{t("po_qty")}</th>
+                <th className="text-end p-2">{t("po_unit_price")}</th><th className="text-end p-2">{t("po_line_total")}</th><th className="text-end p-2">{t("po_received_qty")}</th>
+              </tr></thead>
+              <tbody>
+                {detail.items?.map(i => (
+                  <tr key={i.id} className="border-t">
+                    <td className="p-2">{ar && i.item_name_ar ? i.item_name_ar : i.item_name}</td><td className="p-2 text-xs">{i.packaging}</td>
+                    <td className="p-2 text-end">{i.quantity} {i.unit}</td><td className="p-2 text-end">{kd(i.unit_price)}</td>
+                    <td className="p-2 text-end font-semibold">{kd(i.total)}</td><td className="p-2 text-end">{i.received_qty ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr className="border-t font-bold"><td colSpan={4} className="p-2 text-end">{t("total")}</td><td className="p-2 text-end">KD {kd(detail.total)}</td><td /></tr></tfoot>
+            </table>
+            {detail.notes && <div className="text-xs"><b>{t("notes")}:</b> {detail.notes}</div>}
+            {detail.attachment && <a href={detail.attachment} target="_blank" rel="noreferrer" className="text-xs text-emerald-700 underline">{t("po_attachment")}</a>}
+            {detail.received_date && <div className="text-xs"><b>{t("po_received_date")}:</b> {detail.received_date} · {detail.received_by_name} {detail.receiving_notes && `· ${detail.receiving_notes}`}
+              {detail.receiving_attachment && <> · <a href={detail.receiving_attachment} target="_blank" rel="noreferrer" className="text-emerald-700 underline">{t("po_delivery_note")}</a></>}</div>}
+            {detail.invoice && (
+              <div className="border rounded p-3 space-y-2">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <div className="font-semibold">{t("po_invoices")}: {detail.invoice.invoice_number || "—"} · {detail.invoice.date} {detail.invoice.due_date && `· ${t("po_due_date")} ${detail.invoice.due_date}`}</div>
+                  <div>{t("total")} <b>{kd(detail.invoice.total_amount)}</b> · {t("po_paid")} <b className="text-green-700">{kd(detail.invoice.paid_amount)}</b> · {t("po_balance")} <b className="text-red-700">{kd(detail.invoice.balance)}</b></div>
+                </div>
+                {detail.invoice.attachment && <a href={detail.invoice.attachment} target="_blank" rel="noreferrer" className="text-xs text-emerald-700 underline">{t("po_invoice_copy")}</a>}
+                {detail.invoice.payments.length > 0 && (
+                  <table className="w-full text-xs"><thead><tr className="text-gray-500"><th className="text-start p-1">{t("date")}</th><th className="text-start p-1">{t("po_paid_from")}</th><th className="text-start p-1">{t("po_reference")}</th><th className="text-end p-1">{t("amount")}</th><th className="text-start p-1">{t("po_prepared_by")}</th></tr></thead>
+                    <tbody>{detail.invoice.payments.map(p => <tr key={p.id} className="border-t"><td className="p-1">{p.date}</td><td className="p-1">{methodLabel(p.method)}</td><td className="p-1">{p.reference}</td><td className="p-1 text-end">{kd(p.amount)}</td><td className="p-1">{p.created_by_name}</td></tr>)}</tbody></table>
+                )}
+              </div>
+            )}
+            <div>
+              <div className="font-semibold text-xs text-gray-600 mb-1">{t("po_history")}</div>
+              <ul className="text-xs space-y-0.5">{detail.logs?.map((l, i) => <li key={i}>{l.at} · <b>{l.label}</b> · {l.user_name} {l.comment && `— ${l.comment}`}</li>)}</ul>
+            </div>
+            <div className="flex gap-2 justify-end flex-wrap">{actionsFor(detail).map((b, i) => <span key={i} onClick={() => setDetail(null)}>{b}</span>)}</div>
+          </div>
+        </div>
+      )}
+
+      {approveOrder && (
+        <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+          <form className="bg-white rounded-lg shadow-xl w-full max-w-md p-5 space-y-3" onSubmit={async e => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const action = (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") || "approve";
+            fd.set("action", action);
+            await run(() => post(`/api/procurement/orders/${approveOrder.id}/approve`, fd));
+            setApproveOrder(null);
+          }}>
+            <h2 className="font-bold">{t("po_approve")} — {approveOrder.po_no}</h2>
+            <div className="text-sm">{approveOrder.supplier_name} · {approveOrder.payment_type === "cash" ? t("po_cash") : t("po_credit")} · {t("total")} KD {kd(approveOrder.total)}</div>
+            <textarea name="comment" className={inp} rows={2} placeholder={t("po_comment")} />
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setApproveOrder(null)} className={`${btn} bg-gray-100`}>{t("cancel")}</button>
+              <button type="submit" value="reject" className={`${btn} bg-red-600 text-white`}>{t("po_reject")}</button>
+              <button type="submit" value="return" className={`${btn} bg-orange-500 text-white`}>{t("po_return")}</button>
+              <button type="submit" value="approve" className={`${btn} bg-blue-600 text-white`} disabled={busy}>{t("po_approve")}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {receiveOrder && <ReceiveForm order={receiveOrder} ar={ar} onClose={() => setReceiveOrder(null)} onSaved={() => { setReceiveOrder(null); reload(); }} />}
+
+      {invoiceOrder && (
+        <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+          <InvoiceForm order={invoiceOrder} onClose={() => setInvoiceOrder(null)} onSaved={() => { setInvoiceOrder(null); reload(); }} />
+        </div>
+      )}
+
+      {payInvoice && (
+        <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+          <PayForm inv={payInvoice} methodLabel={methodLabel} onClose={() => setPayInvoice(null)} onSaved={() => { setPayInvoice(null); reload(); }} />
+        </div>
+      )}
+      {isOfficer && null}
+    </div>
+  );
+}
+
+function OrderForm({ brandId, order, suppliers, categories, locations, ar, scan, onClose, onSaved }: {
+  brandId: number; order: Order | null; suppliers: Supplier[]; categories: Category[]; locations: { name: string; name_ar: string }[]; ar: boolean;
+  scan?: { result: ScanResult; files: File[] } | null; onClose: () => void; onSaved: () => void;
+}) {
+  const { t } = useTranslation();
+  const sr = scan?.result;
+  const [supplierId, setSupplierId] = useState(order ? String(order.supplier_id) : sr?.supplier_id ? String(sr.supplier_id) : "");
+  const [categoryId, setCategoryId] = useState(order?.category_id ? String(order.category_id) : "");
+  const [paymentType, setPaymentType] = useState(order?.payment_type || sr?.payment_type || "cash");
+  const [orderDate, setOrderDate] = useState(order?.date || sr?.invoice_date || today());
+  const [expected, setExpected] = useState(order?.expected_date || "");
+  const [location, setLocation] = useState(order?.delivery_location || "");
+  const [notes, setNotes] = useState(order?.notes || (sr ? [sr.invoice_number ? `${t("po_invoice_no")} ${sr.invoice_number}` : "", sr.notes].filter(Boolean).join(" · ") : ""));
+  const [file, setFile] = useState<File | null>(null);
+  const [scanPages] = useState<File[]>(scan?.files || []);
+  const [items, setItems] = useState<SupItem[]>([]);
+  const [lines, setLines] = useState<Line[]>(sr && sr.lines.length
+    ? sr.lines.map(l => ({ supplier_item_id: l.supplier_item_id, item_name: l.item_name, item_name_ar: l.item_name_ar, packaging: l.packaging, unit: l.unit, quantity: String(l.quantity), unit_price: String(l.unit_price) }))
+    : [emptyLine()]);
+  const [previewUrls] = useState(() => scanPages.map(f => URL.createObjectURL(f)));
+  useEffect(() => () => { previewUrls.forEach(u => URL.revokeObjectURL(u)); }, [previewUrls]);
+  const scanWarn = (w: string) => ({
+    supplier_unmatched: `${t("scan_w_supplier")}${sr?.supplier_name_raw ? `: ${sr.supplier_name_raw}` : ""}`,
+    items_unmatched: t("scan_w_items"), no_lines: t("scan_w_no_lines"), handwritten: t("scan_w_handwritten"),
+    total_mismatch: `${t("scan_w_total")} (${kd(sr?.lines_total)} ≠ ${kd(sr?.total)})`,
+    duplicate_invoice: `${t("scan_w_duplicate")}${sr?.duplicate ? `: ${sr.duplicate.po_no} · ${sr.duplicate.date} · KD ${kd(sr.duplicate.total)}` : ""}`,
+  } as Record<string, string>)[w] || w;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (order) apiGet(`/api/procurement/orders/${order.id}`).then((d: Order) => {
+      setLines((d.items || []).map(i => ({ supplier_item_id: i.supplier_item_id, item_name: i.item_name, item_name_ar: i.item_name_ar, packaging: i.packaging, unit: i.unit, quantity: String(i.quantity), unit_price: String(i.unit_price) })));
+    });
+  }, [order?.id]);
+
+  useEffect(() => {
+    if (!supplierId) { setItems([]); return; }
+    apiGet(`/api/procurement/suppliers/${supplierId}/items`).then(setItems);
+    const s = suppliers.find(x => String(x.id) === supplierId);
+    if (s && !order && !(sr && String(sr.supplier_id) === supplierId)) {
+      setPaymentType(s.payment_type === "credit" ? "credit" : "cash");
+      if (s.category_id) setCategoryId(String(s.category_id));
+    }
+  }, [supplierId]);
+
+  const setLine = (i: number, patch: Partial<Line>) => setLines(ls => ls.map((l, j) => j === i ? { ...l, ...patch } : l));
+  const pickItem = (i: number, id: string) => {
+    const it = items.find(x => String(x.id) === id);
+    if (!it) { setLine(i, { supplier_item_id: null }); return; }
+    setLine(i, { supplier_item_id: it.id, item_name: it.item_name, item_name_ar: it.item_name_ar, packaging: it.packaging, unit: it.unit, unit_price: String(it.unit_price) });
+  };
+  const total = lines.reduce((s, l) => s + (parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0), 0);
+
+  const save = async (submit: boolean) => {
+    setError("");
+    const valid = lines.filter(l => (parseFloat(l.quantity) || 0) > 0 && l.item_name.trim());
+    if (!supplierId) { setError(t("po_supplier")); return; }
+    if (valid.length === 0) { setError(t("po_min_item")); return; }
+    const fd = new FormData();
+    fd.set("brand_id", String(brandId)); fd.set("supplier_id", supplierId); if (categoryId) fd.set("category_id", categoryId);
+    fd.set("order_date", orderDate); fd.set("expected_date", expected); fd.set("payment_type", paymentType);
+    fd.set("delivery_location", location); fd.set("notes", notes); fd.set("submit", submit ? "true" : "false");
+    fd.set("items", JSON.stringify(valid.map(l => ({ ...l, quantity: parseFloat(l.quantity), unit_price: parseFloat(l.unit_price) || 0 }))));
+    if (file) fd.set("attachment", file);
+    else scanPages.forEach(p => fd.append("attachments", p));
+    setSaving(true);
+    try {
+      await post(order ? `/api/procurement/orders/${order.id}` : "/api/procurement/orders", fd, order ? "PUT" : "POST");
+      onSaved();
+    } catch (e) { setError(e instanceof Error ? e.message : t("po_error")); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center overflow-y-auto p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl my-4 overflow-hidden">
+        <div className="flex justify-between items-center px-5 py-3 bg-emerald-700 text-white">
+          <div>
+            <h2 className="text-lg font-bold">{order ? order.po_no : sr ? t("scan_review_title") : t("po_new_order")}</h2>
+            <div className="text-xs text-emerald-100">{sr ? t("scan_review_hint") : t("po_delivery_hint")}</div>
+          </div>
+          <button onClick={onClose}><X size={20} /></button>
+        </div>
+        <div className="p-5 space-y-4 text-sm">
+          {sr && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-2 space-y-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                  {[[t("po_supplier"), sr.supplier_name || "—"], [t("po_invoice_no"), sr.invoice_number || "—"], [t("date"), sr.invoice_date || "—"], [t("total"), `KD ${kd(sr.total)}`]]
+                    .map(([l, v], i) => <div key={i} className="bg-indigo-50 rounded p-2"><div className="text-gray-500">{l}</div><div className="font-medium">{v}</div></div>)}
+                </div>
+                {sr.warnings.length > 0 && (
+                  <ul className={`rounded px-3 py-2 text-xs space-y-1 border ${sr.warnings.includes("duplicate_invoice") ? "bg-red-50 border-red-300 text-red-800" : "bg-amber-50 border-amber-300 text-amber-800"}`}>
+                    {sr.warnings.map(w => <li key={w}>• {scanWarn(w)}</li>)}
+                  </ul>
+                )}
+              </div>
+              {previewUrls.length > 0 && (
+                <div className={`grid gap-2 max-h-56 overflow-y-auto ${previewUrls.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+                  {scanPages.map((f, i) => (
+                    <a key={i} href={previewUrls[i]} target="_blank" rel="noreferrer" className="block relative">
+                      {f.type === "application/pdf"
+                        ? <span className="border rounded flex items-center justify-center text-xs text-indigo-700 underline h-28 px-1 text-center break-all">{f.name}</span>
+                        : <img src={previewUrls[i]} alt="" className="border rounded max-h-40 object-contain w-full bg-gray-50" />}
+                      {previewUrls.length > 1 && <span className="absolute top-1 start-1 bg-indigo-600 text-white text-[10px] rounded px-1">{t("scan_page")} {i + 1}</span>}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <label className="block"><span className="text-xs text-gray-600">{t("po_supplier")} *</span>
+              <select className={inp} value={supplierId} onChange={e => setSupplierId(e.target.value)} required>
+                <option value="">—</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select></label>
+            <label className="block"><span className="text-xs text-gray-600">{t("po_category")}</span>
+              <select className={inp} value={categoryId} onChange={e => setCategoryId(e.target.value)}>
+                <option value="">—</option>{categories.map(c => <option key={c.id} value={c.id}>{ar && c.name_ar ? c.name_ar : c.name}</option>)}
+              </select></label>
+            <label className="block"><span className="text-xs text-gray-600">{t("po_cash_credit")}</span>
+              <select className={inp} value={paymentType} onChange={e => setPaymentType(e.target.value)}>
+                <option value="cash">{t("po_cash")}</option><option value="credit">{t("po_credit")}</option>
+              </select></label>
+            <label className="block"><span className="text-xs text-gray-600">{t("date")}</span><input type="date" className={inp} value={orderDate} onChange={e => setOrderDate(e.target.value)} /></label>
+            <label className="block"><span className="text-xs text-gray-600">{t("po_expected_date")}</span><input type="date" className={inp} value={expected} onChange={e => setExpected(e.target.value)} /></label>
+            <label className="block"><span className="text-xs text-gray-600">{t("po_delivery_location")}</span>
+              <input list="po-locs" className={inp} value={location} onChange={e => setLocation(e.target.value)} />
+              <datalist id="po-locs">{locations.map(l => <option key={l.name} value={l.name}>{ar && l.name_ar ? l.name_ar : l.name}</option>)}</datalist></label>
+          </div>
+
+          <div className="border rounded-lg">
+            <div className="flex justify-between items-center px-3 py-2 bg-gray-50 border-b">
+              <span className="font-semibold">{t("po_items")}</span>
+              <button type="button" onClick={() => setLines(ls => [...ls, emptyLine()])} className={`${btn} bg-emerald-50 text-emerald-700 inline-flex items-center gap-1`}><Plus size={14} />{t("po_add_item")}</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[800px]">
+                <thead className="text-xs text-gray-600"><tr>
+                  <th className="text-start p-2 w-[40%]">{t("po_item")}</th><th className="text-start p-2">{t("po_packaging")}</th><th className="text-start p-2">{t("po_unit")}</th>
+                  <th className="text-end p-2">{t("po_qty")}</th><th className="text-end p-2">{t("po_unit_price")}</th><th className="text-end p-2">{t("po_line_total")}</th><th />
+                </tr></thead>
+                <tbody>
+                  {lines.map((l, i) => (
+                    <tr key={i} className="border-t">
+                      <td className="p-2 space-y-1">
+                        {items.length > 0 && (
+                          <select className={inp} value={l.supplier_item_id ? String(l.supplier_item_id) : ""} onChange={e => pickItem(i, e.target.value)}>
+                            <option value="">{t("po_pick_item")}</option>
+                            {items.map(it => <option key={it.id} value={it.id}>{ar && it.item_name_ar ? it.item_name_ar : it.item_name}{it.packaging ? ` (${it.packaging})` : ""} — {kd(it.unit_price)}</option>)}
+                          </select>
+                        )}
+                        <input className={`${inp} ${sr && !l.supplier_item_id ? "border-amber-400 bg-amber-50" : ""}`} placeholder={t("po_custom_item")} value={l.item_name} onChange={e => setLine(i, { item_name: e.target.value, supplier_item_id: null })} />
+                      </td>
+                      <td className="p-2"><input className={inp} value={l.packaging} onChange={e => setLine(i, { packaging: e.target.value })} /></td>
+                      <td className="p-2"><input className={`${inp} w-20`} value={l.unit} onChange={e => setLine(i, { unit: e.target.value })} /></td>
+                      <td className="p-2"><input type="number" step="0.001" min="0" className={`${inp} w-24 text-end`} value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
+                      <td className="p-2"><input type="number" step="0.001" min="0" className={`${inp} w-28 text-end`} value={l.unit_price} onChange={e => setLine(i, { unit_price: e.target.value })} /></td>
+                      <td className="p-2 text-end font-semibold">{kd((parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0))}
+                        {sr && sr.lines[i] && Math.abs(sr.lines[i].amount - (parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0)) > 0.005 && <div className="text-[10px] text-amber-700 font-normal">{t("scan_inv_amount")} {kd(sr.lines[i].amount)}</div>}</td>
+                      <td className="p-2"><button type="button" onClick={() => setLines(ls => ls.length > 1 ? ls.filter((_, j) => j !== i) : ls)} className="text-red-600"><Trash2 size={14} /></button></td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr className="border-t bg-gray-50 font-bold"><td colSpan={5} className="p-2 text-end">{t("total")}</td><td className="p-2 text-end">KD {kd(total)}</td><td /></tr></tfoot>
+              </table>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label className="block"><span className="text-xs text-gray-600">{t("notes")}</span><textarea className={inp} rows={2} value={notes} onChange={e => setNotes(e.target.value)} /></label>
+            <div><span className="text-xs text-gray-600 block mb-1">{t("po_attachment")}</span><FileBtn label={t("po_attachment")} file={file} onChange={setFile} />
+              {!file && scanPages.length > 0 && <div className="text-xs text-indigo-700 mt-1">{scanPages.length} {t("scan_pages_attached")}</div>}
+              {order?.attachment && !file && <a href={order.attachment} target="_blank" rel="noreferrer" className="text-xs text-emerald-700 underline block mt-1">{t("po_attachment")}</a>}</div>
+          </div>
+          {error && <div className="text-red-700 text-sm">{error}</div>}
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t bg-gray-50">
+          <button type="button" onClick={onClose} className={`${btn} bg-gray-200`}>{t("cancel")}</button>
+          <button type="button" disabled={saving} onClick={() => save(false)} className={`${btn} bg-gray-700 text-white`}>{t("po_save_draft")}</button>
+          <button type="button" disabled={saving} onClick={() => save(true)} className={`${btn} bg-emerald-600 text-white`}>{t("po_submit")}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReceiveForm({ order, ar, onClose, onSaved }: { order: Order; ar: boolean; onClose: () => void; onSaved: () => void }) {
+  const { t } = useTranslation();
+  const [qty, setQty] = useState<Record<number, string>>(Object.fromEntries((order.items || []).map(i => [i.id, String(i.quantity)])));
+  const [date, setDate] = useState(today());
+  const [notes, setNotes] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async () => {
+    const fd = new FormData();
+    fd.set("received_date", date); fd.set("notes", notes);
+    fd.set("received", JSON.stringify((order.items || []).map(i => ({ item_id: i.id, received_qty: parseFloat(qty[i.id]) || 0 }))));
+    if (file) fd.set("attachment", file);
+    setSaving(true);
+    try { await post(`/api/procurement/orders/${order.id}/receive`, fd); onSaved(); }
+    catch (e) { setError(e instanceof Error ? e.message : t("po_error")); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-5 space-y-3 text-sm max-h-[90vh] flex flex-col">
+        <h2 className="font-bold">{t("po_receive")} — {order.po_no}</h2>
+        <div className="flex-1 min-h-0 overflow-y-auto border rounded">
+        <table className="w-full"><thead className="text-xs text-gray-600 sticky top-0 bg-white shadow-sm"><tr><th className="text-start p-1">{t("po_item")}</th><th className="text-end p-1">{t("po_qty")}</th><th className="text-end p-1">{t("po_received_qty")}</th></tr></thead>
+          <tbody>{(order.items || []).map(i => (
+            <tr key={i.id} className="border-t"><td className="p-1">{ar && i.item_name_ar ? i.item_name_ar : i.item_name} <span className="text-xs text-gray-500">{i.packaging}</span></td>
+              <td className="p-1 text-end">{i.quantity} {i.unit}</td>
+              <td className="p-1 text-end"><input type="number" step="0.001" min="0" className={`${inp} w-28 text-end inline-block`} value={qty[i.id]} onChange={e => setQty({ ...qty, [i.id]: e.target.value })} /></td></tr>
+          ))}</tbody></table>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label className="block"><span className="text-xs text-gray-600">{t("po_received_date")}</span><input type="date" className={inp} value={date} onChange={e => setDate(e.target.value)} /></label>
+          <div><span className="text-xs text-gray-600 block mb-1">{t("po_delivery_note")}</span><FileBtn label={t("po_delivery_note")} file={file} onChange={setFile} /></div>
+        </div>
+        <textarea className={inp} rows={2} placeholder={t("po_receiving_notes")} value={notes} onChange={e => setNotes(e.target.value)} />
+        {error && <div className="text-red-700">{error}</div>}
+        <div className="flex justify-end gap-2"><button onClick={onClose} className={`${btn} bg-gray-100`}>{t("cancel")}</button><button disabled={saving} onClick={submit} className={`${btn} bg-purple-600 text-white`}>{t("po_receive")}</button></div>
+      </div>
+    </div>
+  );
+}
+
+function InvoiceForm({ order, onClose, onSaved }: { order: Order; onClose: () => void; onSaved: () => void }) {
+  const { t } = useTranslation();
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  return (
+    <form className="bg-white rounded-lg shadow-xl w-full max-w-md p-5 space-y-3 text-sm" onSubmit={async e => {
+      e.preventDefault();
+      const fd = new FormData(e.currentTarget);
+      if (file) fd.set("attachment", file);
+      setSaving(true);
+      try { await post(`/api/procurement/orders/${order.id}/invoice`, fd); onSaved(); }
+      catch (er) { setError(er instanceof Error ? er.message : t("po_error")); }
+      finally { setSaving(false); }
+    }}>
+      <h2 className="font-bold">{t("po_record_invoice")} — {order.po_no}</h2>
+      <div className="text-xs text-gray-600">{order.supplier_name} · {order.payment_type === "cash" ? t("po_cash") : t("po_credit")} · {t("total")} KD {kd(order.total)}</div>
+      <label className="block"><span className="text-xs text-gray-600">{t("po_invoice_no")}</span><input name="invoice_number" className={inp} /></label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block"><span className="text-xs text-gray-600">{t("po_invoice_date")}</span><input type="date" name="invoice_date" className={inp} defaultValue={today()} required /></label>
+        <label className="block"><span className="text-xs text-gray-600">{t("po_due_date")}</span><input type="date" name="due_date" className={inp} /></label>
+      </div>
+      <label className="block"><span className="text-xs text-gray-600">{t("po_invoice_amount")}</span><input type="number" step="0.001" min="0" name="total_amount" className={inp} defaultValue={kd(order.total)} required /></label>
+      <FileBtn label={t("po_invoice_copy")} file={file} onChange={setFile} />
+      <textarea name="notes" className={inp} rows={2} placeholder={t("notes")} />
+      {error && <div className="text-red-700">{error}</div>}
+      <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className={`${btn} bg-gray-100`}>{t("cancel")}</button><button type="submit" disabled={saving} className={`${btn} bg-cyan-600 text-white`}>{t("save")}</button></div>
+    </form>
+  );
+}
+
+function PayForm({ inv, methodLabel, onClose, onSaved }: { inv: Invoice; methodLabel: (m: string) => string; onClose: () => void; onSaved: () => void }) {
+  const { t } = useTranslation();
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [method, setMethod] = useState(inv.payment_type === "cash" ? "purchase_petty_cash" : "bank_transfer");
+  const [channelId, setChannelId] = useState("");
+  const [payDate, setPayDate] = useState(today());
+  return (
+    <form className="bg-white rounded-lg shadow-xl w-full max-w-md p-5 space-y-3 text-sm" onSubmit={async e => {
+      e.preventDefault();
+      const fd = new FormData(e.currentTarget);
+      setSaving(true);
+      try { await post(`/api/procurement/invoices/${inv.id}/pay`, fd); onSaved(); }
+      catch (er) { setError(er instanceof Error ? er.message : t("po_error")); }
+      finally { setSaving(false); }
+    }}>
+      <h2 className="font-bold">{t("po_record_payment")} — {inv.po_no}</h2>
+      <div className="text-xs text-gray-600">{inv.supplier_name} · {t("po_invoice_no")} {inv.invoice_number || "—"} · {t("po_balance")} <b className="text-red-700">KD {kd(inv.balance)}</b></div>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block"><span className="text-xs text-gray-600">{t("amount")}</span><input type="number" step="0.001" min="0.001" max={inv.balance} name="amount" className={inp} defaultValue={kd(inv.balance)} required /></label>
+        <label className="block"><span className="text-xs text-gray-600">{t("date")}</span><input type="date" name="pay_date" className={inp} value={payDate} onChange={e => setPayDate(e.target.value)} required /></label>
+      </div>
+      <label className="block"><span className="text-xs text-gray-600">{t("po_paid_from")}</span>
+        <select name="method" className={inp} value={method} onChange={e => { setMethod(e.target.value); setChannelId(""); }}>
+          {METHODS.map(m => <option key={m} value={m}>{methodLabel(m)}</option>)}
+        </select></label>
+      <ChannelSelect name="channel_id" value={channelId} onChange={setChannelId} method={method} date={payDate} className={inp} required />
+      <div className="text-xs text-gray-500">{t("po_pay_hint")}</div>
+      <label className="block"><span className="text-xs text-gray-600">{t("po_reference")}</span><input name="reference" className={inp} /></label>
+      <textarea name="notes" className={inp} rows={2} placeholder={t("notes")} />
+      {error && <div className="text-red-700">{error}</div>}
+      <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className={`${btn} bg-gray-100`}>{t("cancel")}</button><button type="submit" disabled={saving} className={`${btn} bg-green-600 text-white`}>{t("po_pay")}</button></div>
+    </form>
+  );
+}

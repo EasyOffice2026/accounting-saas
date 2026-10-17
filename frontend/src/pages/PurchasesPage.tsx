@@ -76,7 +76,7 @@ export default function PurchasesPage() {
 
   const isManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   const isStaff = user?.role === "staff";
-  const readOnly = !!user?.read_only;
+  const readOnly = !!user?.read_only && !(user.editable_tabs || []).includes("purchases");
 
   const listParams = (bid: string) => {
     const parts = [...(bid ? [`branch_id=${bid}`] : []), ...dateRangeParams(range)];

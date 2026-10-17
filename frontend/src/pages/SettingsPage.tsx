@@ -79,6 +79,7 @@ interface UserItem {
   allowed_tabs: string[] | null;
   allowed_brands: number[] | null;
   read_only: boolean;
+  editable_tabs: string[];
 }
 
 interface BranchItem {
@@ -172,6 +173,7 @@ export default function SettingsPage() {
   const [uBranchId, setUBranchId] = useState<string>("");
   const [uAllowedBrands, setUAllowedBrands] = useState<number[]>([]);
   const [uReadOnly, setUReadOnly] = useState(false);
+  const [uEditableTabs, setUEditableTabs] = useState<string[]>([]);
   const [uMsg, setUMsg] = useState("");
   const [uMsgType, setUMsgType] = useState<"success" | "error">("success");
 
@@ -312,6 +314,7 @@ export default function SettingsPage() {
     setUBranchId("");
     setUAllowedBrands([]);
     setUReadOnly(false);
+    setUEditableTabs([]);
     setEditingUser(null);
     setShowUserForm(false);
   };
@@ -324,6 +327,7 @@ export default function SettingsPage() {
     setUBranchId(u.branch_id ? String(u.branch_id) : "");
     setUAllowedBrands(u.allowed_brands || []);
     setUReadOnly(!!u.read_only);
+    setUEditableTabs(u.editable_tabs || []);
     setUPassword("");
     setShowUserForm(true);
   };
@@ -338,6 +342,7 @@ export default function SettingsPage() {
     fd.append("branch_id", uRole === "staff" ? (uBranchId || "") : "");
     fd.append("allowed_brands", uAllowedBrands.join(","));
     fd.append("read_only", uReadOnly ? "true" : "false");
+    fd.append("editable_tabs", uReadOnly ? uEditableTabs.join(",") : "");
 
     try {
       if (editingUser) {
@@ -732,6 +737,20 @@ export default function SettingsPage() {
                 {t("view_only_login")}
               </label>
               <p className="text-xs text-gray-500 mt-1">{t("view_only_login_hint")}</p>
+              {uReadOnly && (
+                <div className="mt-2">
+                  <p className="text-sm font-medium mb-1">{t("view_only_except")}</p>
+                  <div className="flex flex-wrap gap-3">
+                    {([["sales", "sales"], ["purchases", "purchases"], ["expenses", "expenses"], ["transfers", "internal_transfer"], ["hr", "hr"]] as const).map(([tab, label]) => (
+                      <label key={tab} className="inline-flex items-center gap-2 text-sm bg-white border rounded-lg px-3 py-1.5 cursor-pointer">
+                        <input type="checkbox" checked={uEditableTabs.includes(tab)}
+                          onChange={e => setUEditableTabs(prev => e.target.checked ? [...prev, tab] : prev.filter(x => x !== tab))} />
+                        {t(label)}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
               <button type="submit"

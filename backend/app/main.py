@@ -414,6 +414,9 @@ def _migrate_columns():
             if "read_only" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN read_only BOOLEAN NOT NULL DEFAULT 0"))
                 conn.commit()
+            if "editable_tabs" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN editable_tabs TEXT"))
+                conn.commit()
 
         # Suppliers: add category_id
         if "suppliers" in insp.get_table_names():

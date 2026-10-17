@@ -11,6 +11,7 @@ interface UserInfo {
   allowed_brands: number[] | null;
   sales_unlock_until?: string | null;
   read_only?: boolean;
+  editable_tabs?: string[];
 }
 
 interface AuthCtx {

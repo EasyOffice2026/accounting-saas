@@ -176,7 +176,7 @@ export default function HRPage() {
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager = currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant";
-  const readOnly = !!currentUser.read_only;
+  const readOnly = !!currentUser.read_only && !(currentUser.editable_tabs || []).includes("hr");
   const isPersonnel = ["personnel", "personnel_manager"].includes(currentUser.role);
   const canViewSalary = ["owner", "manager", "accountant"].includes(currentUser.role);
 

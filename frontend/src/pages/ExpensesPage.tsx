@@ -53,7 +53,7 @@ export default function ExpensesPage() {
 
   const isManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   const isStaff = user?.role === "staff";
-  const readOnly = !!user?.read_only;
+  const readOnly = !!user?.read_only && !(user.editable_tabs || []).includes("expenses");
 
   const loadCategories = () => apiGet("/api/expenses/categories").then(setCategories);
 

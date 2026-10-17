@@ -36,6 +36,13 @@ def create_access_token(data: dict) -> str:
 READ_ONLY_ALLOWED_PREFIXES = ("/api/auth/", "/api/sales", "/api/purchases", "/api/expenses", "/api/transfers", "/api/hr",
                               "/api/branches", "/api/items", "/api/export/")
 READ_METHODS = ("GET", "HEAD", "OPTIONS")
+EDITABLE_TAB_PREFIXES = {
+    "sales": "/api/sales",
+    "purchases": "/api/purchases",
+    "expenses": "/api/expenses",
+    "transfers": "/api/transfers",
+    "hr": "/api/hr",
+}
 
 
 def _enforce_read_only(request: Request, user: User):
@@ -43,7 +50,9 @@ def _enforce_read_only(request: Request, user: User):
     if path.startswith("/api/auth/"):
         return
     if request.method not in READ_METHODS:
-        raise HTTPException(status_code=403, detail="This login is view only")
+        editable = tuple(EDITABLE_TAB_PREFIXES[t] for t in user.get_editable_tabs() if t in EDITABLE_TAB_PREFIXES)
+        if not (editable and path.startswith(editable)):
+            raise HTTPException(status_code=403, detail="This login is view only")
     if not path.startswith(READ_ONLY_ALLOWED_PREFIXES):
         raise HTTPException(status_code=403, detail="Not available for this login")
 

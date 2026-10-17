@@ -110,7 +110,7 @@ export default function TransfersPage() {
 
   const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   const isStaff = user?.role === "staff";
-  const readOnly = !!user?.read_only;
+  const readOnly = !!user?.read_only && !(user.editable_tabs || []).includes("transfers");
   const isCentralKitchen = branches.find(b => b.id === user?.branch_id)?.is_central_kitchen || false;
   const canManageItems = isOwnerManager;
   // Branches for each brand selector (branches with no brand, e.g. Central Kitchen, are always shown)

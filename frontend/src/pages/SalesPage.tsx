@@ -63,7 +63,7 @@ export default function SalesPage() {
   };
 
   const isStaff = user?.role === "staff";
-  const readOnly = !!user?.read_only;
+  const readOnly = !!user?.read_only && !(user.editable_tabs || []).includes("sales");
   const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   // Branch logins can change a day's sales until 12:00 noon Kuwait time (09:00 UTC) the next day.
   const isDayLocked = (d: string) => {

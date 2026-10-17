@@ -25,6 +25,10 @@ def _parse_brands(raw: Optional[str]) -> Optional[list[int]]:
     return ids or None
 
 
+def _parse_tabs(raw: Optional[str]) -> list[str]:
+    return [t.strip() for t in (raw or "").split(",") if t.strip()]
+
+
 def _truthy(raw: str) -> bool:
     return raw.lower() in ("true", "1", "yes")
 
@@ -45,6 +49,7 @@ def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_u
             "allowed_tabs": u.get_allowed_tabs(),
             "allowed_brands": u.get_allowed_brands(),
             "read_only": bool(u.read_only),
+            "editable_tabs": u.get_editable_tabs(),
         }
         for u in users
     ]
@@ -59,6 +64,7 @@ def create_user(
     branch_id: Optional[int] = Form(None),
     allowed_brands: Optional[str] = Form(None),
     read_only: str = Form("false"),
+    editable_tabs: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -76,6 +82,7 @@ def create_user(
         is_active=True,
         read_only=_truthy(read_only),
     )
+    new_user.set_editable_tabs(_parse_tabs(editable_tabs))
     new_user.set_allowed_brands(_parse_brands(allowed_brands))
     db.add(new_user)
     db.commit()
@@ -94,6 +101,7 @@ def update_user(
     allowed_brands: Optional[str] = Form(None),
     is_active: str = Form(None),
     read_only: str = Form(None),
+    editable_tabs: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -121,6 +129,8 @@ def update_user(
         target.is_active = _truthy(is_active)
     if read_only is not None:
         target.read_only = _truthy(read_only)
+    if editable_tabs is not None:
+        target.set_editable_tabs(_parse_tabs(editable_tabs))
     if allowed_brands is not None:
         target.set_allowed_brands(_parse_brands(allowed_brands))
     db.commit()

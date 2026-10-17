@@ -380,7 +380,7 @@ def delete_employee(
     emp_id: int,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner",):
+    if user.role != "owner" and "hr" not in user.get_editable_tabs():
         raise HTTPException(403, "Not authorized")
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:

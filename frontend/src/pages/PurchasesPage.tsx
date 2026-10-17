@@ -76,6 +76,7 @@ export default function PurchasesPage() {
 
   const isManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   const isStaff = user?.role === "staff";
+  const readOnly = !!user?.read_only;
 
   const listParams = (bid: string) => {
     const parts = [...(bid ? [`branch_id=${bid}`] : []), ...dateRangeParams(range)];
@@ -448,11 +449,11 @@ export default function PurchasesPage() {
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
             {t("export_pdf")}
           </button>
-          <button onClick={() => { setEditingSupplier(null); setShowSupplierForm(!showSupplierForm); }}
+          {!readOnly && (<button onClick={() => { setEditingSupplier(null); setShowSupplierForm(!showSupplierForm); }}
             className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm">
             + {t("supplier")}
-          </button>
-          {tab === "orders" && (
+          </button>)}
+          {!readOnly && tab === "orders" && (
             <button onClick={() => { setShowOrderForm(!showOrderForm); if (showOrderForm) { setEditingOrder(null); setOrderSupplierId(null); setOrderCatalogItems([]); setSelectedCatalogIds(new Set()); setCatalogQuantities({}); setItems([{ item_name: "", quantity: "1", unit: "pcs", unit_price: "0", total: "0" }]); } }}
               className="px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
               {showOrderForm ? t("cancel") : t("add_new")}
@@ -790,19 +791,19 @@ export default function PurchasesPage() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex gap-1 justify-center flex-wrap">
-                        <button onClick={() => startEditOrder(o)}
+                        {!readOnly && (<button onClick={() => startEditOrder(o)}
                           className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
                           {t("edit")}
-                        </button>
+                        </button>)}
                         <button onClick={() => apiDownload(`/api/export/purchase-order/${o.id}/pdf`, `PO-${String(o.id).padStart(4,"0")}.pdf`)}
                           className="px-2 py-1 bg-orange-500 text-white rounded text-xs hover:bg-orange-600">
                           {t("print")}
                         </button>
-                        <button onClick={() => deleteOrder(o.id)}
+                        {!readOnly && (<button onClick={() => deleteOrder(o.id)}
                           className="px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700">
                           {t("delete")}
-                        </button>
-                        {o.status === "pending" && (
+                        </button>)}
+                        {!readOnly && o.status === "pending" && (
                           <button onClick={() => startReceiving(o)}
                             className="px-2 py-1 bg-indigo-500 text-white rounded text-xs hover:bg-indigo-600">
                             {t("receive")}
@@ -862,11 +863,11 @@ export default function PurchasesPage() {
                           className="px-2 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
                           {t("items")}
                         </button>
-                        <button onClick={() => { setEditingSupplier(s); setShowSupplierForm(true); }}
+                        {!readOnly && (<button onClick={() => { setEditingSupplier(s); setShowSupplierForm(true); }}
                           className="px-2 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600">
                           {t("edit")}
-                        </button>
-                        {isManager && (
+                        </button>)}
+                        {!readOnly && isManager && (
                           <button onClick={() => deleteSupplier(s.id)}
                             className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">
                             {t("delete")}
@@ -886,10 +887,10 @@ export default function PurchasesPage() {
                   {supplierName(catalogSupplierId)} — {t("item_catalog")}
                   <span className="text-sm text-gray-400 ml-2">({catalogItems.length} {t("items")})</span>
                 </h3>
-                <button onClick={() => { setEditingItem(null); setShowItemForm(true); }}
+                {!readOnly && (<button onClick={() => { setEditingItem(null); setShowItemForm(true); }}
                   className="px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
                   + {t("add_item")}
-                </button>
+                </button>)}
               </div>
               {showItemForm && (
                 <form onSubmit={handleCatalogItemSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-4 space-y-3">
@@ -960,14 +961,14 @@ export default function PurchasesPage() {
                         <td className="px-4 py-3 text-right font-mono">{ci.unit_price.toFixed(3)}</td>
                         <td className="px-4 py-3 text-center">
                           <div className="flex gap-1 justify-center">
-                            <button onClick={() => { setEditingItem(ci); setShowItemForm(true); }}
+                            {!readOnly && (<button onClick={() => { setEditingItem(ci); setShowItemForm(true); }}
                               className="px-2 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600">
                               {t("edit")}
-                            </button>
-                            <button onClick={() => deleteCatalogItem(ci.id)}
+                            </button>)}
+                            {!readOnly && (<button onClick={() => deleteCatalogItem(ci.id)}
                               className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">
                               {t("delete")}
-                            </button>
+                            </button>)}
                           </div>
                         </td>
                       </tr>
@@ -991,10 +992,10 @@ export default function PurchasesPage() {
 
           {isManager && (
             <div className="flex justify-end mb-4">
-              <button onClick={() => { setEditingCategory(null); setShowCategoryForm(!showCategoryForm); }}
+              {!readOnly && (<button onClick={() => { setEditingCategory(null); setShowCategoryForm(!showCategoryForm); }}
                 className="px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
                 {showCategoryForm ? t("cancel") : `+ ${t("add_category")}`}
-              </button>
+              </button>)}
             </div>
           )}
 
@@ -1042,14 +1043,14 @@ export default function PurchasesPage() {
                     {isManager && (
                       <td className="px-4 py-3 text-center">
                         <div className="flex gap-1 justify-center">
-                          <button onClick={() => { setEditingCategory(cat); setShowCategoryForm(true); }}
+                          {!readOnly && (<button onClick={() => { setEditingCategory(cat); setShowCategoryForm(true); }}
                             className="px-2 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600">
                             {t("edit")}
-                          </button>
-                          <button onClick={() => deleteCategory(cat.id)}
+                          </button>)}
+                          {!readOnly && (<button onClick={() => deleteCategory(cat.id)}
                             className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">
                             {t("delete")}
-                          </button>
+                          </button>)}
                         </div>
                       </td>
                     )}
@@ -1112,10 +1113,10 @@ export default function PurchasesPage() {
                   <td className="px-4 py-3 text-center">
                     {inv.status === "pending" && (
                       <div className="flex gap-1 justify-center">
-                        <button onClick={() => setPayingInvoice(inv)}
+                        {!readOnly && (<button onClick={() => setPayingInvoice(inv)}
                           className="px-2 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
                           {t("pay")}
-                        </button>
+                        </button>)}
                       </div>
                     )}
                     {inv.status === "paid" && inv.paid_date && (

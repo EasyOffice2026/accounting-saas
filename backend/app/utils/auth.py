@@ -32,7 +32,24 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+# API prefixes a view-only login may read; it may never write anything except its own session (auth).
+READ_ONLY_ALLOWED_PREFIXES = ("/api/auth/", "/api/sales", "/api/purchases", "/api/expenses", "/api/transfers", "/api/hr",
+                              "/api/branches", "/api/items", "/api/export/")
+READ_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+def _enforce_read_only(request: Request, user: User):
+    path = request.url.path
+    if path.startswith("/api/auth/"):
+        return
+    if request.method not in READ_METHODS:
+        raise HTTPException(status_code=403, detail="This login is view only")
+    if not path.startswith(READ_ONLY_ALLOWED_PREFIXES):
+        raise HTTPException(status_code=403, detail="Not available for this login")
+
+
 def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
@@ -47,6 +64,8 @@ def get_current_user(
     user = db.query(User).filter(User.id == user_id).first()
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found")
+    if user.read_only:
+        _enforce_read_only(request, user)
     return user
 
 

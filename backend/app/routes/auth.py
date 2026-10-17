@@ -44,6 +44,7 @@ def _user_payload(db: Session, user: User) -> dict:
         "allowed_tabs": user.get_allowed_tabs(),
         "allowed_brands": resolve_allowed_brands(db, user),
         "sales_unlock_until": unlock,
+        "read_only": bool(user.read_only),
     }
 
 

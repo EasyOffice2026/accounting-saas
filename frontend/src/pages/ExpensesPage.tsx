@@ -53,6 +53,7 @@ export default function ExpensesPage() {
 
   const isManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   const isStaff = user?.role === "staff";
+  const readOnly = !!user?.read_only;
 
   const loadCategories = () => apiGet("/api/expenses/categories").then(setCategories);
 
@@ -175,10 +176,10 @@ export default function ExpensesPage() {
               className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
               {t("export_pdf")}
             </button>
-            <button onClick={() => { setShowForm(!showForm); setEditingExpense(null); }}
+            {!readOnly && (<button onClick={() => { setShowForm(!showForm); setEditingExpense(null); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
               {showForm ? t("cancel") : t("add_new")}
-            </button>
+            </button>)}
           </div>
         )}
       </div>
@@ -232,7 +233,7 @@ export default function ExpensesPage() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-sm font-medium">{t("category")}</label>
-                    {isManager && (
+                    {!readOnly && isManager && (
                       <button type="button" onClick={() => setShowCatMgr(true)}
                         className="text-xs text-emerald-600 hover:underline">
                         + {t("manage_categories")}
@@ -348,13 +349,13 @@ export default function ExpensesPage() {
                           <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">{t("contracts_tab")}</span>
                         ) : exp.salary_payment_id ? (
                           <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">{t("payroll")}</span>
-                        ) : (
+                        ) : readOnly ? null : (
                           <button onClick={() => { setEditingExpense(exp); setShowForm(false); }}
                             className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">{t("edit")}</button>
                         )}
                         <button onClick={() => handlePrint(exp)}
                           className="px-2 py-1 bg-orange-500 text-white rounded text-xs hover:bg-orange-600">{t("print")}</button>
-                        {isManager && !exp.contract_payment_id && !exp.salary_payment_id && (
+                        {!readOnly && isManager && !exp.contract_payment_id && !exp.salary_payment_id && (
                           <button onClick={() => handleDelete(exp.id)}
                             className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">{t("delete")}</button>
                         )}

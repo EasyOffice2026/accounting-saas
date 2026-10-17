@@ -110,6 +110,7 @@ export default function TransfersPage() {
 
   const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   const isStaff = user?.role === "staff";
+  const readOnly = !!user?.read_only;
   const isCentralKitchen = branches.find(b => b.id === user?.branch_id)?.is_central_kitchen || false;
   const canManageItems = isOwnerManager;
   // Branches for each brand selector (branches with no brand, e.g. Central Kitchen, are always shown)
@@ -267,7 +268,7 @@ export default function TransfersPage() {
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-gray-800">{t("internal_transfer")}</h2>
-        {tab === "requests" && (
+        {!readOnly && tab === "requests" && (
           <button onClick={() => { const opening = !showForm; setShowForm(!showForm); if (showForm) { setCheckedItems({}); setEditingOrder(null); } else if (opening) { setFromBrandId(selectedBrand?.id ?? ""); setToBrandId(selectedBrand?.id ?? ""); } }}
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
             {showForm ? t("cancel") : t("new_request")}
@@ -283,7 +284,7 @@ export default function TransfersPage() {
               className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
               {t("export_pdf")}
             </button>
-            {canManageItems && (
+            {!readOnly && canManageItems && (
               <button onClick={() => { setShowItemForm(!showItemForm); setEditItem(null); }}
                 className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
                 {showItemForm ? t("cancel") : t("add_item")}
@@ -386,9 +387,9 @@ export default function TransfersPage() {
                     <td className="px-4 py-3 text-right font-mono">{(item.unit_price || 0).toFixed(3)}</td>
                     {canManageItems && (
                       <td className="px-4 py-3 text-center">
-                        <button onClick={() => { setEditItem(item); setShowItemForm(true); }}
-                          className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 mr-1">{t("edit")}</button>
-                        {isOwnerManager && (
+                        {!readOnly && (<button onClick={() => { setEditItem(item); setShowItemForm(true); }}
+                          className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 mr-1">{t("edit")}</button>)}
+                        {!readOnly && isOwnerManager && (
                           <button onClick={() => handleDeleteItem(item.id)}
                             className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">{t("delete")}</button>
                         )}
@@ -603,23 +604,23 @@ export default function TransfersPage() {
                     </span>
                     {order.status === "requested" && (
                       <>
-                        <button onClick={() => openEditOrder(order)}
+                        {!readOnly && (<button onClick={() => openEditOrder(order)}
                           className="px-3 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600">
                           {t("edit")}
-                        </button>
-                        <button onClick={() => handleDeleteOrder(order.id)}
+                        </button>)}
+                        {!readOnly && (<button onClick={() => handleDeleteOrder(order.id)}
                           className="px-3 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">
                           {t("delete")}
-                        </button>
+                        </button>)}
                       </>
                     )}
-                    {order.status === "requested" && (isOwnerManager || isCentralKitchen || user?.branch_id === order.source_branch_id) && (
+                    {!readOnly && order.status === "requested" && (isOwnerManager || isCentralKitchen || user?.branch_id === order.source_branch_id) && (
                       <button onClick={() => openAction(order, "dispatch")}
                         className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">
                         {t("dispatch")}
                       </button>
                     )}
-                    {order.status === "dispatched" && (
+                    {!readOnly && order.status === "dispatched" && (
                       <button onClick={() => openAction(order, "receive")}
                         className="px-3 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
                         {t("confirm_receive")}

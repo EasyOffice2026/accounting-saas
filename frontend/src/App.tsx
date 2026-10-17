@@ -43,7 +43,7 @@ function ProtectedRoutes() {
   const isPersonnel = ["personnel", "personnel_manager"].includes(user?.role || "");
   const isPurchase = ["purchase_officer", "purchase_manager"].includes(user?.role || "");
   const restricted = isPersonnel || isPurchase;
-  const isBranch = user?.role === "staff";
+  const isBranch = user?.role === "staff" || !!user?.read_only;
   const branchHome = (() => {
     const tabs = user?.allowed_tabs;
     const order: [string, string][] = [["sales", "/sales"], ["purchases", "/purchases"], ["expenses", "/expenses"], ["hr", "/hr"], ["cash", "/cash"], ["transfers", "/transfers"]];

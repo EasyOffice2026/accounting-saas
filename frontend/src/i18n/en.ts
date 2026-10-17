@@ -5,6 +5,8 @@ export default {
   select_brand_to_login: "Select your brand to log in",
   change_brand: "Change brand",
   brand_access: "Brand Access",
+  view_only_login: "View only",
+  view_only_login_hint: "This login can open its allowed tabs but cannot add, edit, delete, approve or pay anything.",
   brand_access_hint: "Select which brands this user can access. Leave empty to use the default (all brands for owner/manager/accountant, or the user's own branch brand for staff).",
   login: "Login",
   logout: "Logout",

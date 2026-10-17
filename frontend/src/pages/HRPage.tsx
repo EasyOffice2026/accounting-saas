@@ -176,6 +176,7 @@ export default function HRPage() {
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager = currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant";
+  const readOnly = !!currentUser.read_only;
   const isPersonnel = ["personnel", "personnel_manager"].includes(currentUser.role);
   const canViewSalary = ["owner", "manager", "accountant"].includes(currentUser.role);
 
@@ -243,10 +244,10 @@ export default function HRPage() {
         </span>
         {isManager && s === "pending_approval" && (
           <div className="flex gap-1">
-            <button onClick={() => handleApproval(type, id, "approve")}
-              className="px-2 py-0.5 bg-green-500 text-white rounded text-xs hover:bg-green-600">{t("approve")}</button>
-            <button onClick={() => handleApproval(type, id, "reject")}
-              className="px-2 py-0.5 bg-red-500 text-white rounded text-xs hover:bg-red-600">{t("reject")}</button>
+            {!readOnly && (<button onClick={() => handleApproval(type, id, "approve")}
+              className="px-2 py-0.5 bg-green-500 text-white rounded text-xs hover:bg-green-600">{t("approve")}</button>)}
+            {!readOnly && (<button onClick={() => handleApproval(type, id, "reject")}
+              className="px-2 py-0.5 bg-red-500 text-white rounded text-xs hover:bg-red-600">{t("reject")}</button>)}
           </div>
         )}
       </div>
@@ -869,7 +870,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
             {t("export_pdf")}
           </button>
-          {tab === "employees" && !isPersonnel && (
+          {!readOnly && tab === "employees" && !isPersonnel && (
             <button onClick={() => { setShowForm(!showForm); setEditingEmp(null); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
               {showForm ? t("cancel") : t("add_new")}
@@ -994,7 +995,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-sm font-medium">{t("employer_label")}</label>
-                    {canViewSalary && (
+                    {!readOnly && canViewSalary && (
                     <button type="button" onClick={() => setShowEmployerMgr(true)}
                       className="text-emerald-600 hover:underline text-xs">{t("manage")}</button>
                     )}
@@ -1077,9 +1078,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <td className="px-3 py-3">{emp.health_card_expiry || "—"}</td>
                     <td className="px-3 py-3 text-center">
                       <div className="flex gap-2 justify-center">
-                        {!isPersonnel && <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>}
+                        {!isPersonnel && !readOnly && <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>}
                         <button onClick={() => printEmployeeForm(emp)} className="text-purple-600 hover:underline text-xs">PDF</button>
-                        {isManager && (
+                        {!readOnly && isManager && (
                           <button onClick={() => handleDeleteEmp(emp)} className="text-red-600 hover:underline text-xs">{t("delete")}</button>
                         )}
                       </div>
@@ -1148,10 +1149,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
 
             {isManager && (
               <>
-                <button onClick={handleGeneratePayroll}
+                {!readOnly && (<button onClick={handleGeneratePayroll}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mt-5">
                   {t("generate_payroll")}
-                </button>
+                </button>)}
                 <button onClick={() => apiDownload(`/api/export/salary/csv?month=${salaryMonth}&lang=${i18n.language}`, `salary_${salaryMonth}.csv`)}
                   className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm mt-5">
                   {t("export_csv")}
@@ -1532,15 +1533,15 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                               className="text-purple-600 hover:underline text-xs">{t("pay_slip")}</button>
                             {r.status === "pending" && (
                               <>
-                                <button onClick={() => handleEditSalary(r)}
-                                  className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
-                                <button onClick={() => handleMarkPaid(r.id)}
-                                  className="text-green-600 hover:underline text-xs">{t("mark_paid")}</button>
-                                <button onClick={() => handleHoldSalary(r.id)}
-                                  className="text-red-600 hover:underline text-xs">{t("hold_salary")}</button>
+                                {!readOnly && (<button onClick={() => handleEditSalary(r)}
+                                  className="text-blue-600 hover:underline text-xs">{t("edit")}</button>)}
+                                {!readOnly && (<button onClick={() => handleMarkPaid(r.id)}
+                                  className="text-green-600 hover:underline text-xs">{t("mark_paid")}</button>)}
+                                {!readOnly && (<button onClick={() => handleHoldSalary(r.id)}
+                                  className="text-red-600 hover:underline text-xs">{t("hold_salary")}</button>)}
                               </>
                             )}
-                            {r.status === "on_hold" && (
+                            {!readOnly && r.status === "on_hold" && (
                               <button onClick={() => handleReleaseSalary(r.id)}
                                 className="text-orange-600 hover:underline text-xs">{t("release_salary")}</button>
                             )}
@@ -1638,10 +1639,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       {/* Staff Transfers Tab */}
       {tab === "transfers" && (
         <div>
-          <button onClick={() => setShowTransferForm(!showTransferForm)}
+          {!readOnly && (<button onClick={() => setShowTransferForm(!showTransferForm)}
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
             {showTransferForm ? t("cancel") : (isManager ? t("new_transfer") : t("request_transfer"))}
-          </button>
+          </button>)}
 
           {showTransferForm && (
             <form onSubmit={handleTransferSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
@@ -1727,10 +1728,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       <td className="px-4 py-3 text-center">
                         {tr.status === "pending" && (
                           <div className="flex gap-2 justify-center">
-                            <button onClick={() => handleTransferAction(tr.id, "approve")}
-                              className="text-green-600 hover:underline text-xs">{t("approve")}</button>
-                            <button onClick={() => handleTransferAction(tr.id, "reject")}
-                              className="text-red-600 hover:underline text-xs">{t("reject")}</button>
+                            {!readOnly && (<button onClick={() => handleTransferAction(tr.id, "approve")}
+                              className="text-green-600 hover:underline text-xs">{t("approve")}</button>)}
+                            {!readOnly && (<button onClick={() => handleTransferAction(tr.id, "reject")}
+                              className="text-red-600 hover:underline text-xs">{t("reject")}</button>)}
                           </div>
                         )}
                       </td>
@@ -1746,7 +1747,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       {/* Advance / Loan Tab */}
       {tab === "loans" && (
         <div>
-          {isManager && (
+          {!readOnly && isManager && (
             <button onClick={() => { setShowLoanForm(!showLoanForm); setEditingLoan(null); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
               {showLoanForm ? t("cancel") : t("add_new")}
@@ -1845,14 +1846,14 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     </td>
                     {isManager && (
                       <td className="px-4 py-3 space-x-2 whitespace-nowrap">
-                        {l.balance > 0 && (
+                        {!readOnly && l.balance > 0 && (
                           <button onClick={() => setPayingLoan(l)}
                             className="text-emerald-600 hover:underline text-xs font-medium">{t("record_payment")}</button>
                         )}
-                        <button onClick={() => { setEditingLoan(l); setShowLoanForm(true); }}
-                          className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
-                        <button onClick={() => handleDeleteLoan(l.id)}
-                          className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                        {!readOnly && (<button onClick={() => { setEditingLoan(l); setShowLoanForm(true); }}
+                          className="text-blue-600 hover:underline text-xs">{t("edit")}</button>)}
+                        {!readOnly && (<button onClick={() => handleDeleteLoan(l.id)}
+                          className="text-red-600 hover:underline text-xs">{t("delete")}</button>)}
                       </td>
                     )}
                   </tr>
@@ -1931,7 +1932,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                           <td className="px-3 py-2 text-gray-600">{tx.notes || "—"}</td>
                           {isManager && (
                             <td className="px-3 py-2 text-right">
-                              {tx.kind === "repayment" && (
+                              {!readOnly && tx.kind === "repayment" && (
                                 <button onClick={() => handleDeleteRepayment(tx.id)}
                                   className="text-red-600 hover:underline text-xs">{t("delete")}</button>
                               )}
@@ -1990,10 +1991,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       {/* Benefits Tab (Incentive, Bonus, Leave Salary, Ticket) */}
       {tab === "benefits" && (
         <div>
-          <button onClick={() => { setShowBenefitForm(!showBenefitForm); setEditingBenefit(null); setBenefitFreq("one_time"); }}
+          {!readOnly && (<button onClick={() => { setShowBenefitForm(!showBenefitForm); setEditingBenefit(null); setBenefitFreq("one_time"); }}
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
             {showBenefitForm ? t("cancel") : (isManager ? t("add_new") : t("request_new"))}
-          </button>
+          </button>)}
 
           {showBenefitForm && (
             <form onSubmit={handleBenefitSubmit} className="bg-white p-6 rounded-xl shadow-sm border mb-6 space-y-4">
@@ -2098,10 +2099,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     </td>
                     {isManager && (
                       <td className="px-4 py-3 space-x-2">
-                        <button onClick={() => { setEditingBenefit(b); setBenefitFreq(b.frequency || "one_time"); setShowBenefitForm(true); }}
-                          className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
-                        <button onClick={() => handleDeleteBenefit(b.id)}
-                          className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                        {!readOnly && (<button onClick={() => { setEditingBenefit(b); setBenefitFreq(b.frequency || "one_time"); setShowBenefitForm(true); }}
+                          className="text-blue-600 hover:underline text-xs">{t("edit")}</button>)}
+                        {!readOnly && (<button onClick={() => handleDeleteBenefit(b.id)}
+                          className="text-red-600 hover:underline text-xs">{t("delete")}</button>)}
                       </td>
                     )}
                   </tr>
@@ -2115,10 +2116,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       {/* Deductions Tab (Fine, Penalty) */}
       {tab === "deductions" && (
         <div>
-            <button onClick={() => { setShowDeductionForm(!showDeductionForm); setEditingDeduction(null); setDedSelectedEmpId(null); setDedDays(0); setDedAmount(0); }}
+            {!readOnly && (<button onClick={() => { setShowDeductionForm(!showDeductionForm); setEditingDeduction(null); setDedSelectedEmpId(null); setDedDays(0); setDedAmount(0); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
               {showDeductionForm ? t("cancel") : t("add_new")}
-            </button>
+            </button>)}
 
           {showDeductionForm && (() => {
             const dedEmp = employees.find(e => e.id === dedSelectedEmpId);
@@ -2231,10 +2232,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     </td>
                     {isManager && (
                       <td className="px-4 py-3 space-x-2">
-                        <button onClick={() => { setEditingDeduction(d); setShowDeductionForm(true); setDedSelectedEmpId(d.employee_id); setDedAmount(d.amount); setDedDays(0); }}
-                          className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
-                        <button onClick={() => handleDeleteDeduction(d.id)}
-                          className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                        {!readOnly && (<button onClick={() => { setEditingDeduction(d); setShowDeductionForm(true); setDedSelectedEmpId(d.employee_id); setDedAmount(d.amount); setDedDays(0); }}
+                          className="text-blue-600 hover:underline text-xs">{t("edit")}</button>)}
+                        {!readOnly && (<button onClick={() => handleDeleteDeduction(d.id)}
+                          className="text-red-600 hover:underline text-xs">{t("delete")}</button>)}
                       </td>
                     )}
                   </tr>
@@ -2248,10 +2249,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       {/* Leave / Absence Tab */}
       {tab === "leaves" && (
         <div>
-          <button onClick={() => { setShowLeaveForm(!showLeaveForm); setEditingLeave(null); }}
+          {!readOnly && (<button onClick={() => { setShowLeaveForm(!showLeaveForm); setEditingLeave(null); }}
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm mb-4">
             {showLeaveForm ? t("cancel") : (isManager ? t("add_leave") : t("request_leave"))}
-          </button>
+          </button>)}
 
           {showLeaveForm && (
             <form className="bg-white rounded-xl shadow p-4 mb-4 grid grid-cols-2 md:grid-cols-3 gap-3"
@@ -2360,13 +2361,13 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       </td>
                       {isManager && (
                         <td className="px-4 py-3 space-x-2">
-                          <button onClick={() => { setEditingLeave(lr); setShowLeaveForm(true); }}
-                            className="text-blue-600 hover:underline text-xs">{t("edit")}</button>
-                          <button onClick={async () => {
+                          {!readOnly && (<button onClick={() => { setEditingLeave(lr); setShowLeaveForm(true); }}
+                            className="text-blue-600 hover:underline text-xs">{t("edit")}</button>)}
+                          {!readOnly && (<button onClick={async () => {
                             if (!confirm(t("confirm_delete"))) return;
                             await apiFetch(`/api/hr/leaves/${lr.id}`, { method: "DELETE" });
                             apiGet("/api/hr/leaves").then(setLeaveRecords);
-                          }} className="text-red-600 hover:underline text-xs">{t("delete")}</button>
+                          }} className="text-red-600 hover:underline text-xs">{t("delete")}</button>)}
                         </td>
                       )}
                     </tr>

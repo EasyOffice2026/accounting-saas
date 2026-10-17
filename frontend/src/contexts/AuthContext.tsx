@@ -10,6 +10,7 @@ interface UserInfo {
   allowed_tabs: string[] | null;
   allowed_brands: number[] | null;
   sales_unlock_until?: string | null;
+  read_only?: boolean;
 }
 
 interface AuthCtx {

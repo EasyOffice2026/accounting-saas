@@ -63,6 +63,7 @@ export default function SalesPage() {
   };
 
   const isStaff = user?.role === "staff";
+  const readOnly = !!user?.read_only;
   const isOwnerManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
   // Branch logins can change a day's sales until 12:00 noon Kuwait time (09:00 UTC) the next day.
   const isDayLocked = (d: string) => {
@@ -221,10 +222,10 @@ export default function SalesPage() {
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
             {t("export_pdf")}
           </button>
-          <button onClick={() => { if (showForm) { resetForm(); } else { setEditingSaleId(null); setFormData({}); setShowForm(true); } }}
+          {!readOnly && (<button onClick={() => { if (showForm) { resetForm(); } else { setEditingSaleId(null); setFormData({}); setShowForm(true); } }}
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
             {showForm ? t("cancel") : t("add_new")}
-          </button>
+          </button>)}
         </div>
       </div>
 
@@ -542,7 +543,7 @@ export default function SalesPage() {
                     {diff.toFixed(3)}
                   </td>
                   <td className="px-2 py-2 text-center whitespace-nowrap">
-                    {isDayLocked(s.date) ? (
+                    {readOnly ? null : isDayLocked(s.date) ? (
                       <span className="px-2 py-1 text-[10px] text-gray-400" title={t("sales_day_locked")}>🔒</span>
                     ) : (<>
                     <button onClick={() => startEdit(s)}

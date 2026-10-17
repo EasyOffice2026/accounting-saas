@@ -25,6 +25,10 @@ def _parse_brands(raw: Optional[str]) -> Optional[list[int]]:
     return ids or None
 
 
+def _truthy(raw: str) -> bool:
+    return raw.lower() in ("true", "1", "yes")
+
+
 @router.get("/")
 def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if user.role not in ("owner", "manager", "accountant"):
@@ -40,6 +44,7 @@ def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_u
             "is_active": u.is_active,
             "allowed_tabs": u.get_allowed_tabs(),
             "allowed_brands": u.get_allowed_brands(),
+            "read_only": bool(u.read_only),
         }
         for u in users
     ]
@@ -53,6 +58,7 @@ def create_user(
     role: str = Form("staff"),
     branch_id: Optional[int] = Form(None),
     allowed_brands: Optional[str] = Form(None),
+    read_only: str = Form("false"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -68,6 +74,7 @@ def create_user(
         role=role,
         branch_id=branch_id if role == "staff" else None,
         is_active=True,
+        read_only=_truthy(read_only),
     )
     new_user.set_allowed_brands(_parse_brands(allowed_brands))
     db.add(new_user)
@@ -86,6 +93,7 @@ def update_user(
     branch_id: Optional[str] = Form(None),
     allowed_brands: Optional[str] = Form(None),
     is_active: str = Form(None),
+    read_only: str = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -110,7 +118,9 @@ def update_user(
     if branch_id is not None:
         target.branch_id = int(branch_id) if branch_id and branch_id != "null" else None
     if is_active is not None:
-        target.is_active = is_active.lower() in ("true", "1", "yes")
+        target.is_active = _truthy(is_active)
+    if read_only is not None:
+        target.read_only = _truthy(read_only)
     if allowed_brands is not None:
         target.set_allowed_brands(_parse_brands(allowed_brands))
     db.commit()

@@ -17,6 +17,7 @@ class User(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     allowed_tabs = Column(Text, nullable=True)  # JSON array of allowed tab keys, null = all
     allowed_brands = Column(Text, nullable=True)  # JSON array of brand ids, null = all/derive from branch
+    read_only = Column(Boolean, default=False, nullable=False, server_default="0")
 
     def get_allowed_tabs(self) -> list[str] | None:
         if self.allowed_tabs is None:

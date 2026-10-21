@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiDownload } from "../contexts/api";
+import { useBrand } from "../contexts/BrandContext";
 
 type Brand = { id: number; name_en: string; name_ar: string | null; journals: number };
 type Branch = { id: number; name: string; name_ar: string | null; brand_id: number | null };
@@ -64,8 +65,10 @@ export default function AccountingPage() {
 
   const [tab, setTab] = useState<Tab>("overview");
   const [ov, setOv] = useState<Overview | null>(null);
-  const [brandId, setBrandId] = useState<number>(1);
-  const [branchId, setBranchId] = useState<string>("");
+  const { selectedBrand, isGroupView } = useBrand();
+  const [groupBrandId, setBrandId] = useState<number>(1);
+  const brandId = !isGroupView && selectedBrand ? selectedBrand.id : groupBrandId;
+  const [branchSel, setBranchId] = useState<string>("");
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -78,6 +81,7 @@ export default function AccountingPage() {
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
 
   const branches = useMemo(() => (ov?.branches || []).filter(b => b.brand_id === brandId), [ov, brandId]);
+  const branchId = branches.some(b => String(b.id) === branchSel) ? branchSel : "";
   const branchName = (id: number | null) => { const b = ov?.branches.find(x => x.id === id); return b ? nm(b) : ""; };
   const postable = accounts.filter(a => !a.is_header && a.is_active);
 
@@ -99,9 +103,13 @@ export default function AccountingPage() {
         <h1 className="text-2xl font-bold">{ar ? "المحاسبة" : "Accounting"}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm">{t("company")}</label>
-          <select className="border rounded px-2 py-1" value={brandId} onChange={e => { setBrandId(Number(e.target.value)); setBranchId(""); }}>
-            {(ov?.brands || []).map(b => <option key={b.id} value={b.id}>{ar ? (b.name_ar || b.name_en) : b.name_en}</option>)}
-          </select>
+          {isGroupView || !selectedBrand ? (
+            <select className="border rounded px-2 py-1" value={brandId} onChange={e => setBrandId(Number(e.target.value))}>
+              {(ov?.brands || []).map(b => <option key={b.id} value={b.id}>{ar ? (b.name_ar || b.name_en) : b.name_en}</option>)}
+            </select>
+          ) : (
+            <span className="font-semibold">{ar ? (selectedBrand.name_ar || selectedBrand.name_en) : selectedBrand.name_en}</span>
+          )}
           <button className="px-3 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={busy || !ov?.start_date} onClick={sync}>{busy ? "..." : t("sync")}</button>
         </div>
       </div>
@@ -127,7 +135,7 @@ export default function AccountingPage() {
         </div>
       )}
 
-      {tab === "overview" && ov && <OverviewTab ov={ov} t={t} reload={loadOverview} setErr={setErr} />}
+      {tab === "overview" && ov && <OverviewTab ov={!isGroupView && selectedBrand ? { ...ov, brands: ov.brands.filter(b => b.id === brandId) } : ov} t={t} reload={loadOverview} setErr={setErr} />}
       {tab === "journals" && <JournalsTab brandId={brandId} from={from} to={to} t={t} nm={nm} postable={postable} branches={branches} branchName={branchName} reloadAccounts={loadAccounts} />}
       {tab === "trial" && <TrialTab q={qs({ date_from: from, date_to: to, branch_id: branchId })} t={t} nm={nm} />}
       {tab === "ledger" && <LedgerTab key={brandId} brandId={brandId} from={from} to={to} branchId={branchId} lang={ar ? "ar" : "en"} postable={accounts.filter(a => !a.is_header)} t={t} nm={nm} branchName={branchName} />}

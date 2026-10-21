@@ -50,6 +50,7 @@ def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_u
             "allowed_brands": u.get_allowed_brands(),
             "read_only": bool(u.read_only),
             "editable_tabs": u.get_editable_tabs(),
+            "current_month_only": bool(u.current_month_only),
         }
         for u in users
     ]
@@ -65,6 +66,7 @@ def create_user(
     allowed_brands: Optional[str] = Form(None),
     read_only: str = Form("false"),
     editable_tabs: Optional[str] = Form(None),
+    current_month_only: str = Form("false"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -81,6 +83,7 @@ def create_user(
         branch_id=branch_id if role == "staff" else None,
         is_active=True,
         read_only=_truthy(read_only),
+        current_month_only=_truthy(current_month_only),
     )
     new_user.set_editable_tabs(_parse_tabs(editable_tabs))
     new_user.set_allowed_brands(_parse_brands(allowed_brands))
@@ -102,6 +105,7 @@ def update_user(
     is_active: str = Form(None),
     read_only: str = Form(None),
     editable_tabs: Optional[str] = Form(None),
+    current_month_only: str = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -129,6 +133,8 @@ def update_user(
         target.is_active = _truthy(is_active)
     if read_only is not None:
         target.read_only = _truthy(read_only)
+    if current_month_only is not None:
+        target.current_month_only = _truthy(current_month_only)
     if editable_tabs is not None:
         target.set_editable_tabs(_parse_tabs(editable_tabs))
     if allowed_brands is not None:

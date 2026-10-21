@@ -123,9 +123,10 @@ export default function RenewalsPage() {
   const { user } = useAuth();
   const { selectedBrand, brands } = useBrand();
   const ar = i18n.language === "ar";
-  const isApprover = ["owner", "manager", "personnel_manager"].includes(user?.role || "");
-  const canPay = isApprover || user?.role === "accountant";
-  const canComplete = user?.role === "personnel" || canPay;
+  const ro = !!user?.read_only;
+  const isApprover = !ro && ["owner", "manager", "personnel_manager"].includes(user?.role || "");
+  const canPay = !ro && (isApprover || user?.role === "accountant");
+  const canComplete = !ro && (user?.role === "personnel" || canPay);
 
   const [brandId, setBrandId] = useState<number | null>(selectedBrand?.id ?? (brands[0]?.id ?? null));
   useEffect(() => { if (selectedBrand) setBrandId(selectedBrand.id); }, [selectedBrand]);
@@ -405,7 +406,7 @@ export default function RenewalsPage() {
                   {approvals && <button onClick={() => promptAction(r.id, "reject", true)} className={`${btn} bg-red-600 text-white`}>{t("rn_reject")}</button>}
                   {!approvals && r.status === "approved" && canComplete && <button onClick={() => openPay(r, "complete")} className={`${btn} bg-purple-600 text-white`}>{t("rn_complete")}</button>}
                   {!approvals && r.status === "completed" && canPay && <button onClick={() => openPay(r, "pay")} className={`${btn} bg-blue-600 text-white`}>{t("rn_pay")}</button>}
-                  {!approvals && ["draft", "returned"].includes(r.status) && <button onClick={() => openEdit(r)} className={`${btn} bg-gray-100`}><Pencil size={14} /></button>}
+                  {!ro && !approvals && ["draft", "returned"].includes(r.status) && <button onClick={() => openEdit(r)} className={`${btn} bg-gray-100`}><Pencil size={14} /></button>}
                   <button onClick={() => printForm(r.id, r.request_no)} className={`${btn} bg-gray-100`} title={t("rn_print_form")}><Printer size={14} /></button>
                 </div>
               </td>
@@ -430,7 +431,7 @@ export default function RenewalsPage() {
             <span className="text-gray-600">{t("rn_petty_cash")}:</span> <b>KD {kd(summary.petty_cash_balance)}</b>
             <span className="text-xs text-gray-500 ms-2">{summary.petty_cash_branch_name}</span>
           </div>}
-          <button onClick={() => openNew()} className={`${btn} bg-emerald-600 text-white inline-flex items-center gap-1`}><Plus size={16} />{t("rn_new_request")}</button>
+          {!ro && <button onClick={() => openNew()} className={`${btn} bg-emerald-600 text-white inline-flex items-center gap-1`}><Plus size={16} />{t("rn_new_request")}</button>}
         </div>
       </div>
       {msg && <div className="bg-green-50 text-green-800 px-3 py-2 rounded text-sm">{msg}</div>}
@@ -517,7 +518,7 @@ export default function RenewalsPage() {
           <div className="flex justify-end gap-2">
             <button onClick={() => exp("documents", "excel", "&kind=staff")} className={`${btn} bg-green-700 text-white inline-flex gap-1 items-center`}><FileSpreadsheet size={14} />Excel</button>
             <button onClick={() => exp("documents", "pdf", "&kind=staff")} className={`${btn} bg-red-700 text-white inline-flex gap-1 items-center`}><FileText size={14} />PDF</button>
-            <button onClick={() => { setDocForm({ status: "active" }); setDocFiles([null, null, null]); }} className={`${btn} bg-emerald-600 text-white inline-flex gap-1 items-center`}><Plus size={14} />{t("rn_add_document")}</button>
+            {!ro && <button onClick={() => { setDocForm({ status: "active" }); setDocFiles([null, null, null]); }} className={`${btn} bg-emerald-600 text-white inline-flex gap-1 items-center`}><Plus size={14} />{t("rn_add_document")}</button>}
           </div>
           <div className="overflow-x-auto bg-white rounded shadow">
             <table className="min-w-full text-sm">
@@ -538,7 +539,7 @@ export default function RenewalsPage() {
                     <td className="px-3 py-2"><DaysBadge d={d.days_remaining} /></td>
                     <td className="px-3 py-2"><Files f1={d.file1} f2={d.file2} f3={d.file3} /></td>
                     <td className="px-3 py-2"><div className="flex gap-1">
-                      <button onClick={() => { setDocForm(d); setDocFiles([null, null, null]); }} className={`${btn} bg-gray-100`}><Pencil size={14} /></button>
+                      {!ro && <button onClick={() => { setDocForm(d); setDocFiles([null, null, null]); }} className={`${btn} bg-gray-100`}><Pencil size={14} /></button>}
                       {isApprover && <button onClick={() => del(`/api/renewals/documents/${d.id}`)} className={`${btn} bg-red-50 text-red-700`}><Trash2 size={14} /></button>}
                     </div></td>
                   </tr>
@@ -554,7 +555,7 @@ export default function RenewalsPage() {
           <div className="flex justify-end gap-2">
             <button onClick={() => exp("documents", "excel", "&kind=company")} className={`${btn} bg-green-700 text-white inline-flex gap-1 items-center`}><FileSpreadsheet size={14} />Excel</button>
             <button onClick={() => exp("documents", "pdf", "&kind=company")} className={`${btn} bg-red-700 text-white inline-flex gap-1 items-center`}><FileText size={14} />PDF</button>
-            <button onClick={() => { setLicForm({ status: "active" }); setLicFiles([null, null, null]); }} className={`${btn} bg-emerald-600 text-white inline-flex gap-1 items-center`}><Plus size={14} />{t("rn_add_license")}</button>
+            {!ro && <button onClick={() => { setLicForm({ status: "active" }); setLicFiles([null, null, null]); }} className={`${btn} bg-emerald-600 text-white inline-flex gap-1 items-center`}><Plus size={14} />{t("rn_add_license")}</button>}
           </div>
           <div className="overflow-x-auto bg-white rounded shadow">
             <table className="min-w-full text-sm">
@@ -577,7 +578,7 @@ export default function RenewalsPage() {
                     <td className="px-3 py-2">{l.status}</td>
                     <td className="px-3 py-2"><Files f1={l.file1} f2={l.file2} f3={l.file3} /></td>
                     <td className="px-3 py-2"><div className="flex gap-1">
-                      <button onClick={() => { setLicForm(l); setLicFiles([null, null, null]); }} className={`${btn} bg-gray-100`}><Pencil size={14} /></button>
+                      {!ro && <button onClick={() => { setLicForm(l); setLicFiles([null, null, null]); }} className={`${btn} bg-gray-100`}><Pencil size={14} /></button>}
                       {isApprover && <button onClick={() => del(`/api/renewals/licenses/${l.id}`)} className={`${btn} bg-red-50 text-red-700`}><Trash2 size={14} /></button>}
                     </div></td>
                   </tr>
@@ -595,7 +596,7 @@ export default function RenewalsPage() {
             <div className="flex-1" />
             <button onClick={() => exp("types", "excel")} className={`${btn} bg-green-700 text-white inline-flex gap-1 items-center`}><FileSpreadsheet size={14} />Excel</button>
             <button onClick={() => exp("types", "pdf")} className={`${btn} bg-red-700 text-white inline-flex gap-1 items-center`}><FileText size={14} />PDF</button>
-            <button onClick={() => setTypeForm({ group: "staff", default_fee: 0, validity_months: 12, reminder_days: 60, is_active: true })} className={`${btn} bg-emerald-600 text-white inline-flex gap-1 items-center`}><Plus size={14} />{t("rn_add_type")}</button>
+            {!ro && <button onClick={() => setTypeForm({ group: "staff", default_fee: 0, validity_months: 12, reminder_days: 60, is_active: true })} className={`${btn} bg-emerald-600 text-white inline-flex gap-1 items-center`}><Plus size={14} />{t("rn_add_type")}</button>}
           </div>
           {(["staff", "company"] as const).map(g => (
             <div key={g} className="bg-white rounded shadow overflow-x-auto">
@@ -612,7 +613,7 @@ export default function RenewalsPage() {
                       <td className="px-3 py-2">{x.validity_months}</td><td className="px-3 py-2">{x.reminder_days}</td>
                       <td className="px-3 py-2">{x.is_active ? "✓" : "—"}</td>
                       <td className="px-3 py-2"><div className="flex gap-1">
-                        <button onClick={() => setTypeForm(x)} className={`${btn} bg-gray-100`}><Pencil size={14} /></button>
+                        {!ro && <button onClick={() => setTypeForm(x)} className={`${btn} bg-gray-100`}><Pencil size={14} /></button>}
                         {isApprover && <button onClick={() => del(`/api/renewals/types/${x.id}`)} className={`${btn} bg-red-50 text-red-700`}><Trash2 size={14} /></button>}
                       </div></td>
                     </tr>
@@ -868,9 +869,9 @@ export default function RenewalsPage() {
               <ul className="text-xs text-gray-700 space-y-0.5">{(detail.logs || []).map((l, i) => <li key={i}>{l.at} — <b>{l.label}</b> — {l.user_name}{l.comment && ` — ${l.comment}`}</li>)}</ul>
             </div>
             <div className="flex flex-wrap justify-end gap-2">
-              {detail.status === "draft" && <button onClick={() => action(detail.id, "submit")} className={`${btn} bg-emerald-600 text-white`}>{t("rn_submit")}</button>}
-              {["draft", "returned"].includes(detail.status) && <button onClick={() => { setDetail(null); openEdit(detail); }} className={`${btn} bg-gray-100`}>{t("edit")}</button>}
-              {["draft", "returned", "pending"].includes(detail.status) && <button onClick={() => promptAction(detail.id, "cancel", false)} className={`${btn} bg-gray-200`}>{t("rn_cancel_req")}</button>}
+              {!ro && detail.status === "draft" && <button onClick={() => action(detail.id, "submit")} className={`${btn} bg-emerald-600 text-white`}>{t("rn_submit")}</button>}
+              {!ro && ["draft", "returned"].includes(detail.status) && <button onClick={() => { setDetail(null); openEdit(detail); }} className={`${btn} bg-gray-100`}>{t("edit")}</button>}
+              {!ro && ["draft", "returned", "pending"].includes(detail.status) && <button onClick={() => promptAction(detail.id, "cancel", false)} className={`${btn} bg-gray-200`}>{t("rn_cancel_req")}</button>}
               {detail.status === "pending" && isApprover && <>
                 <button onClick={() => { setApv({ amount: String(detail.total), comment: "" }); setApproveReq(detail); }} className={`${btn} bg-green-600 text-white`}>{t("rn_approve")}</button>
                 <button onClick={() => promptAction(detail.id, "return", true)} className={`${btn} bg-orange-500 text-white`}>{t("rn_return")}</button>
@@ -878,7 +879,7 @@ export default function RenewalsPage() {
               </>}
               {detail.status === "approved" && canComplete && <button onClick={() => openPay(detail, "complete")} className={`${btn} bg-purple-600 text-white`}>{t("rn_complete")}</button>}
               {detail.status === "completed" && canPay && <button onClick={() => openPay(detail, "pay")} className={`${btn} bg-blue-600 text-white`}>{t("rn_pay")}</button>}
-              {detail.status === "paid" && <button onClick={() => action(detail.id, "close")} className={`${btn} bg-green-700 text-white`}>{t("rn_close")}</button>}
+              {!ro && detail.status === "paid" && <button onClick={() => action(detail.id, "close")} className={`${btn} bg-green-700 text-white`}>{t("rn_close")}</button>}
             </div>
           </div>
         </div>

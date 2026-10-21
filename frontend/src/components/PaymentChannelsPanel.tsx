@@ -25,7 +25,7 @@ const emptyForm = {
 export default function PaymentChannelsPanel() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
-  const canManage = MANAGE_ROLES.includes(user?.role || "");
+  const canManage = !user?.read_only && MANAGE_ROLES.includes(user?.role || "");
   const { channels, reload } = useChannels(false);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [selected, setSelected] = useState<number | null>(null);

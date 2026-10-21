@@ -80,6 +80,7 @@ interface UserItem {
   allowed_brands: number[] | null;
   read_only: boolean;
   editable_tabs: string[];
+  current_month_only: boolean;
 }
 
 interface BranchItem {
@@ -173,6 +174,7 @@ export default function SettingsPage() {
   const [uBranchId, setUBranchId] = useState<string>("");
   const [uAllowedBrands, setUAllowedBrands] = useState<number[]>([]);
   const [uReadOnly, setUReadOnly] = useState(false);
+  const [uMonthOnly, setUMonthOnly] = useState(false);
   const [uEditableTabs, setUEditableTabs] = useState<string[]>([]);
   const [uMsg, setUMsg] = useState("");
   const [uMsgType, setUMsgType] = useState<"success" | "error">("success");
@@ -314,6 +316,7 @@ export default function SettingsPage() {
     setUBranchId("");
     setUAllowedBrands([]);
     setUReadOnly(false);
+    setUMonthOnly(false);
     setUEditableTabs([]);
     setEditingUser(null);
     setShowUserForm(false);
@@ -327,6 +330,7 @@ export default function SettingsPage() {
     setUBranchId(u.branch_id ? String(u.branch_id) : "");
     setUAllowedBrands(u.allowed_brands || []);
     setUReadOnly(!!u.read_only);
+    setUMonthOnly(!!u.current_month_only);
     setUEditableTabs(u.editable_tabs || []);
     setUPassword("");
     setShowUserForm(true);
@@ -343,6 +347,7 @@ export default function SettingsPage() {
     fd.append("allowed_brands", uAllowedBrands.join(","));
     fd.append("read_only", uReadOnly ? "true" : "false");
     fd.append("editable_tabs", uReadOnly ? uEditableTabs.join(",") : "");
+    fd.append("current_month_only", uMonthOnly ? "true" : "false");
 
     try {
       if (editingUser) {
@@ -752,6 +757,13 @@ export default function SettingsPage() {
                 </div>
               )}
             </div>
+            <div>
+              <label className="inline-flex items-center gap-2 text-sm font-medium cursor-pointer">
+                <input type="checkbox" checked={uMonthOnly} onChange={e => setUMonthOnly(e.target.checked)} />
+                {t("current_month_only_login")}
+              </label>
+              <p className="text-xs text-gray-500 mt-1">{t("current_month_only_hint")}</p>
+            </div>
             <div className="flex gap-2">
               <button type="submit"
                 className="px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
@@ -790,6 +802,7 @@ export default function SettingsPage() {
                       "bg-gray-100 text-gray-700"
                     }`}>{t(u.role)}</span>
                     {u.read_only && <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-gray-200 text-gray-700">{t("view_only_login")}</span>}
+                    {u.current_month_only && <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800">{t("current_month_only_login")}</span>}
                   </td>
                   <td className="px-3 py-2">{getBranchName(u.branch_id)}</td>
                   <td className="px-3 py-2">
@@ -847,6 +860,7 @@ export default function SettingsPage() {
                         "bg-gray-100 text-gray-700"
                       }`}>{t(u.role)}</span>
                     {u.read_only && <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-gray-200 text-gray-700">{t("view_only_login")}</span>}
+                    {u.current_month_only && <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800">{t("current_month_only_login")}</span>}
                     </td>
                     <td className="px-3 py-2">
                       {u.allowed_tabs ? (

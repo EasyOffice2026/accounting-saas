@@ -72,7 +72,7 @@ export default function ContractsPage() {
   const [ledgerContractId, setLedgerContractId] = useState<number | null>(null);
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-  const isManager = currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant";
+  const isManager = !currentUser.read_only && (currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant");
   const brandParam = (() => {
     const b = localStorage.getItem("selectedBrandId");
     return b && b !== "group" ? `?brand_id=${b}` : "";
@@ -161,7 +161,7 @@ export default function ContractsPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h4 className="font-semibold text-sm">{t("payment_schedule")} — {c.name}</h4>
         <div className="flex gap-2 flex-wrap">
-          {payments.length === 0 && c.monthly_payment > 0 && (
+          {isManager && payments.length === 0 && c.monthly_payment > 0 && (
             <button onClick={async () => {
               await apiPost(`/api/hr/contracts/${c.id}/generate-payments`, new FormData());
               loadPayments(c.id);
@@ -169,10 +169,10 @@ export default function ContractsPage() {
               {t("generate_schedule")}
             </button>
           )}
-          <button onClick={() => setShowPaymentForm(!showPaymentForm)}
+          {isManager && <button onClick={() => setShowPaymentForm(!showPaymentForm)}
             className="px-3 py-1 bg-emerald-500 text-white rounded text-xs hover:bg-emerald-600">
             {showPaymentForm ? t("cancel") : t("add_payment")}
-          </button>
+          </button>}
           {payments.length > 0 && (
             <>
               <button onClick={() => apiDownload(`/api/export/contract-payments/excel?contract_id=${c.id}`, `ledger_${c.name}.xlsx`)}
@@ -276,6 +276,7 @@ export default function ContractsPage() {
               <td className="px-3 py-2">{p.payment_method ? t(p.payment_method) : "—"}{p.channel_id ? <div className="text-[10px] text-gray-500">{channelLabel(channels.find(ch => ch.id === p.channel_id), i18n.language)}</div> : null}</td>
               <td className="px-3 py-2">{p.reference || "—"}</td>
               <td className="px-3 py-2 text-center space-x-1">
+                {isManager && <>
                 <button onClick={() => setPayingPayment(p)}
                   className={`${p.status === "paid" ? "text-blue-600" : "text-green-600"} hover:underline`}>
                   {p.status === "paid" ? t("edit") : t("mark_paid")}
@@ -285,6 +286,7 @@ export default function ContractsPage() {
                   await apiFetch(`/api/hr/contract-payments/${p.id}`, { method: "DELETE" });
                   loadPayments(c.id);
                 }} className="text-red-600 hover:underline">{t("delete")}</button>
+                </>}
               </td>
             </tr>
           ))}

@@ -13,6 +13,7 @@ from app.routes import auth, branches, sales, purchases, expenses, hr, dashboard
 from app.routes import cash, items, export, email, payment, transfers, whatsapp, users
 from app.routes import foodics, renewals, procurement, channels, proceeds, accounting
 from app.utils.auth import PurchaseScopeMiddleware
+import app.utils.month_scope  # noqa: F401 — registers the current-month query filter
 
 app = FastAPI(title="Mudawwarah Restaurant Management System")
 
@@ -425,6 +426,9 @@ def _migrate_columns():
                 conn.commit()
             if "editable_tabs" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN editable_tabs TEXT"))
+                conn.commit()
+            if "current_month_only" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN current_month_only BOOLEAN NOT NULL DEFAULT 0"))
                 conn.commit()
 
         # Suppliers: add category_id

@@ -6,6 +6,8 @@ export default {
   change_brand: "Change brand",
   brand_access: "Brand Access",
   view_only_login: "View only",
+  current_month_only_login: "Current month only",
+  current_month_only_hint: "This login only sees records dated in the current month. Earlier months are hidden.",
   view_only_except: "Can still add, edit, delete and approve in:",
   view_only_login_hint: "This login can open its allowed tabs but cannot add, edit, delete, approve or pay anything.",
   brand_access_hint: "Select which brands this user can access. Leave empty to use the default (all brands for owner/manager/accountant, or the user's own branch brand for staff).",

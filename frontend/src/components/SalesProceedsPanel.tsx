@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiFetch, apiPost, apiPut, apiDownload } from "../contexts/api";
+import { useAuth } from "../contexts/AuthContext";
 import { channelLabel, useChannels, CHANNEL_START_DATE } from "./ChannelSelect";
 
 interface Brand { id: number; name_en: string; name_ar: string; }
@@ -33,6 +34,8 @@ const fmt = (n: number) => n.toFixed(3);
 
 export default function SalesProceedsPanel() {
   const { t, i18n } = useTranslation();
+  const { user } = useAuth();
+  const ro = !!user?.read_only;
   const ar = i18n.language === "ar";
   const savedBrand = localStorage.getItem("selectedBrandId");
   const fixedBrand = savedBrand && savedBrand !== "group" ? savedBrand : "";
@@ -156,9 +159,9 @@ export default function SalesProceedsPanel() {
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => openReceipt(method || "knet")} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
+          {!ro && <button onClick={() => openReceipt(method || "knet")} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
             + {t("proceeds_record_receipt")}
-          </button>
+          </button>}
           <button onClick={() => download("/api/proceeds/summary", "sales_proceeds", "excel")} className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">{t("export_excel")}</button>
           <button onClick={() => download("/api/proceeds/summary", "sales_proceeds", "pdf")} className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">{t("export_pdf")}</button>
         </div>
@@ -269,7 +272,7 @@ export default function SalesProceedsPanel() {
                   <td className="px-4 py-2 text-end text-amber-700">{fmt(r.fees)}</td>
                   <td className={`px-4 py-2 text-end font-bold ${r.outstanding < 0 ? "text-red-600" : "text-blue-700"}`}>{fmt(r.outstanding)}</td>
                   <td className="px-2 py-2" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => openReceipt(r.method)} className="text-emerald-700 text-xs hover:underline whitespace-nowrap">{t("proceeds_receive")}</button>
+                    {!ro && <button onClick={() => openReceipt(r.method)} className="text-emerald-700 text-xs hover:underline whitespace-nowrap">{t("proceeds_receive")}</button>}
                   </td>
                 </tr>
               ))}
@@ -347,7 +350,7 @@ export default function SalesProceedsPanel() {
                     <td className="px-4 py-2 text-end text-green-700">{en.received ? fmt(en.received) : "-"}</td>
                     <td className="px-4 py-2 text-end text-amber-700">{en.fees ? fmt(en.fees) : "-"}</td>
                     <td className="px-4 py-2 text-end font-bold">{fmt(en.balance)}</td>
-                    <td className="px-2 py-2">{en.receipt_id ? <button onClick={() => deleteReceipt(en)} className="text-red-500 text-xs hover:underline">{t("delete")}</button> : null}</td>
+                    <td className="px-2 py-2">{en.receipt_id && !ro ? <button onClick={() => deleteReceipt(en)} className="text-red-500 text-xs hover:underline">{t("delete")}</button> : null}</td>
                   </tr>
                 ))}
               </tbody>

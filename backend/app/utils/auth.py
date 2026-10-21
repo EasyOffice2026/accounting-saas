@@ -8,6 +8,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
+from app.utils.month_scope import limit_to_current_month
 
 SECRET_KEY = "mudawwarah-secret-key-change-in-production"
 ALGORITHM = "HS256"
@@ -36,6 +37,14 @@ def create_access_token(data: dict) -> str:
 READ_ONLY_ALLOWED_PREFIXES = ("/api/auth/", "/api/sales", "/api/purchases", "/api/expenses", "/api/transfers", "/api/hr",
                               "/api/branches", "/api/items", "/api/export/")
 READ_METHODS = ("GET", "HEAD", "OPTIONS")
+# Extra API prefixes a view-only login may read, by allowed tab (null allowed_tabs = every tab below).
+READ_TAB_PREFIXES = {
+    "dashboard": ("/api/dashboard",),
+    "cash": ("/api/cash", "/api/payment-channels", "/api/proceeds"),
+    "renewals": ("/api/renewals",),
+    "contracts": ("/api/hr",),
+    "procurement": ("/api/procurement",),
+}
 EDITABLE_TAB_PREFIXES = {
     "sales": "/api/sales",
     "purchases": "/api/purchases",
@@ -53,7 +62,9 @@ def _enforce_read_only(request: Request, user: User):
         editable = tuple(EDITABLE_TAB_PREFIXES[t] for t in user.get_editable_tabs() if t in EDITABLE_TAB_PREFIXES)
         if not (editable and path.startswith(editable)):
             raise HTTPException(status_code=403, detail="This login is view only")
-    if not path.startswith(READ_ONLY_ALLOWED_PREFIXES):
+    tabs = user.get_allowed_tabs()
+    extra = tuple(p for t, ps in READ_TAB_PREFIXES.items() if tabs is None or t in tabs for p in ps)
+    if not path.startswith(READ_ONLY_ALLOWED_PREFIXES + extra):
         raise HTTPException(status_code=403, detail="Not available for this login")
 
 
@@ -75,6 +86,8 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="User not found")
     if user.read_only:
         _enforce_read_only(request, user)
+    if user.current_month_only:
+        limit_to_current_month(db)
     return user
 
 

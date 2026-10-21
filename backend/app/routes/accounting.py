@@ -119,7 +119,7 @@ def reset_ledger(confirm: str = Form(...), keep_manual: bool = Form(False),
         raise HTTPException(400, "Type CLEAR to confirm")
     q = db.query(AccJournal)
     if keep_manual:
-        q = q.filter(AccJournal.source_key.isnot(None))
+        q = q.filter(AccJournal.source.notin_(("manual", "opening_manual")))
     ids = [j.id for j in q.all()]
     if ids:
         db.query(AccJournal).filter(AccJournal.id.in_(ids)).update({AccJournal.reversal_of: None, AccJournal.reversed_by: None},

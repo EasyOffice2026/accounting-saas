@@ -1040,4 +1040,5 @@ export default {
   cash_not_from_bank: "Not from a bank (cash by hand)",
   cash_not_to_bank: "Not to a bank (cash by hand)",
   channel_src_cash_box: "Cash Box",
+  accounting: "Accounting",
 };

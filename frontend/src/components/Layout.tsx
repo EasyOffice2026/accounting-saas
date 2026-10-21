@@ -5,14 +5,14 @@ import { useBrand } from "../contexts/BrandContext";
 import {
   LayoutDashboard, ShoppingCart, Package, Receipt,
   Users, LogOut, Menu, X, Banknote, Settings, ArrowLeftRight, FileText,
-  Building2, ChevronDown, Globe, IdCard, ClipboardList,
+  Building2, ChevronDown, Globe, IdCard, ClipboardList, BookOpen,
 } from "lucide-react";
 import { useState } from "react";
 
 const PERSONNEL_NAV = ["dashboard", "renewals", "hr", "cash_management", "expenses"];
 const PURCHASE_NAV = ["dashboard", "procurement", "cash_management"];
 
-const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles?: string[] }[] = [
+const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles?: string[]; accounting?: boolean }[] = [
   { path: "/", icon: LayoutDashboard, key: "dashboard" },
   { path: "/sales", icon: ShoppingCart, key: "sales" },
   { path: "/purchases", icon: Package, key: "purchases" },
@@ -24,6 +24,7 @@ const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles
   { path: "/cash", icon: Banknote, key: "cash_management" },
   { path: "/transfers", icon: ArrowLeftRight, key: "internal_transfer" },
   { path: "/contracts", icon: FileText, key: "contracts_tab", roles: ["owner", "manager", "accountant"] },
+  { path: "/accounting", icon: BookOpen, key: "accounting", accounting: true },
   { path: "/settings", icon: Settings, key: "settings", roles: ["owner", "manager", "accountant"] },
 ];
 
@@ -99,6 +100,7 @@ export default function Layout() {
 
         <nav className="mt-1 flex-1 overflow-y-auto min-h-0">
           {navItems
+            .filter(item => !item.accounting || !!user?.accounting)
             .filter(item => !item.roles || item.roles.includes(user?.role || ""))
             .filter(item => !["personnel", "personnel_manager"].includes(user?.role || "") || PERSONNEL_NAV.includes(item.key))
             .filter(item => !["purchase_officer", "purchase_manager"].includes(user?.role || "") || PURCHASE_NAV.includes(item.key))

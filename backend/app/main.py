@@ -8,9 +8,10 @@ import os
 from app.database import Base, engine, UPLOAD_DIR, SessionLocal
 from app.models import *  # noqa: F401,F403 — register all models
 from app.utils.auth import hash_password
+from app.utils.ledger_autosync import start_ledger_autosync
 from app.routes import auth, branches, sales, purchases, expenses, hr, dashboard
 from app.routes import cash, items, export, email, payment, transfers, whatsapp, users
-from app.routes import foodics, renewals, procurement, channels, proceeds
+from app.routes import foodics, renewals, procurement, channels, proceeds, accounting
 from app.utils.auth import PurchaseScopeMiddleware
 
 app = FastAPI(title="Mudawwarah Restaurant Management System")
@@ -52,6 +53,7 @@ app.include_router(renewals.router)
 app.include_router(procurement.router)
 app.include_router(channels.router)
 app.include_router(proceeds.router)
+app.include_router(accounting.router)
 
 
 @app.get("/healthz")
@@ -84,6 +86,7 @@ if os.path.isdir(FRONTEND_DIST):
 def startup():
     Base.metadata.create_all(bind=engine)
     _migrate_columns()
+    start_ledger_autosync()
     _seed_data()
     _sync_contract_expenses()
     _seed_renewals()

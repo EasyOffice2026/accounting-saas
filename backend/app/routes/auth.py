@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.branch import Branch
 from app.models.hr import Brand
+from app.utils.ledger_access import can_use_accounting
 from app.utils.auth import verify_password, create_access_token, get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -46,6 +47,7 @@ def _user_payload(db: Session, user: User) -> dict:
         "sales_unlock_until": unlock,
         "read_only": bool(user.read_only),
         "editable_tabs": user.get_editable_tabs(),
+        "accounting": can_use_accounting(db, user),
     }
 
 

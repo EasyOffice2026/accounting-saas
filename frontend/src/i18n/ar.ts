@@ -1040,4 +1040,5 @@ export default {
   cash_not_from_bank: "ليس من بنك (نقداً باليد)",
   cash_not_to_bank: "ليس إلى بنك (نقداً باليد)",
   channel_src_cash_box: "صندوق النقد",
+  accounting: "المحاسبة",
 };

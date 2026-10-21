@@ -12,6 +12,7 @@ interface UserInfo {
   sales_unlock_until?: string | null;
   read_only?: boolean;
   editable_tabs?: string[];
+  accounting?: boolean;
 }
 
 interface AuthCtx {

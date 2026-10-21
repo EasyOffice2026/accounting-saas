@@ -17,6 +17,7 @@ import ContractsPage from "./pages/ContractsPage";
 import RenewalsPage from "./pages/RenewalsPage";
 import PurchaseDashboardPage from "./pages/PurchaseDashboardPage";
 import ProcurementPage from "./pages/ProcurementPage";
+import AccountingPage from "./pages/AccountingPage";
 import { useState, useEffect } from "react";
 import "./i18n";
 
@@ -63,6 +64,7 @@ function ProtectedRoutes() {
         <Route path="/cash" element={<CashPage />} />
         <Route path="/transfers" element={restricted ? <Navigate to="/" /> : <TransfersPage />} />
         <Route path="/contracts" element={restricted ? <Navigate to="/" /> : <ContractsPage />} />
+        <Route path="/accounting" element={user?.accounting ? <AccountingPage /> : <Navigate to="/" />} />
         <Route path="/settings" element={restricted ? <Navigate to="/" /> : <SettingsPage />} />
         <Route path="/brands" element={<BrandSelectPage onSelect={() => setBrandChosen(true)} />} />
       </Route>

@@ -1,3 +1,4 @@
+from urllib.parse import quote
 """Accounting (general ledger). Only logins allowed in acc_settings (finance.manager during testing) can call these."""
 import io
 import json
@@ -653,8 +654,9 @@ def _xlsx(title: str, subtitle: str, header: list[str], rows: list[list], rtl: b
     wb.save(buf)
     buf.seek(0)
     fname = title.replace(" ", "_") + ".xlsx"
+    ascii_name = fname.encode("ascii", "ignore").decode() or "report.xlsx"
     return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                             headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+                             headers={"Content-Disposition": f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(fname)}'})
 
 
 @router.get("/export/{report}")

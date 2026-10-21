@@ -11,13 +11,15 @@ type Overview = {
   brands: Brand[]; branches: Branch[];
 };
 type Account = { id: number; code: string; name: string; name_ar: string | null; type: string; parent_code: string | null; is_header: boolean; concept: string | null; is_active: boolean; system: boolean; balance: number };
-type Line = { account_id: number; code: string; name: string; name_ar: string | null; branch_id: number | null; debit: number; credit: number; memo: string | null };
+type Line = { account_id: number; code: string; name: string; name_ar: string | null; branch_id: number | null; debit: number; credit: number; memo: string | null; party?: string | null };
 type Journal = { id: number; number: number; date: string; description: string; source: string; source_key: string | null; is_active: boolean; reversal_of: number | null; reversed_by: number | null; total: number; notes: string | null; lines: Line[] };
 type Mapping = { kind: string; ref_id: string; label: string; label_ar: string; mapped: boolean; account_id: number; code: string; name: string; name_ar: string | null };
 type Group = { code: string; name: string; name_ar: string | null; total: number; accounts: { account_id: number; code: string; name: string; name_ar: string | null; amount: number }[] };
+type PartyOpt = { party: string; kind: string; kind_name: string; kind_name_ar: string; name: string; name_ar: string };
+type PartyRow = PartyOpt & { debit: number; credit: number; balance: number; last_date: string | null; accounts: string[] };
 type TBRow = { account_id: number; code: string; name: string; name_ar: string | null; opening_dr: number; opening_cr: number; debit: number; credit: number; closing_dr: number; closing_cr: number };
 
-const TABS = ["overview", "journals", "trial", "ledger", "income", "balance", "reconcile", "accounts", "mapping"] as const;
+const TABS = ["overview", "journals", "trial", "ledger", "payables", "receivables", "income", "balance", "reconcile", "accounts", "mapping"] as const;
 type Tab = typeof TABS[number];
 
 const L: Record<string, [string, string]> = {
@@ -41,6 +43,11 @@ const L: Record<string, [string, string]> = {
   parent: ["Parent", "الحساب الرئيسي"], name: ["Name", "الاسم"], name_ar: ["Arabic name", "الاسم بالعربي"], search: ["Search", "بحث"],
   choose_account: ["Choose an account", "اختر حساباً"], journals_count: ["journals", "قيد"], test_note: ["Visible only to the logins below during testing.", "ظاهر فقط للمستخدمين أدناه خلال فترة الاختبار."],
   kind_setting: ["General", "عام"], kind_expense_category: ["Expense categories", "فئات المصروفات"], kind_purchase_category: ["Purchase categories", "فئات المشتريات"],
+  payables: ["Payables", "الذمم الدائنة"], receivables: ["Receivables", "الذمم المدينة"], party: ["Supplier / customer", "المورد / العميل"],
+  type: ["Type", "النوع"], accounts_col: ["Accounts", "الحسابات"], last_entry: ["Last entry", "آخر حركة"], statement: ["Statement", "كشف حساب"],
+  back: ["Back to list", "رجوع للقائمة"], control: ["Account total vs parties", "إجمالي الحساب مقابل الأطراف"], unallocated: ["Not assigned to a party", "غير مخصص لطرف"],
+  parties_ok: ["Parties add up to the account totals", "مجموع الأطراف يطابق أرصدة الحسابات"], parties_diff: ["Some entries have no party", "توجد قيود بدون طرف"],
+  hide_zero: ["Hide zero balances", "إخفاء الأرصدة الصفرية"], no_party: ["No party", "بدون طرف"],
   area_cash_box: ["Cash box", "الصندوق"], area_channel: ["Payment channel", "قناة الدفع"], area_sales: ["Sales", "المبيعات"], area_expenses: ["Expenses", "المصروفات"],
 };
 
@@ -124,6 +131,7 @@ export default function AccountingPage() {
       {tab === "journals" && <JournalsTab brandId={brandId} from={from} to={to} t={t} nm={nm} postable={postable} branches={branches} branchName={branchName} reloadAccounts={loadAccounts} />}
       {tab === "trial" && <TrialTab q={qs({ date_from: from, date_to: to, branch_id: branchId })} t={t} nm={nm} />}
       {tab === "ledger" && <LedgerTab key={brandId} brandId={brandId} from={from} to={to} branchId={branchId} lang={ar ? "ar" : "en"} postable={accounts.filter(a => !a.is_header)} t={t} nm={nm} branchName={branchName} />}
+      {(tab === "payables" || tab === "receivables") && <PartiesTab key={`${brandId}-${tab}`} brandId={brandId} side={tab === "payables" ? "payable" : "receivable"} from={from} to={to} lang={ar ? "ar" : "en"} t={t} nm={nm} branchName={branchName} />}
       {tab === "income" && <IncomeTab q={qs({ date_from: from, date_to: to, branch_id: branchId })} t={t} nm={nm} />}
       {tab === "balance" && <BalanceTab brandId={brandId} lang={ar ? "ar" : "en"} t={t} nm={nm} />}
       {tab === "reconcile" && <ReconcileTab q={qs({ date_from: from, date_to: to })} t={t} nm={nm} />}
@@ -256,8 +264,10 @@ function JournalForm({ brandId, postable, branches, t, nm, done }: { brandId: nu
   const [d, setD] = useState(today());
   const [desc, setDesc] = useState("");
   const [opening, setOpening] = useState(false);
-  const [lines, setLines] = useState([{ account_id: "", branch_id: "", debit: "", credit: "", memo: "" }, { account_id: "", branch_id: "", debit: "", credit: "", memo: "" }]);
+  const [lines, setLines] = useState([{ account_id: "", branch_id: "", debit: "", credit: "", memo: "", party: "" }, { account_id: "", branch_id: "", debit: "", credit: "", memo: "", party: "" }]);
   const [err, setErr] = useState("");
+  const [parties, setParties] = useState<PartyOpt[]>([]);
+  useEffect(() => { apiGet("/api/accounting/party-options").then(setParties).catch(() => undefined); }, []);
   const dr = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
   const cr = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
   const set = (i: number, k: string, v: string) => setLines(lines.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
@@ -285,11 +295,15 @@ function JournalForm({ brandId, postable, branches, t, nm, done }: { brandId: nu
           </select>
           <input className="border rounded px-2 py-1 w-28" placeholder={t("debit")} value={l.debit} onChange={e => set(i, "debit", e.target.value)} />
           <input className="border rounded px-2 py-1 w-28" placeholder={t("credit")} value={l.credit} onChange={e => set(i, "credit", e.target.value)} />
+          <select className="border rounded px-2 py-1 w-56" value={l.party} onChange={e => set(i, "party", e.target.value)}>
+            <option value="">{t("no_party")}</option>
+            {parties.map(p => <option key={p.party} value={p.party}>{nm({ name: `${p.kind_name}: ${p.name}`, name_ar: `${p.kind_name_ar}: ${p.name_ar}` })}</option>)}
+          </select>
           <input className="border rounded px-2 py-1 w-40" placeholder={t("memo")} value={l.memo} onChange={e => set(i, "memo", e.target.value)} />
         </div>
       ))}
       <div className="flex flex-wrap items-center gap-2">
-        <button className="px-3 py-1 rounded border" onClick={() => setLines([...lines, { account_id: "", branch_id: "", debit: "", credit: "", memo: "" }])}>{t("add_line")}</button>
+        <button className="px-3 py-1 rounded border" onClick={() => setLines([...lines, { account_id: "", branch_id: "", debit: "", credit: "", memo: "", party: "" }])}>{t("add_line")}</button>
         <span className={`text-sm ${Math.abs(dr - cr) < 0.0005 && dr > 0 ? "text-emerald-700" : "text-red-700"}`}>{t("debit")} {fmt(dr)} / {t("credit")} {fmt(cr)}</span>
         <button className="px-3 py-1 rounded bg-blue-600 text-white disabled:opacity-50" disabled={!desc || dr <= 0 || Math.abs(dr - cr) > 0.0005} onClick={submit}>{t("post")}</button>
         <button className="px-3 py-1 rounded border" onClick={done}>{t("cancel")}</button>
@@ -343,6 +357,65 @@ function LedgerTab({ brandId, from, to, branchId, lang, postable, t, nm, branchN
           </tbody>
         </table>
       )}
+    </div>
+  );
+}
+
+function PartiesTab({ brandId, side, from, to, lang, t, nm, branchName }: { brandId: number; side: string; from: string; to: string; lang: string; t: T; nm: NM; branchName: (id: number | null) => string }) {
+  const [d, setD] = useState<{ rows: PartyRow[]; total: number; matched: boolean; control: { account_id: number; code: string; name: string; name_ar: string | null; total: number; parties: number; unallocated: number }[] } | null>(null);
+  const [party, setParty] = useState("");
+  const [hideZero, setHideZero] = useState(true);
+  const [search, setSearch] = useState("");
+  const [pl, setPl] = useState<(PartyOpt & { opening: number; closing: number; debit: number; credit: number; rows: { journal_id: number; number: number; date: string; description: string; code: string; branch_id: number | null; debit: number; credit: number; balance: number }[] }) | null>(null);
+  const lq = new URLSearchParams({ brand_id: String(brandId), side, as_of: to, lang }).toString();
+  const pq = new URLSearchParams({ brand_id: String(brandId), party, date_from: from, date_to: to, lang }).toString();
+  useEffect(() => { apiGet(`/api/accounting/parties?${lq}`).then(setD).catch(() => undefined); }, [lq]);
+  useEffect(() => { if (party) apiGet(`/api/accounting/party-ledger?${pq}`).then(setPl).catch(() => undefined); }, [pq, party]);
+  if (party && pl && pl.party === party) {
+    return (
+      <div className="space-y-2">
+        <div className="flex flex-wrap justify-between gap-2">
+          <div><button className="px-3 py-1 rounded border print:hidden" onClick={() => setParty("")}>{t("back")}</button> <span className="font-semibold">{t("statement")}: {nm({ name: `${pl.kind_name}: ${pl.name}`, name_ar: `${pl.kind_name_ar}: ${pl.name_ar}` })}</span></div>
+          <Toolbar excel={`/api/accounting/export/party-ledger?${pq}`} filename="Statement_of_Account.xlsx" />
+        </div>
+        <table className="w-full text-sm border-collapse">
+          <thead><tr><th className={th}>{t("date")}</th><th className={th}>{t("no")}</th><th className={th}>{t("description")}</th><th className={th}>{t("account")}</th><th className={th}>{t("branch")}</th><th className={th}>{t("debit")}</th><th className={th}>{t("credit")}</th><th className={th}>{t("balance_col")}</th></tr></thead>
+          <tbody>
+            <tr className="italic"><td className={td} colSpan={7}>{t("opening")}</td><td className={num}>{fmt(pl.opening)}</td></tr>
+            {pl.rows.map((r, i) => <tr key={i}><td className={td}>{r.date}</td><td className={td}>{r.number}</td><td className={td}>{r.description}</td><td className={td}>{r.code}</td><td className={td}>{branchName(r.branch_id)}</td><td className={num}>{r.debit ? fmt(r.debit) : ""}</td><td className={num}>{r.credit ? fmt(r.credit) : ""}</td><td className={num}>{fmt(r.balance)}</td></tr>)}
+            <tr className="font-bold"><td className={td} colSpan={5}>{t("total")}</td><td className={num}>{fmt(pl.debit)}</td><td className={num}>{fmt(pl.credit)}</td><td className={num}>{fmt(pl.closing)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  if (!d) return null;
+  const s = search.trim().toLowerCase();
+  const rows = d.rows.filter(r => (!hideZero || Math.abs(r.balance) > 0.0005) && (!s || `${r.name} ${r.name_ar}`.toLowerCase().includes(s)));
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <input className="border rounded px-2 py-1" placeholder={t("search")} value={search} onChange={e => setSearch(e.target.value)} />
+          <label className="flex items-center gap-1 text-sm"><input type="checkbox" checked={hideZero} onChange={e => setHideZero(e.target.checked)} />{t("hide_zero")}</label>
+          <span className="text-sm text-gray-600">{t("as_of")} {to}</span>
+        </div>
+        <Toolbar excel={`/api/accounting/export/parties?${lq}`} filename={side === "payable" ? "Payables.xlsx" : "Receivables.xlsx"} />
+      </div>
+      <table className="w-full text-sm border-collapse">
+        <thead><tr><th className={th}>{t("type")}</th><th className={th}>{t("name")}</th><th className={th}>{t("accounts_col")}</th><th className={th}>{t("debit")}</th><th className={th}>{t("credit")}</th><th className={th}>{t("balance_col")}</th><th className={th}>{t("last_entry")}</th></tr></thead>
+        <tbody>
+          {rows.map(r => <tr key={r.party} className="cursor-pointer hover:bg-blue-50" onClick={() => setParty(r.party)}><td className={td}>{nm({ name: r.kind_name, name_ar: r.kind_name_ar })}</td><td className={`${td} text-blue-700 underline`}>{nm(r)}</td><td className={td}>{r.accounts.join(", ")}</td><td className={num}>{fmt(r.debit)}</td><td className={num}>{fmt(r.credit)}</td><td className={num}>{fmt(r.balance)}</td><td className={td}>{r.last_date}</td></tr>)}
+          <tr className="font-bold"><td className={td} colSpan={5}>{t("total")}</td><td className={num}>{fmt(d.total)}</td><td className={td}></td></tr>
+        </tbody>
+      </table>
+      <div className="mt-3">
+        <div className={d.matched ? "text-emerald-700" : "text-red-700 font-bold"}>{t("control")}: {d.matched ? t("parties_ok") : t("parties_diff")}</div>
+        <table className="w-full text-sm border-collapse mt-1">
+          <thead><tr><th className={th}>{t("code")}</th><th className={th}>{t("account")}</th><th className={th}>{t("ledger_col")}</th><th className={th}>{t(side === "payable" ? "payables" : "receivables")}</th><th className={th}>{t("unallocated")}</th></tr></thead>
+          <tbody>{d.control.map(c => <tr key={c.account_id}><td className={td}>{c.code}</td><td className={td}>{nm(c)}</td><td className={num}>{fmt(c.total)}</td><td className={num}>{fmt(c.parties)}</td><td className={`${num} ${Math.abs(c.unallocated) > 0.0005 ? "text-red-700 font-bold" : ""}`}>{fmt(c.unallocated)}</td></tr>)}</tbody>
+        </table>
+      </div>
     </div>
   );
 }

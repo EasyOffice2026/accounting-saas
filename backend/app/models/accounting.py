@@ -66,6 +66,7 @@ class AccJournalLine(Base):
     debit = Column(Float, default=0)
     credit = Column(Float, default=0)
     memo = Column(String, nullable=True)
+    party = Column(String, nullable=True, index=True)
 
 
 class AccSettings(Base):

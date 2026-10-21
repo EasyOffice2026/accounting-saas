@@ -143,6 +143,12 @@ def _migrate_columns():
                     conn.execute(text(f"ALTER TABLE whatsapp_settings ADD COLUMN {gcol} TEXT"))
                     conn.commit()
 
+        if "acc_journal_lines" in insp.get_table_names():
+            if "party" not in [c["name"] for c in insp.get_columns("acc_journal_lines")]:
+                conn.execute(text("ALTER TABLE acc_journal_lines ADD COLUMN party TEXT"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_acc_journal_lines_party ON acc_journal_lines (party)"))
+                conn.commit()
+
         if "brands" in insp.get_table_names():
             if "logo_path" not in [c["name"] for c in insp.get_columns("brands")]:
                 conn.execute(text("ALTER TABLE brands ADD COLUMN logo_path TEXT"))

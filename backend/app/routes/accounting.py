@@ -14,8 +14,8 @@ from app.models.accounting import AccAccount, AccMapping, AccJournal, AccJournal
 from app.models.branch import Branch
 from app.models.channel import PaymentChannel
 from app.models.expense import Expense, ExpenseCategory
-from app.models.hr import Brand
-from app.models.purchase import PurchaseCategory
+from app.models.hr import Brand, Employee
+from app.models.purchase import PurchaseCategory, Supplier
 from app.models.sale import Sale
 from app.models.user import User
 from app.utils.ledger import (EXPENSE_CATEGORY_DEFAULTS, PURCHASE_CATEGORY_DEFAULTS, SETTING_DEFAULTS, Ledger, ensure_chart,
@@ -235,7 +235,7 @@ def _journal_json(db: Session, j: AccJournal, accs: dict, with_lines: bool = Tru
         out["lines"] = [{"account_id": l.account_id, "code": accs[l.account_id].code if l.account_id in accs else "",
                          "name": accs[l.account_id].name if l.account_id in accs else "",
                          "name_ar": accs[l.account_id].name_ar if l.account_id in accs else "",
-                         "branch_id": l.branch_id, "debit": l.debit, "credit": l.credit, "memo": l.memo} for l in lines]
+                         "branch_id": l.branch_id, "debit": l.debit, "credit": l.credit, "memo": l.memo, "party": l.party} for l in lines]
     return out
 
 
@@ -273,7 +273,8 @@ def create_journal(brand_id: int = Form(...), date_: str = Form(..., alias="date
         if dr < 0 or cr < 0 or (dr > EPS and cr > EPS):
             raise HTTPException(400, "A line has either a debit or a credit")
         if dr > EPS or cr > EPS:
-            parsed.append((aid, int(ln["branch_id"]) if ln.get("branch_id") else None, dr, cr, ln.get("memo") or ""))
+            parsed.append((aid, int(ln["branch_id"]) if ln.get("branch_id") else None, dr, cr, ln.get("memo") or "",
+                           _valid_party(db, ln.get("party"))))
     if len(parsed) < 2:
         raise HTTPException(400, "A journal needs at least two lines")
     if abs(sum(p[2] - p[3] for p in parsed)) > EPS:
@@ -359,6 +360,135 @@ def ledger_data(db: Session, account_id: int, date_from: Optional[date], date_to
 def account_ledger(account_id: int, date_from: Optional[str] = None, date_to: Optional[str] = None, branch_id: Optional[int] = None,
                    db: Session = Depends(get_db), user: User = Depends(get_accounting_user)):
     return ledger_data(db, account_id, _d(date_from), _d(date_to), branch_id)
+
+
+# ---------- payables / receivables (party sub-ledgers) ----------
+
+CUSTOMERS = {
+    "knet": ("KNET", "كي نت"), "link": ("Link / online payments", "لينك والدفع الإلكتروني"), "talabat": ("Talabat", "طلبات"),
+    "keeta": ("Keeta", "كيتا"), "jahez": ("Jahez", "جاهز"), "snoonu": ("Snoonu", "سنونو"),
+    "other": ("Other payment method (corporate customers)", "طريقة دفع أخرى (عملاء الشركات)"),
+}
+PARTY_KINDS = {"supplier": ("Supplier", "مورد"), "customer": ("Customer", "عميل"), "employee": ("Employee", "موظف"),
+               "company": ("Related company", "شركة ذات علاقة")}
+
+
+def _party_names(db: Session) -> dict[str, tuple[str, str]]:
+    names = {f"customer:{k}": v for k, v in CUSTOMERS.items()}
+    names.update({f"supplier:{x.id}": (x.name, x.name) for x in db.query(Supplier.id, Supplier.name).all()})
+    names.update({f"employee:{x.id}": (f"{x.staff_no or x.id} - {x.name}", f"{x.staff_no or x.id} - {x.name_ar or x.name}")
+                  for x in db.query(Employee).all()})
+    names.update({f"company:{b.id}": (b.name_en, b.name_ar or b.name_en) for b in db.query(Brand).all()})
+    return names
+
+
+def _valid_party(db: Session, party: Optional[str]) -> Optional[str]:
+    if not party:
+        return None
+    if party not in _party_names(db):
+        raise HTTPException(400, f"Unknown party {party}")
+    return party
+
+
+def _party_json(names: dict, p: str) -> dict:
+    kind = p.split(":", 1)[0]
+    n = names.get(p, (p, p))
+    k = PARTY_KINDS.get(kind, (kind, kind))
+    return {"party": p, "kind": kind, "kind_name": k[0], "kind_name_ar": k[1], "name": n[0], "name_ar": n[1]}
+
+
+@router.get("/party-options")
+def party_options(db: Session = Depends(get_db), user: User = Depends(get_accounting_user)):
+    names = _party_names(db)
+    return sorted((_party_json(names, p) for p in names), key=lambda x: (x["kind"], x["name"].lower()))
+
+
+def parties_data(db: Session, brand_id: int, side: str, as_of: Optional[date]) -> dict:
+    """side 'payable' = liability accounts (credit balance), 'receivable' = asset accounts (debit balance)."""
+    acc_type = "LIABILITY" if side == "payable" else "ASSET"
+    sign = -1 if side == "payable" else 1
+    accs = {a.id: a for a in _accounts(db, brand_id) if a.type == acc_type}
+    q = db.query(AccJournalLine.party, AccJournalLine.account_id, func.sum(AccJournalLine.debit), func.sum(AccJournalLine.credit),
+                 func.max(AccJournal.date)).join(AccJournal, AccJournal.id == AccJournalLine.journal_id)\
+        .filter(AccJournal.brand_id == brand_id, AccJournalLine.account_id.in_(list(accs) or [0]))
+    if as_of:
+        q = q.filter(AccJournal.date <= as_of)
+    names = _party_names(db)
+    parties: dict[str, dict] = {}
+    control: dict[int, dict] = {}
+    for party, aid, d, c, last in q.group_by(AccJournalLine.party, AccJournalLine.account_id).all():
+        amt = sign * ((d or 0) - (c or 0))
+        a = accs[aid]
+        ctl = control.setdefault(aid, {"account_id": aid, "code": a.code, "name": a.name, "name_ar": a.name_ar, "total": 0.0,
+                                       "parties": 0.0, "used": False})
+        ctl["total"] += amt
+        if not party:
+            continue
+        ctl["used"] = True
+        ctl["parties"] += amt
+        r = parties.setdefault(party, {**_party_json(names, party), "debit": 0.0, "credit": 0.0, "balance": 0.0, "last_date": None,
+                                       "accounts": []})
+        r["debit"] = _r(r["debit"] + (d or 0))
+        r["credit"] = _r(r["credit"] + (c or 0))
+        r["balance"] = _r(r["balance"] + amt)
+        r["last_date"] = max(filter(None, [r["last_date"], str(last)]))
+        if a.code not in r["accounts"]:
+            r["accounts"].append(a.code)
+    rows = sorted(parties.values(), key=lambda x: (x["kind"], x["name"].lower()))
+    ctl_rows = []
+    for ctl in sorted(control.values(), key=lambda x: x["code"]):
+        if not ctl["used"]:
+            continue
+        ctl["total"], ctl["parties"] = _r(ctl["total"]), _r(ctl["parties"])
+        ctl["unallocated"] = _r(ctl["total"] - ctl["parties"])
+        del ctl["used"]
+        ctl_rows.append(ctl)
+    return {"side": side, "as_of": str(as_of) if as_of else None, "rows": rows, "total": _r(sum(r["balance"] for r in rows)),
+            "control": ctl_rows, "matched": all(abs(c["unallocated"]) < EPS for c in ctl_rows)}
+
+
+@router.get("/parties")
+def parties(brand_id: int, side: str = "payable", as_of: Optional[str] = None,
+            db: Session = Depends(get_db), user: User = Depends(get_accounting_user)):
+    if side not in ("payable", "receivable"):
+        raise HTTPException(400, "side is payable or receivable")
+    _brand(db, brand_id)
+    return parties_data(db, brand_id, side, _d(as_of))
+
+
+def party_ledger_data(db: Session, brand_id: int, party: str, date_from: Optional[date], date_to: Optional[date]) -> dict:
+    accs = {a.id: a for a in _accounts(db, brand_id)}
+    base = db.query(AccJournalLine, AccJournal).join(AccJournal, AccJournal.id == AccJournalLine.journal_id)\
+        .filter(AccJournal.brand_id == brand_id, AccJournalLine.party == party)
+    lines = base.order_by(AccJournal.date, AccJournal.number, AccJournalLine.id).all()
+    payable = any(accs[l.account_id].type == "LIABILITY" for l, _ in lines if l.account_id in accs)
+    sign = -1 if payable else 1
+    opening = 0.0
+    bal = 0.0
+    rows = []
+    for l, j in lines:
+        amt = sign * ((l.debit or 0) - (l.credit or 0))
+        if date_from and j.date < date_from:
+            opening += amt
+            bal = opening
+            continue
+        if date_to and j.date > date_to:
+            continue
+        bal += amt
+        a = accs.get(l.account_id)
+        rows.append({"journal_id": j.id, "number": j.number, "date": str(j.date), "description": j.description, "source": j.source,
+                     "is_active": j.is_active, "code": a.code if a else "", "branch_id": l.branch_id, "memo": l.memo,
+                     "debit": l.debit, "credit": l.credit, "balance": _r(bal)})
+    return {**_party_json(_party_names(db), party), "side": "payable" if payable else "receivable", "opening": _r(opening),
+            "closing": _r(bal), "rows": rows, "debit": _r(sum(r["debit"] or 0 for r in rows)),
+            "credit": _r(sum(r["credit"] or 0 for r in rows))}
+
+
+@router.get("/party-ledger")
+def party_ledger(brand_id: int, party: str, date_from: Optional[str] = None, date_to: Optional[str] = None,
+                 db: Session = Depends(get_db), user: User = Depends(get_accounting_user)):
+    _brand(db, brand_id)
+    return party_ledger_data(db, brand_id, party, _d(date_from), _d(date_to))
 
 
 def _sections(accs: list[AccAccount], sums: dict, types: tuple) -> list[dict]:
@@ -530,7 +660,7 @@ def _xlsx(title: str, subtitle: str, header: list[str], rows: list[list], rtl: b
 @router.get("/export/{report}")
 def export_report(report: str, brand_id: int, lang: str = "en", date_from: Optional[str] = None, date_to: Optional[str] = None,
                   as_of: Optional[str] = None, account_id: Optional[int] = None, branch_id: Optional[int] = None,
-                  db: Session = Depends(get_db), user: User = Depends(get_accounting_user)):
+                  side: str = "payable", party: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_accounting_user)):
     ar = lang == "ar"
     b = _brand(db, brand_id)
     company = (b.name_ar or b.name_en) if ar else b.name_en
@@ -554,6 +684,24 @@ def export_report(report: str, brand_id: int, lang: str = "en", date_from: Optio
         rows.append(["**" + ("الإجمالي" if ar else "Total"), "", "", d["debit"], d["credit"], d["closing"]])
         a = d["account"]
         return _xlsx(("كشف حساب" if ar else "Account Ledger"), f"{company} {a['code']} {nm(a)} {period}", hdr, rows, ar)
+    if report == "parties" and side in ("payable", "receivable"):
+        d = parties_data(db, brand_id, side, _d(as_of))
+        pay = side == "payable"
+        hdr = ["النوع", "الاسم", "الحسابات", "مدين", "دائن", "الرصيد", "آخر حركة"] if ar else \
+            ["Type", "Name", "Accounts", "Debit", "Credit", "Balance", "Last entry"]
+        rows = [[(r["kind_name_ar"] if ar else r["kind_name"]), nm(r), ", ".join(r["accounts"]), r["debit"], r["credit"], r["balance"],
+                 r["last_date"]] for r in d["rows"]]
+        rows.append(["**" + ("الإجمالي" if ar else "Total"), "", "", None, None, d["total"], ""])
+        title = ("الذمم الدائنة" if pay else "الذمم المدينة") if ar else ("Payables" if pay else "Receivables")
+        return _xlsx(title, f"{company} {as_of or ''}", hdr, rows, ar)
+    if report == "party-ledger" and party:
+        d = party_ledger_data(db, brand_id, party, _d(date_from), _d(date_to))
+        hdr = ["التاريخ", "رقم القيد", "البيان", "الحساب", "مدين", "دائن", "الرصيد"] if ar else \
+            ["Date", "Journal", "Description", "Account", "Debit", "Credit", "Balance"]
+        rows = [["", "", "رصيد افتتاحي" if ar else "Opening balance", "", None, None, d["opening"]]]
+        rows += [[r["date"], r["number"], r["description"], r["code"], r["debit"], r["credit"], r["balance"]] for r in d["rows"]]
+        rows.append(["**" + ("الإجمالي" if ar else "Total"), "", "", "", d["debit"], d["credit"], d["closing"]])
+        return _xlsx(("كشف حساب" if ar else "Statement of account"), f"{company} {nm(d)} {period}", hdr, rows, ar)
     if report == "income-statement":
         d = income_statement_data(db, brand_id, _d(date_from), _d(date_to), branch_id)
         rows = []

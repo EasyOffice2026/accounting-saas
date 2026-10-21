@@ -1,11 +1,14 @@
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
+from app.utils.month_scope import limit_to_current_month
 
 SECRET_KEY = "mudawwarah-secret-key-change-in-production"
 ALGORITHM = "HS256"
@@ -30,7 +33,43 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+# API prefixes a view-only login may read; it may never write anything except its own session (auth).
+READ_ONLY_ALLOWED_PREFIXES = ("/api/auth/", "/api/sales", "/api/purchases", "/api/expenses", "/api/transfers", "/api/hr",
+                              "/api/branches", "/api/items", "/api/export/")
+READ_METHODS = ("GET", "HEAD", "OPTIONS")
+# Extra API prefixes a view-only login may read, by allowed tab (null allowed_tabs = every tab below).
+READ_TAB_PREFIXES = {
+    "dashboard": ("/api/dashboard",),
+    "cash": ("/api/cash", "/api/payment-channels", "/api/proceeds"),
+    "renewals": ("/api/renewals",),
+    "contracts": ("/api/hr",),
+    "procurement": ("/api/procurement",),
+}
+EDITABLE_TAB_PREFIXES = {
+    "sales": "/api/sales",
+    "purchases": "/api/purchases",
+    "expenses": "/api/expenses",
+    "transfers": "/api/transfers",
+    "hr": "/api/hr",
+}
+
+
+def _enforce_read_only(request: Request, user: User):
+    path = request.url.path
+    if path.startswith("/api/auth/"):
+        return
+    if request.method not in READ_METHODS:
+        editable = tuple(EDITABLE_TAB_PREFIXES[t] for t in user.get_editable_tabs() if t in EDITABLE_TAB_PREFIXES)
+        if not (editable and path.startswith(editable)):
+            raise HTTPException(status_code=403, detail="This login is view only")
+    tabs = user.get_allowed_tabs()
+    extra = tuple(p for t, ps in READ_TAB_PREFIXES.items() if tabs is None or t in tabs for p in ps)
+    if not path.startswith(READ_ONLY_ALLOWED_PREFIXES + extra):
+        raise HTTPException(status_code=403, detail="Not available for this login")
+
+
 def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
@@ -45,4 +84,42 @@ def get_current_user(
     user = db.query(User).filter(User.id == user_id).first()
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found")
+    if user.read_only:
+        _enforce_read_only(request, user)
+    if user.current_month_only:
+        limit_to_current_month(db)
     return user
+
+
+PURCHASE_ROLES = ("purchase_officer", "purchase_manager")
+MODULE_RESTRICTED_ROLES = ("personnel", "personnel_manager") + PURCHASE_ROLES
+
+# API prefixes the Purchase Office roles may call; everything else under /api is refused server-side.
+PURCHASE_ALLOWED_PREFIXES = ("/api/auth/", "/api/procurement/", "/api/cash/", "/api/branches/", "/api/hr/brands", "/api/export/cash/",
+                             "/api/purchases/suppliers", "/api/purchases/categories")
+
+
+def get_business_user(user: User = Depends(get_current_user)) -> User:
+    """Sales / purchases / operating dashboard are not available to module-restricted roles."""
+    if user.role in MODULE_RESTRICTED_ROLES:
+        raise HTTPException(status_code=403, detail="Not available for this role")
+    return user
+
+
+class PurchaseScopeMiddleware(BaseHTTPMiddleware):
+    """Hard-limits Purchase Office logins to the procurement module + their cash box (role is in the JWT)."""
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        allowed = path.startswith(PURCHASE_ALLOWED_PREFIXES) and (
+            request.method == "GET" or path.startswith(("/api/auth/", "/api/procurement/", "/api/cash/", "/api/purchases/suppliers", "/api/purchases/categories")))
+        if path.startswith("/api/") and not allowed:
+            auth = request.headers.get("authorization", "")
+            if auth.lower().startswith("bearer "):
+                try:
+                    role = jwt.decode(auth[7:], SECRET_KEY, algorithms=[ALGORITHM]).get("role")
+                except JWTError:
+                    role = None
+                if role in PURCHASE_ROLES:
+                    return JSONResponse({"detail": "Not available for this role"}, status_code=403)
+        return await call_next(request)

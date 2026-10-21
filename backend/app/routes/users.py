@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Form
+from fastapi import APIRouter, Depends, HTTPException, Form, Body
 from sqlalchemy.orm import Session
 from typing import Optional
+import json
 
 from app.database import get_db
 from app.models.user import User
@@ -9,9 +10,32 @@ from app.utils.auth import get_current_user, hash_password
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 
+def _parse_brands(raw: Optional[str]) -> Optional[list[int]]:
+    """Parse a comma-separated brand id string. Empty/None -> None (all/derive)."""
+    if raw is None:
+        return None
+    raw = raw.strip()
+    if not raw:
+        return None
+    ids = []
+    for part in raw.split(","):
+        part = part.strip()
+        if part.isdigit():
+            ids.append(int(part))
+    return ids or None
+
+
+def _parse_tabs(raw: Optional[str]) -> list[str]:
+    return [t.strip() for t in (raw or "").split(",") if t.strip()]
+
+
+def _truthy(raw: str) -> bool:
+    return raw.lower() in ("true", "1", "yes")
+
+
 @router.get("/")
 def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Not authorized")
     users = db.query(User).order_by(User.id).all()
     return [
@@ -22,6 +46,11 @@ def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_u
             "role": u.role,
             "branch_id": u.branch_id,
             "is_active": u.is_active,
+            "allowed_tabs": u.get_allowed_tabs(),
+            "allowed_brands": u.get_allowed_brands(),
+            "read_only": bool(u.read_only),
+            "editable_tabs": u.get_editable_tabs(),
+            "current_month_only": bool(u.current_month_only),
         }
         for u in users
     ]
@@ -34,6 +63,10 @@ def create_user(
     full_name: str = Form(...),
     role: str = Form("staff"),
     branch_id: Optional[int] = Form(None),
+    allowed_brands: Optional[str] = Form(None),
+    read_only: str = Form("false"),
+    editable_tabs: Optional[str] = Form(None),
+    current_month_only: str = Form("false"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -49,7 +82,11 @@ def create_user(
         role=role,
         branch_id=branch_id if role == "staff" else None,
         is_active=True,
+        read_only=_truthy(read_only),
+        current_month_only=_truthy(current_month_only),
     )
+    new_user.set_editable_tabs(_parse_tabs(editable_tabs))
+    new_user.set_allowed_brands(_parse_brands(allowed_brands))
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -64,7 +101,11 @@ def update_user(
     full_name: str = Form(None),
     role: str = Form(None),
     branch_id: Optional[str] = Form(None),
+    allowed_brands: Optional[str] = Form(None),
     is_active: str = Form(None),
+    read_only: str = Form(None),
+    editable_tabs: Optional[str] = Form(None),
+    current_month_only: str = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -89,7 +130,15 @@ def update_user(
     if branch_id is not None:
         target.branch_id = int(branch_id) if branch_id and branch_id != "null" else None
     if is_active is not None:
-        target.is_active = is_active.lower() in ("true", "1", "yes")
+        target.is_active = _truthy(is_active)
+    if read_only is not None:
+        target.read_only = _truthy(read_only)
+    if current_month_only is not None:
+        target.current_month_only = _truthy(current_month_only)
+    if editable_tabs is not None:
+        target.set_editable_tabs(_parse_tabs(editable_tabs))
+    if allowed_brands is not None:
+        target.set_allowed_brands(_parse_brands(allowed_brands))
     db.commit()
     return {"message": "User updated"}
 
@@ -110,3 +159,23 @@ def delete_user(
     db.delete(target)
     db.commit()
     return {"message": "User deleted"}
+
+
+@router.put("/{user_id}/permissions")
+def update_user_permissions(
+    user_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "owner":
+        raise HTTPException(403, "Only owner can manage permissions")
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(404, "User not found")
+    tabs = payload.get("allowed_tabs")
+    if tabs is not None and not isinstance(tabs, list):
+        raise HTTPException(400, "allowed_tabs must be a list or null")
+    target.set_allowed_tabs(tabs)
+    db.commit()
+    return {"message": "Permissions updated", "allowed_tabs": target.get_allowed_tabs()}

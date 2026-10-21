@@ -11,3 +11,9 @@ class WhatsAppSettings(Base):
     api_token = Column(String, nullable=True)
     api_url = Column(String, nullable=True)  # e.g. https://7107.api.greenapi.com
     default_phone = Column(String, nullable=True)  # default recipient phone
+    # WhatsApp group IDs for auto-sending (format: 120363XXXXXXXXX@g.us)
+    sales_group = Column(String, nullable=True)
+    purchases_group = Column(String, nullable=True)
+    expenses_group = Column(String, nullable=True)
+    hr_group = Column(String, nullable=True)
+    transfers_group = Column(String, nullable=True)

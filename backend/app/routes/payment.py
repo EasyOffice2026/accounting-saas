@@ -38,7 +38,7 @@ def _is_sandbox(db: Session) -> bool:
 # --- Payment Gateway Settings ---
 @router.get("/settings")
 def get_payment_settings(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Only owner/manager can view payment settings")
     settings = db.query(PaymentGatewaySettings).first()
     if not settings:
@@ -60,7 +60,7 @@ def save_payment_settings(
     is_sandbox: str = Form("true"), currency: str = Form("KWD"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(403, "Only owner/manager can edit payment settings")
     settings = db.query(PaymentGatewaySettings).first()
     if not settings:

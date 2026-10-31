@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/proceeds", tags=["sales-proceeds"])
 SALE_COLS = {
     "knet": Sale.physical_knet, "link": Sale.physical_link, "talabat": Sale.physical_talabat,
     "keeta": Sale.physical_keeta, "jahez": Sale.physical_jahez, "snoonu": Sale.physical_snoonu,
+    "website": Sale.physical_website,
 }
 AGE_BUCKETS = (("0_7", 0, 7), ("8_15", 8, 15), ("16_30", 16, 30), ("31_plus", 31, None))
 

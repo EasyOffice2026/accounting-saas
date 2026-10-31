@@ -58,6 +58,7 @@ export default {
   foodics_data: "بيانات فودكس",
   pos_data: "بيانات نقاط البيع",
   snoonu: "سنونو",
+  website: "الموقع الإلكتروني",
   physical_data: "البيانات الفعلية",
   difference: "الفرق",
   cash: "نقد",

@@ -35,6 +35,7 @@ EPS = 0.0005
 SUBLEDGER_PARENTS = {"1110", "1130"}
 EXTRA_ACCOUNTS = [
     ("1139", "Bank - not specified", "بنك - غير محدد", "ASSET", "bank", "1100", False, "BalancesWithBanks"),
+    ("1225", "TAP receivable (website orders)", "مستحق من تاب (طلبات الموقع الإلكتروني)", "ASSET", "receivable", "1200", False, "CurrentTradeReceivables"),
     ("1280", "Due from related parties", "مستحق من أطراف ذات علاقة", "ASSET", "receivable", "1200", False, "OtherCurrentReceivables"),
 ]
 
@@ -59,7 +60,7 @@ SETTING_DEFAULTS = {
     "related_payable": ("2150", "Internal transfers from the other company (due to)", "تحويلات من الشركة الأخرى (مستحق إلى)"),
 }
 
-RECEIVABLE_CODES = {"knet": "1210", "link": "1220", "talabat": "1230", "keeta": "1240", "jahez": "1250", "snoonu": "1250"}
+RECEIVABLE_CODES = {"knet": "1210", "link": "1220", "talabat": "1230", "keeta": "1240", "jahez": "1250", "snoonu": "1250", "website": "1225"}
 AGGREGATORS = {"talabat", "keeta", "jahez", "snoonu"}
 
 EXPENSE_CATEGORY_DEFAULTS = [
@@ -182,14 +183,15 @@ def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
         e = Entry(f"sale:{s.id}", brand, s.date, f"Sales {s.date:%d/%m/%Y}", "sale")
         parts = {
             "knet": s.physical_knet, "link": (s.physical_link or 0) + (s.physical_wamd or 0), "talabat": s.physical_talabat,
-            "keeta": s.physical_keeta, "jahez": s.physical_jahez, "snoonu": s.physical_snoonu,
+            "keeta": s.physical_keeta, "jahez": s.physical_jahez, "snoonu": s.physical_snoonu, "website": s.physical_website,
         }
         e.dr(L.cashbox(s.branch_id), s.physical_cash, s.branch_id, "Cash")
         for m, amt in parts.items():
             e.dr(L.code(brand, RECEIVABLE_CODES[m]), amt, s.branch_id, m.upper(), f"customer:{m}")
         e.dr(L.setting(brand, "corporate_customers"), s.physical_other, s.branch_id, "Other", "customer:other")
         total = sum(l[2] for l in e.lines)
-        e.cr(L.setting(brand, "sales"), total, s.branch_id)
+        e.cr(L.setting(brand, "sales"), total - _r(s.physical_website), s.branch_id)
+        e.cr(L.code(brand, "4150"), s.physical_website, s.branch_id, "Website")
         out.append(e)
 
     pcats = {c.id: c.name for c in db.query(PurchaseCategory).all()}
@@ -481,7 +483,7 @@ def opening_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
         entry(brand).dr(L.channel(ch, brand), channel_balance(db, ch, d), None, "Payment channel")
     # Provider receivables: non-cash sales since proceeds tracking began, less proceeds received.
     cols = {"knet": Sale.physical_knet, "link": Sale.physical_link, "talabat": Sale.physical_talabat, "keeta": Sale.physical_keeta,
-            "jahez": Sale.physical_jahez, "snoonu": Sale.physical_snoonu}
+            "jahez": Sale.physical_jahez, "snoonu": Sale.physical_snoonu, "website": Sale.physical_website}
     for brand in {bb for bb in L.branch_brand.values() if bb}:
         branch_ids = [k for k, v in L.branch_brand.items() if v == brand]
         for m in PROCEEDS_METHODS:

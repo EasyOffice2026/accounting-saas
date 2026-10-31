@@ -225,6 +225,7 @@ SALES_CHANNELS = [
     ("keeta", "Keeta", "كيتا"),
     ("jahez", "Jahez", "جاهز"),
     ("snoonu", "Snoonu", "سنونو"),
+    ("website", "Website", "الموقع"),
 ]
 
 

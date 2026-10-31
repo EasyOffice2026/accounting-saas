@@ -35,8 +35,9 @@ class ProceedsChannelMap(Base):
     channel_id = Column(Integer, ForeignKey("payment_channels.id"), nullable=False)
 
 
-PROCEEDS_METHODS = ("knet", "link", "talabat", "keeta", "jahez", "snoonu")
+PROCEEDS_METHODS = ("knet", "link", "talabat", "keeta", "jahez", "snoonu", "website")
 METHOD_LABELS = {
     "knet": ("KNET", "كي نت"), "link": ("Link", "لينك"), "talabat": ("Talabat", "طلبات"),
     "keeta": ("Keeta", "كيتا"), "jahez": ("Jahez", "جاهز"), "snoonu": ("Snoonu", "سنونو"),
+    "website": ("Website (TAP)", "الموقع الإلكتروني (تاب)"),
 }

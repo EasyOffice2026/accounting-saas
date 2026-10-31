@@ -22,7 +22,7 @@ interface Statement {
   total_fees: number; closing: number; ageing: Record<string, number>; entries: Entry[];
 }
 
-const METHODS = ["knet", "link", "talabat", "keeta", "jahez", "snoonu"];
+const METHODS = ["knet", "link", "talabat", "keeta", "jahez", "snoonu", "website"];
 const AGE_KEYS = ["0_7", "8_15", "16_30", "31_plus"];
 
 const today = () => new Date().toISOString().split("T")[0];

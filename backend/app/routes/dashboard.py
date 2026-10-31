@@ -24,6 +24,7 @@ SALE_AMOUNT = (
     + func.coalesce(Sale.physical_link, 0) + func.coalesce(Sale.physical_wamd, 0)
     + func.coalesce(Sale.physical_talabat, 0) + func.coalesce(Sale.physical_keeta, 0)
     + func.coalesce(Sale.physical_jahez, 0) + func.coalesce(Sale.physical_other, 0)
+    + func.coalesce(Sale.physical_snoonu, 0) + func.coalesce(Sale.physical_website, 0)
 )
 
 

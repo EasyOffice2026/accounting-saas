@@ -368,6 +368,7 @@ def account_ledger(account_id: int, date_from: Optional[str] = None, date_to: Op
 CUSTOMERS = {
     "knet": ("KNET", "كي نت"), "link": ("Link / online payments", "لينك والدفع الإلكتروني"), "talabat": ("Talabat", "طلبات"),
     "keeta": ("Keeta", "كيتا"), "jahez": ("Jahez", "جاهز"), "snoonu": ("Snoonu", "سنونو"),
+    "website": ("TAP (website orders)", "تاب (طلبات الموقع الإلكتروني)"),
     "other": ("Other payment method (corporate customers)", "طريقة دفع أخرى (عملاء الشركات)"),
 }
 PARTY_KINDS = {"supplier": ("Supplier", "مورد"), "customer": ("Customer", "عميل"), "employee": ("Employee", "موظف"),
@@ -573,7 +574,7 @@ def reconciliation_data(db: Session, brand_id: int, date_from: date, date_to: da
                      "difference": _r(system - (d - c))})
     branch_ids = [b.id for b in db.query(Branch.id).filter(Branch.brand_id == brand_id).all()]
     cols = [Sale.physical_cash, Sale.physical_knet, Sale.physical_link, Sale.physical_wamd, Sale.physical_talabat, Sale.physical_keeta,
-            Sale.physical_jahez, Sale.physical_other, Sale.physical_snoonu]
+            Sale.physical_jahez, Sale.physical_other, Sale.physical_snoonu, Sale.physical_website]
     sales = sum(float(db.query(func.coalesce(func.sum(col), 0)).filter(Sale.branch_id.in_(branch_ids or [0]), Sale.date >= date_from,
                                                                        Sale.date <= date_to).scalar()) for col in cols)
     period = _sums(db, brand_id, date_from, date_to)

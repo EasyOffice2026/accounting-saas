@@ -63,16 +63,16 @@ def create_sale(
     foodics_link: float = Form(0), foodics_wamd: float = Form(0),
     foodics_talabat: float = Form(0), foodics_keeta: float = Form(0),
     foodics_jahez: float = Form(0), foodics_other: float = Form(0),
-    foodics_snoonu: float = Form(0),
+    foodics_snoonu: float = Form(0), foodics_website: float = Form(0),
     physical_cash: float = Form(0), physical_knet: float = Form(0),
     physical_link: float = Form(0), physical_wamd: float = Form(0),
     physical_talabat: float = Form(0), physical_keeta: float = Form(0),
     physical_jahez: float = Form(0), physical_other: float = Form(0),
-    physical_snoonu: float = Form(0),
+    physical_snoonu: float = Form(0), physical_website: float = Form(0),
     cancelled_cash: float = Form(0), cancelled_knet: float = Form(0),
     cancelled_link: float = Form(0), cancelled_talabat: float = Form(0),
     cancelled_keeta: float = Form(0), cancelled_jahez: float = Form(0),
-    cancelled_snoonu: float = Form(0),
+    cancelled_snoonu: float = Form(0), cancelled_website: float = Form(0),
     notes: str = Form(""),
     attachment: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
@@ -103,16 +103,16 @@ def create_sale(
         foodics_link=foodics_link, foodics_wamd=foodics_wamd,
         foodics_talabat=foodics_talabat, foodics_keeta=foodics_keeta,
         foodics_jahez=foodics_jahez, foodics_other=foodics_other,
-        foodics_snoonu=foodics_snoonu,
+        foodics_snoonu=foodics_snoonu, foodics_website=foodics_website,
         physical_cash=physical_cash, physical_knet=physical_knet,
         physical_link=physical_link, physical_wamd=physical_wamd,
         physical_talabat=physical_talabat, physical_keeta=physical_keeta,
         physical_jahez=physical_jahez, physical_other=physical_other,
-        physical_snoonu=physical_snoonu,
+        physical_snoonu=physical_snoonu, physical_website=physical_website,
         cancelled_cash=cancelled_cash, cancelled_knet=cancelled_knet,
         cancelled_link=cancelled_link, cancelled_talabat=cancelled_talabat,
         cancelled_keeta=cancelled_keeta, cancelled_jahez=cancelled_jahez,
-        cancelled_snoonu=cancelled_snoonu,
+        cancelled_snoonu=cancelled_snoonu, cancelled_website=cancelled_website,
         notes=notes, attachment_path=attachment_path,
         created_by=user.id,
     )
@@ -150,16 +150,16 @@ def update_sale(
     foodics_link: float = Form(0), foodics_wamd: float = Form(0),
     foodics_talabat: float = Form(0), foodics_keeta: float = Form(0),
     foodics_jahez: float = Form(0), foodics_other: float = Form(0),
-    foodics_snoonu: float = Form(0),
+    foodics_snoonu: float = Form(0), foodics_website: float = Form(0),
     physical_cash: float = Form(0), physical_knet: float = Form(0),
     physical_link: float = Form(0), physical_wamd: float = Form(0),
     physical_talabat: float = Form(0), physical_keeta: float = Form(0),
     physical_jahez: float = Form(0), physical_other: float = Form(0),
-    physical_snoonu: float = Form(0),
+    physical_snoonu: float = Form(0), physical_website: float = Form(0),
     cancelled_cash: float = Form(0), cancelled_knet: float = Form(0),
     cancelled_link: float = Form(0), cancelled_talabat: float = Form(0),
     cancelled_keeta: float = Form(0), cancelled_jahez: float = Form(0),
-    cancelled_snoonu: float = Form(0),
+    cancelled_snoonu: float = Form(0), cancelled_website: float = Form(0),
     notes: str = Form(""),
     attachment: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
@@ -198,15 +198,18 @@ def update_sale(
     sale.foodics_talabat = foodics_talabat; sale.foodics_keeta = foodics_keeta
     sale.foodics_jahez = foodics_jahez; sale.foodics_other = foodics_other
     sale.foodics_snoonu = foodics_snoonu
+    sale.foodics_website = foodics_website
     sale.physical_cash = physical_cash; sale.physical_knet = physical_knet
     sale.physical_link = physical_link; sale.physical_wamd = physical_wamd
     sale.physical_talabat = physical_talabat; sale.physical_keeta = physical_keeta
     sale.physical_jahez = physical_jahez; sale.physical_other = physical_other
     sale.physical_snoonu = physical_snoonu
+    sale.physical_website = physical_website
     sale.cancelled_cash = cancelled_cash; sale.cancelled_knet = cancelled_knet
     sale.cancelled_link = cancelled_link; sale.cancelled_talabat = cancelled_talabat
     sale.cancelled_keeta = cancelled_keeta; sale.cancelled_jahez = cancelled_jahez
     sale.cancelled_snoonu = cancelled_snoonu
+    sale.cancelled_website = cancelled_website
     sale.notes = notes
     db.commit()
     db.refresh(sale)
@@ -237,12 +240,12 @@ def sales_summary(branch_id: Optional[int] = None, db: Session = Depends(get_db)
     total_foodics = sum(
         (r.foodics_cash or 0) + (r.foodics_knet or 0) + (r.foodics_link or 0) +
         (r.foodics_wamd or 0) + (r.foodics_talabat or 0) + (r.foodics_keeta or 0) +
-        (r.foodics_jahez or 0) + (r.foodics_other or 0) + (r.foodics_snoonu or 0) for r in rows
+        (r.foodics_jahez or 0) + (r.foodics_other or 0) + (r.foodics_snoonu or 0) + (r.foodics_website or 0) for r in rows
     )
     total_physical = sum(
         (r.physical_cash or 0) + (r.physical_knet or 0) + (r.physical_link or 0) +
         (r.physical_wamd or 0) + (r.physical_talabat or 0) + (r.physical_keeta or 0) +
-        (r.physical_jahez or 0) + (r.physical_other or 0) + (r.physical_snoonu or 0) for r in rows
+        (r.physical_jahez or 0) + (r.physical_other or 0) + (r.physical_snoonu or 0) + (r.physical_website or 0) for r in rows
     )
     return {
         "total_foodics": total_foodics,

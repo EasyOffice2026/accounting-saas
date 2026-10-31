@@ -450,7 +450,10 @@ def _migrate_columns():
             if "physical_snoonu" not in cols:
                 conn.execute(text("ALTER TABLE sales ADD COLUMN physical_snoonu FLOAT DEFAULT 0"))
                 conn.commit()
-            for ch in ["cash", "knet", "link", "talabat", "keeta", "jahez", "snoonu"]:
+            for col in ("foodics_website", "physical_website"):
+                if col not in cols:
+                    conn.execute(text(f"ALTER TABLE sales ADD COLUMN {col} FLOAT DEFAULT 0"))
+            for ch in ["cash", "knet", "link", "talabat", "keeta", "jahez", "snoonu", "website"]:
                 col = f"cancelled_{ch}"
                 if col not in cols:
                     conn.execute(text(f"ALTER TABLE sales ADD COLUMN {col} FLOAT DEFAULT 0"))

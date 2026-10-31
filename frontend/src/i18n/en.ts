@@ -58,6 +58,7 @@ export default {
   foodics_data: "Foodics Data",
   pos_data: "POS Data",
   snoonu: "Snoonu",
+  website: "Website",
   physical_data: "Physical Data",
   difference: "Difference",
   cash: "Cash",

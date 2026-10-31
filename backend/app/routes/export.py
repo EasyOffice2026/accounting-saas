@@ -18,7 +18,7 @@ from app.utils.dates import apply_date_range
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
-channels = ["cash", "knet", "link", "talabat", "keeta", "jahez"]
+channels = ["cash", "knet", "link", "talabat", "keeta", "jahez", "snoonu", "website"]
 
 
 def _branch_map(db: Session):

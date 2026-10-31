@@ -8,16 +8,16 @@ interface Branch { id: number; name: string; name_ar: string; whatsapp_number?: 
 interface Sale {
   id: number; branch_id: number; date: string;
   foodics_cash: number; foodics_knet: number; foodics_link: number; foodics_wamd: number;
-  foodics_talabat: number; foodics_keeta: number; foodics_jahez: number; foodics_other: number; foodics_snoonu: number;
+  foodics_talabat: number; foodics_keeta: number; foodics_jahez: number; foodics_other: number; foodics_snoonu: number; foodics_website: number;
   physical_cash: number; physical_knet: number; physical_link: number; physical_wamd: number;
-  physical_talabat: number; physical_keeta: number; physical_jahez: number; physical_other: number; physical_snoonu: number;
+  physical_talabat: number; physical_keeta: number; physical_jahez: number; physical_other: number; physical_snoonu: number; physical_website: number;
   cancelled_cash: number; cancelled_knet: number; cancelled_link: number;
-  cancelled_talabat: number; cancelled_keeta: number; cancelled_jahez: number; cancelled_snoonu: number;
+  cancelled_talabat: number; cancelled_keeta: number; cancelled_jahez: number; cancelled_snoonu: number; cancelled_website: number;
   attachment_path: string | null;
 }
 
 const displayChannels = ["cash", "knet", "link"] as const;
-const allChannels = ["cash", "knet", "link", "talabat", "jahez", "keeta", "snoonu"] as const;
+const allChannels = ["cash", "knet", "link", "talabat", "jahez", "keeta", "snoonu", "website"] as const;
 
 function sumRow(s: Sale, prefix: "foodics" | "physical" | "cancelled") {
   return allChannels.reduce((acc, ch) => acc + ((s as unknown as Record<string, number>)[`${prefix}_${ch}`] || 0), 0);
@@ -42,7 +42,7 @@ export default function SalesPage() {
   const [formDateLocked, setFormDateLocked] = useState(false);
   const [formData, setFormData] = useState<Record<string, number>>({});
 
-  const formChannels = ["cash", "knet", "link", "talabat", "keeta", "jahez", "snoonu"] as const;
+  const formChannels = ["cash", "knet", "link", "talabat", "keeta", "jahez", "snoonu", "website"] as const;
 
   const getFormVal = (prefix: string, ch: string) => formData[`${prefix}_${ch}`] || 0;
   const setFormVal = (prefix: string, ch: string, val: number) => {

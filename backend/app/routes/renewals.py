@@ -23,11 +23,13 @@ router = APIRouter(prefix="/api/renewals", tags=["renewals"])
 
 PERSONNEL_ROLE = "personnel"
 PERSONNEL_MANAGER_ROLE = "personnel_manager"
+HR_OFFICER_ROLE = "hr_officer"
 PERSONNEL_ROLES = (PERSONNEL_ROLE, PERSONNEL_MANAGER_ROLE)  # restricted to the personnel module
-RENEWAL_ROLES = ("owner", "manager", "accountant", PERSONNEL_ROLE, PERSONNEL_MANAGER_ROLE)
+RENEWAL_ROLES = ("owner", "manager", "accountant", PERSONNEL_ROLE, PERSONNEL_MANAGER_ROLE, HR_OFFICER_ROLE)
 APPROVER_ROLES = ("owner", "manager", PERSONNEL_MANAGER_ROLE)
 PAYER_ROLES = ("owner", "manager", "accountant", PERSONNEL_MANAGER_ROLE)  # confirm payment / manage the petty cash
 PERSONNEL_BRANCH_PREFIX = "Personnel Office"
+HR_BRANCH_PREFIX = "HR Office"  # HR Officer's own petty cash box, one per brand
 PERSONNEL_PAYMENT_METHOD = "personnel_petty_cash"
 PERSONNEL_PAYMENT_METHODS = (PERSONNEL_PAYMENT_METHOD, "personnel_bank_transfer", "personnel_knet")  # never branch cash
 PERSONNEL_TABS = ["dashboard", "renewals", "hr", "hr_employees", "cash", "expenses"]
@@ -96,6 +98,22 @@ def personnel_branch(db: Session, brand_id: int, create: bool = True) -> Optiona
     return b
 
 
+def hr_branch(db: Session, brand_id: int, create: bool = True) -> Optional[Branch]:
+    """The HR Office cash box branch for a brand (one per brand)."""
+    b = db.query(Branch).filter(Branch.brand_id == brand_id, Branch.name.like(f"{HR_BRANCH_PREFIX}%")).first()
+    if b or not create:
+        return b
+    brand = db.query(Brand).filter(Brand.id == brand_id).first()
+    suffix = f" - {brand.name_en}" if brand else ""
+    suffix_ar = f" - {brand.name_ar or brand.name_en}" if brand else ""
+    b = Branch(name=f"{HR_BRANCH_PREFIX}{suffix}", name_ar=f"مكتب الموارد البشرية{suffix_ar}",
+               brand_id=brand_id, is_central_kitchen=False, is_active=True)
+    db.add(b)
+    db.commit()
+    db.refresh(b)
+    return b
+
+
 def is_personnel_branch(b: Branch) -> bool:
     return (b.name or "").startswith(PERSONNEL_BRANCH_PREFIX)
 
@@ -128,6 +146,7 @@ def seed_renewals(db: Session):
     brands = db.query(Brand).all()
     for br in brands:
         personnel_branch(db, br.id)
+        hr_branch(db, br.id)
 
     for username, password, full_name, role in (
         ("mandoob", "Mandoob@2026", "Mandoob - Personnel Officer", PERSONNEL_ROLE),

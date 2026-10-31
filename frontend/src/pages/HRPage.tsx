@@ -175,7 +175,8 @@ export default function HRPage() {
   const [showLeft, setShowLeft] = useState(false);
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-  const isManager = currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant";
+  const isApprover = currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant";
+  const isManager = isApprover || currentUser.role === "hr_officer";
   const readOnly = !!currentUser.read_only && !(currentUser.editable_tabs || []).includes("hr");
   const isPersonnel = ["personnel", "personnel_manager"].includes(currentUser.role);
   const canViewSalary = ["owner", "manager", "accountant"].includes(currentUser.role);
@@ -242,7 +243,7 @@ export default function HRPage() {
         <span className={`px-2 py-0.5 rounded text-xs font-medium ${badge}`}>
           {s === "pending_approval" ? t("pending_approval") : t(s)}
         </span>
-        {isManager && s === "pending_approval" && (
+        {isApprover && s === "pending_approval" && (
           <div className="flex gap-1">
             {!readOnly && (<button onClick={() => handleApproval(type, id, "approve")}
               className="px-2 py-0.5 bg-green-500 text-white rounded text-xs hover:bg-green-600">{t("approve")}</button>)}
@@ -904,8 +905,8 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
         {(["employees", "salary", "transfers", "loans", "benefits", "deductions", "leaves"] as Tab[]).filter(tb => {
           if (currentUser.role === "owner") return true;
-          const restrictedTabs: Tab[] = ["salary", "loans"];
-          if (restrictedTabs.includes(tb) && !canViewSalary) return false;
+          if (tb === "salary" && !canViewSalary) return false;
+          if (tb === "loans" && !canViewSalary && currentUser.role !== "hr_officer") return false;
           const userTabs: string[] | null = currentUser.allowed_tabs || null;
           if (userTabs) {
             const hrSubKey = "hr_" + tb;

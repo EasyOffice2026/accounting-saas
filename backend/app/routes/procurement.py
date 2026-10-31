@@ -379,7 +379,7 @@ def delivery_locations(brand_id: Optional[int] = None, db: Session = Depends(get
     """Operating branch names offered as delivery reference (text only, no accounting link)."""
     _require(user)
     q = db.query(Branch).filter(Branch.is_active == True, ~Branch.name.like("Personnel Office%"),
-                                ~Branch.name.like(f"{PURCHASE_BRANCH_PREFIX}%"))
+                                ~Branch.name.like(f"{PURCHASE_BRANCH_PREFIX}%"), ~Branch.name.like("HR Office%"))
     if brand_id:
         q = q.filter(Branch.brand_id == brand_id)
     return [{"name": b.name, "name_ar": b.name_ar or ""} for b in q.order_by(Branch.name).all()]

@@ -92,7 +92,7 @@ def get_current_user(
 
 
 PURCHASE_ROLES = ("purchase_officer", "purchase_manager")
-MODULE_RESTRICTED_ROLES = ("personnel", "personnel_manager") + PURCHASE_ROLES
+MODULE_RESTRICTED_ROLES = ("personnel", "personnel_manager", "hr_officer") + PURCHASE_ROLES
 
 # API prefixes the Purchase Office roles may call; everything else under /api is refused server-side.
 PURCHASE_ALLOWED_PREFIXES = ("/api/auth/", "/api/procurement/", "/api/cash/", "/api/branches/", "/api/hr/brands", "/api/export/cash/",

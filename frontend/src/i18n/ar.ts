@@ -343,6 +343,7 @@ export default {
   staff: "موظف",
   personnel: "مسؤول شؤون الموظفين",
   personnel_manager: "مدير شؤون الموظفين",
+  hr_officer: "مسؤول الموارد البشرية",
   active: "نشط",
   inactive: "غير نشط",
   no_branch: "جميع الفروع",

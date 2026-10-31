@@ -46,7 +46,8 @@ export default function CashPage() {
       : [{ value: "deposit", label: t("bank_deposit") }, { value: "withdrawal", label: t("withdrawal") }];
 
   useEffect(() => {
-    const scope = ["personnel", "personnel_manager"].includes(user?.role || "") ? "?scope=personnel"
+    const scope = user?.role === "hr_officer" ? "?scope=hr_officer"
+      : ["personnel", "personnel_manager"].includes(user?.role || "") ? "?scope=personnel"
       : ["purchase_officer", "purchase_manager"].includes(user?.role || "") ? "?scope=purchase"
       : ["owner", "manager", "accountant"].includes(user?.role || "") ? "" : "?scope=operating";
     apiGet(`/api/branches/${scope}`).then((bs: Branch[]) => {
@@ -102,7 +103,7 @@ export default function CashPage() {
   const boxChannels = channels.filter(c => !c.brand_id || !branchBrand || c.brand_id === branchBrand);
 
   const isStaff = user?.role === "staff";
-  const readOnly = user?.role === "personnel" || user?.role === "purchase_officer" || isStaff;
+  const readOnly = user?.role === "personnel" || user?.role === "purchase_officer" || user?.role === "hr_officer" || isStaff;
   const canSeeChannels = CHANNEL_VIEW_ROLES.includes(user?.role || "");
   const canSeeDaily = DAILY_ROLES.includes(user?.role || "");
 

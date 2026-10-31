@@ -126,7 +126,7 @@ export default function RenewalsPage() {
   const ro = !!user?.read_only;
   const isApprover = !ro && ["owner", "manager", "personnel_manager"].includes(user?.role || "");
   const canPay = !ro && (isApprover || user?.role === "accountant");
-  const canComplete = !ro && (user?.role === "personnel" || canPay);
+  const canComplete = !ro && (user?.role === "personnel" || user?.role === "hr_officer" || canPay);
 
   const [brandId, setBrandId] = useState<number | null>(selectedBrand?.id ?? (brands[0]?.id ?? null));
   useEffect(() => { if (selectedBrand) setBrandId(selectedBrand.id); }, [selectedBrand]);

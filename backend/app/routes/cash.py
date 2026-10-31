@@ -14,8 +14,8 @@ from app.routes.channels import channel_for_cash_box
 from app.models.branch import Branch
 from app.models.channel import PaymentChannel
 
-PERSONNEL_ROLES = ("personnel", "personnel_manager", "purchase_officer", "purchase_manager")  # office-box-only roles
-VIEW_ONLY_ROLES = ("personnel", "purchase_officer", "staff")  # branch cash entries are made by management / accountants only
+PERSONNEL_ROLES = ("personnel", "personnel_manager", "purchase_officer", "purchase_manager", "hr_officer")  # office-box-only roles
+VIEW_ONLY_ROLES = ("personnel", "purchase_officer", "staff", "hr_officer")  # branch cash entries are made by management / accountants only
 
 router = APIRouter(prefix="/api/cash", tags=["cash"])
 
@@ -24,8 +24,11 @@ def _personnel_branch_ids(db: Session, user: User) -> list:
     from app.models.branch import Branch
     from app.routes.renewals import PERSONNEL_BRANCH_PREFIX
     from app.routes.procurement import PURCHASE_BRANCH_PREFIX
-    prefix = PURCHASE_BRANCH_PREFIX if user.role.startswith("purchase") else PERSONNEL_BRANCH_PREFIX
-    q = db.query(Branch.id).filter(Branch.name.like(f"{prefix}%"))
+    from app.routes.renewals import HR_BRANCH_PREFIX
+    from sqlalchemy import or_
+    prefixes = ([PURCHASE_BRANCH_PREFIX] if user.role.startswith("purchase")
+                else [PERSONNEL_BRANCH_PREFIX, HR_BRANCH_PREFIX] if user.role == "hr_officer" else [PERSONNEL_BRANCH_PREFIX])
+    q = db.query(Branch.id).filter(or_(*[Branch.name.like(f"{p}%") for p in prefixes]))
     allowed = user.get_allowed_brands()
     if allowed is not None:
         q = q.filter(Branch.brand_id.in_(allowed))
@@ -328,6 +331,7 @@ def _daily_rows(db: Session, user: User, target_date: date_cls, brand_id: int = 
         Branch.is_central_kitchen == False,  # noqa: E712
         ~Branch.name.like("Personnel Office%"),
         ~Branch.name.like("Purchase Office%"),
+        ~Branch.name.like("HR Office%"),
         ~Branch.name.like("Administration%"),
         ~Branch.name.like("Central%"),
     )

@@ -45,6 +45,16 @@ def delete_category(category_id: int, db: Session = Depends(get_db),
     return {"status": "deleted"}
 
 
+def _hr_office_ids(db: Session) -> list:
+    return [b.id for b in db.query(Branch.id).filter(Branch.name.like("HR Office%")).all()]
+
+
+def _guard_hr_officer(db: Session, user: User, branch_id: Optional[int]):
+    """HR Officer records expenses only on the HR Office petty cash boxes."""
+    if user.role == "hr_officer" and branch_id not in _hr_office_ids(db):
+        raise HTTPException(403, "HR Officer can only record expenses on the HR Office petty cash")
+
+
 @router.get("/")
 def list_expenses(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
                   date_from: Optional[str] = None, date_to: Optional[str] = None,
@@ -61,6 +71,8 @@ def list_expenses(branch_id: Optional[int] = None, brand_id: Optional[int] = Non
         q = q.filter(Expense.branch_id.in_(bb_ids))
     if user.role in ("personnel", "personnel_manager"):
         q = q.filter(Expense.renewal_request_id.isnot(None))
+    elif user.role == "hr_officer":
+        q = q.filter(Expense.branch_id.in_(_hr_office_ids(db)))
     q = apply_date_range(q, Expense.date, date_from, date_to)
     return q.order_by(Expense.date.desc()).all()
 
@@ -75,6 +87,7 @@ def create_expense(
     attachment: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    _guard_hr_officer(db, user, branch_id)
     channel_id = channel_for_payment(db, channel_id, user) if payment_method != "cash" else None
     attachment_path = None
     if attachment and attachment.filename:
@@ -145,6 +158,8 @@ def update_expense(
     if exp.salary_payment_id:
         from fastapi import HTTPException
         raise HTTPException(400, "This expense is managed from HR Payroll")
+    _guard_hr_officer(db, user, exp.branch_id)
+    _guard_hr_officer(db, user, branch_id)
     exp.branch_id = branch_id
     exp.category_id = category_id
     exp.supplier_id = supplier_id if supplier_id else None
@@ -162,13 +177,14 @@ def update_expense(
 @router.delete("/{expense_id}")
 def delete_expense(expense_id: int, db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in ("owner", "manager", "accountant", "hr_officer"):
         from fastapi import HTTPException
         raise HTTPException(403, "Only owner/manager can delete expenses")
     exp = db.query(Expense).filter(Expense.id == expense_id).first()
     if not exp:
         from fastapi import HTTPException
         raise HTTPException(404, "Expense not found")
+    _guard_hr_officer(db, user, exp.branch_id)
     if exp.contract_payment_id:
         from fastapi import HTTPException
         raise HTTPException(400, "This expense is managed from Contracts & Subscriptions")

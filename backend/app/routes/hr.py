@@ -23,6 +23,7 @@ def _personnel_read_only(request: Request, user: User = Depends(get_current_user
 router = APIRouter(prefix="/api/hr", tags=["hr"], dependencies=[Depends(_personnel_read_only)])
 
 SALARY_VISIBLE_ROLES = ("owner", "manager", "accountant")
+HR_EDIT_ROLES = SALARY_VISIBLE_ROLES + ("hr_officer",)  # HR Officer edits HR records but never salaries
 
 
 def _brand_branch_ids(db: Session, brand_id: Optional[int]) -> Optional[list]:
@@ -235,7 +236,7 @@ def list_employers(db: Session = Depends(get_db), _=Depends(get_current_user)):
 @router.post("/employers")
 def create_employer(name: str = Form(...), name_ar: str = Form(""),
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in SALARY_VISIBLE_ROLES:
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     name = name.strip()
     if not name:
@@ -253,7 +254,7 @@ def create_employer(name: str = Form(...), name_ar: str = Form(""),
 @router.delete("/employers/{employer_id}")
 def delete_employer(employer_id: int, db: Session = Depends(get_db),
                     user: User = Depends(get_current_user)):
-    if user.role not in SALARY_VISIBLE_ROLES:
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     e = db.query(Employer).filter(Employer.id == employer_id).first()
     if not e:
@@ -338,12 +339,12 @@ def update_employee(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     can_edit_salary = user.role in SALARY_VISIBLE_ROLES
-    if not can_edit_salary and not (user.role == "staff" and user.branch_id):
+    if not can_edit_salary and not (user.role == "staff" and user.branch_id) and user.role != "hr_officer":
         raise HTTPException(403, "Not authorized")
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(404, "Employee not found")
-    if not can_edit_salary and emp.branch_id != user.branch_id:
+    if not can_edit_salary and user.role != "hr_officer" and emp.branch_id != user.branch_id:
         raise HTTPException(403, "Not authorized")
     # Duplicate Civil ID check (exclude self)
     if civil_id and civil_id.strip():
@@ -380,7 +381,7 @@ def delete_employee(
     emp_id: int,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    if user.role != "owner" and "hr" not in user.get_editable_tabs():
+    if user.role not in ("owner", "hr_officer") and "hr" not in user.get_editable_tabs():
         raise HTTPException(403, "Not authorized")
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
@@ -1153,7 +1154,7 @@ def reject_transfer(
 @router.get("/loans")
 def list_loans(employee_id: Optional[int] = None, brand_id: Optional[int] = None,
                db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in SALARY_VISIBLE_ROLES:
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     q = db.query(AdvanceLoan)
     staff_emp_ids = _staff_emp_ids(db, user)
@@ -1181,7 +1182,7 @@ def create_loan(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     loan = AdvanceLoan(
         employee_id=employee_id,
@@ -1214,7 +1215,7 @@ def update_loan(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     loan = db.query(AdvanceLoan).filter(AdvanceLoan.id == loan_id).first()
     if not loan:
@@ -1235,7 +1236,7 @@ def update_loan(
 @router.delete("/loans/{loan_id}")
 def delete_loan(loan_id: int, db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     loan = db.query(AdvanceLoan).filter(AdvanceLoan.id == loan_id).first()
     if not loan:
@@ -1250,7 +1251,7 @@ def delete_loan(loan_id: int, db: Session = Depends(get_db),
 @router.get("/loans/{loan_id}/repayments")
 def list_loan_repayments(loan_id: int, db: Session = Depends(get_db),
                          user: User = Depends(get_current_user)):
-    if user.role not in SALARY_VISIBLE_ROLES:
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     rows = db.query(LoanRepayment).filter(
         LoanRepayment.loan_id == loan_id
@@ -1269,7 +1270,7 @@ def loan_statement(employee_id: int, db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
     """Unified transaction ledger for one employee: every advance/loan taken
     plus every repayment/return, chronological, with a running balance."""
-    if user.role not in SALARY_VISIBLE_ROLES:
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     staff_emp_ids = _staff_emp_ids(db, user)
     if staff_emp_ids is not None and employee_id not in staff_emp_ids:
@@ -1341,7 +1342,7 @@ def create_loan_repayment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     loan = db.query(AdvanceLoan).filter(AdvanceLoan.id == loan_id).first()
     if not loan:
@@ -1368,7 +1369,7 @@ def create_loan_repayment(
 @router.delete("/loans/repayments/{repayment_id}")
 def delete_loan_repayment(repayment_id: int, db: Session = Depends(get_db),
                           user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     rep = db.query(LoanRepayment).filter(LoanRepayment.id == repayment_id).first()
     if not rep:
@@ -1422,7 +1423,7 @@ def create_benefit_deduction(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    is_mgr = user.role in ("owner", "manager", "accountant")
+    is_mgr = user.role in HR_EDIT_ROLES
     bd = StaffBenefitDeduction(
         employee_id=employee_id,
         category=category,
@@ -1455,7 +1456,7 @@ def update_benefit_deduction(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     bd = db.query(StaffBenefitDeduction).filter(StaffBenefitDeduction.id == bd_id).first()
     if not bd:
@@ -1475,7 +1476,7 @@ def update_benefit_deduction(
 @router.delete("/benefits-deductions/{bd_id}")
 def delete_benefit_deduction(bd_id: int, db: Session = Depends(get_db),
                              user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     bd = db.query(StaffBenefitDeduction).filter(StaffBenefitDeduction.id == bd_id).first()
     if not bd:
@@ -1528,7 +1529,7 @@ def create_leave(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    is_mgr = user.role in ("owner", "manager", "accountant")
+    is_mgr = user.role in HR_EDIT_ROLES
     sd = date.fromisoformat(start_date)
     ed = date.fromisoformat(end_date)
     days = (ed - sd).days + 1
@@ -1565,7 +1566,7 @@ def update_leave(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     rec = db.query(LeaveRecord).filter(LeaveRecord.id == leave_id).first()
     if not rec:
@@ -1590,7 +1591,7 @@ def update_leave(
 @router.delete("/leaves/{leave_id}")
 def delete_leave(leave_id: int, db: Session = Depends(get_db),
                  user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     rec = db.query(LeaveRecord).filter(LeaveRecord.id == leave_id).first()
     if not rec:
@@ -1636,7 +1637,7 @@ def _resignation_to_dict(r):
 
 @router.get("/resignations")
 def list_resignations(brand_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in SALARY_VISIBLE_ROLES:
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     q = db.query(Resignation)
     staff_emp_ids = _staff_emp_ids(db, user)
@@ -1663,7 +1664,7 @@ def create_resignation(
     reason: str = Form(""), resignation_date: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    if user.role not in SALARY_VISIBLE_ROLES:
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     r = Resignation(
         employee_id=employee_id,
@@ -1720,7 +1721,7 @@ def update_resignation(
     status: str = Form("draft"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    if user.role not in SALARY_VISIBLE_ROLES:
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     r = db.query(Resignation).filter(Resignation.id == res_id).first()
     if not r:
@@ -1777,7 +1778,7 @@ def update_resignation(
 @router.delete("/resignations/{res_id}")
 def delete_resignation(res_id: int, db: Session = Depends(get_db),
                        user: User = Depends(get_current_user)):
-    if user.role not in SALARY_VISIBLE_ROLES:
+    if user.role not in HR_EDIT_ROLES:
         raise HTTPException(403, "Not authorized")
     r = db.query(Resignation).filter(Resignation.id == res_id).first()
     if not r:

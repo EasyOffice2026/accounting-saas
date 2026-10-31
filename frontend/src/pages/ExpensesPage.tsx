@@ -51,7 +51,8 @@ export default function ExpensesPage() {
   const [branchFilter, setBranchFilter] = useState<string>("");
   const [range, setRange] = useState<DateRange>({ from: "", to: "" });
 
-  const isManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant";
+  const isHrOfficer = user?.role === "hr_officer";
+  const isManager = user?.role === "owner" || user?.role === "manager" || user?.role === "accountant" || isHrOfficer;
   const isStaff = user?.role === "staff";
   const readOnly = !!user?.read_only && !(user.editable_tabs || []).includes("expenses");
 
@@ -68,7 +69,7 @@ export default function ExpensesPage() {
   useEffect(() => { loadExpenses(); }, [range]);
 
   useEffect(() => {
-    apiGet("/api/branches/").then(setBranches);
+    apiGet(isHrOfficer ? "/api/branches/?scope=hr" : "/api/branches/").then(setBranches);
     loadCategories();
     apiGet("/api/purchases/suppliers").then(setSuppliers);
   }, []);

@@ -19,7 +19,7 @@ const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles
   { path: "/procurement", icon: ClipboardList, key: "procurement", roles: ["purchase_officer", "purchase_manager"] },
   { path: "/expenses", icon: Receipt, key: "expenses" },
   { path: "/hr", icon: Users, key: "hr" },
-  { path: "/renewals", icon: IdCard, key: "renewals", roles: ["owner", "manager", "accountant", "personnel", "personnel_manager"] },
+  { path: "/renewals", icon: IdCard, key: "renewals", roles: ["owner", "manager", "accountant", "personnel", "personnel_manager", "hr_officer"] },
 
   { path: "/cash", icon: Banknote, key: "cash_management" },
   { path: "/transfers", icon: ArrowLeftRight, key: "internal_transfer" },
@@ -102,7 +102,7 @@ export default function Layout() {
           {navItems
             .filter(item => !item.accounting || !!user?.accounting)
             .filter(item => !item.roles || item.roles.includes(user?.role || ""))
-            .filter(item => !["personnel", "personnel_manager"].includes(user?.role || "") || PERSONNEL_NAV.includes(item.key))
+            .filter(item => !["personnel", "personnel_manager", "hr_officer"].includes(user?.role || "") || PERSONNEL_NAV.includes(item.key))
             .filter(item => !["purchase_officer", "purchase_manager"].includes(user?.role || "") || PURCHASE_NAV.includes(item.key))
             .filter(item => user?.role !== "staff" || item.key !== "dashboard")
             .filter(item => {

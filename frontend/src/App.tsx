@@ -41,7 +41,7 @@ function ProtectedRoutes() {
     return <BrandSelectPage onSelect={() => setBrandChosen(true)} />;
   }
 
-  const isPersonnel = ["personnel", "personnel_manager"].includes(user?.role || "");
+  const isPersonnel = ["personnel", "personnel_manager", "hr_officer"].includes(user?.role || "");
   const isPurchase = ["purchase_officer", "purchase_manager"].includes(user?.role || "");
   const restricted = isPersonnel || isPurchase;
   const isBranch = user?.role === "staff" || (!!user?.read_only && !!user?.allowed_tabs && !user.allowed_tabs.includes("dashboard"));

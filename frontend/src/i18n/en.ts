@@ -343,6 +343,7 @@ export default {
   staff: "Staff",
   personnel: "Personnel Officer",
   personnel_manager: "Personnel Manager",
+  hr_officer: "HR Officer",
   active: "Active",
   inactive: "Inactive",
   no_branch: "All Branches",

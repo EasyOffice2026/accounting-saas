@@ -18,7 +18,7 @@ from app.utils.dates import apply_date_range
 router = APIRouter(prefix="/api/purchases", tags=["purchases"], dependencies=[Depends(get_business_user)])
 # Supplier / item / category master data is shared with the Purchase Office, so it is not business-guarded.
 def _master_user(user: User = Depends(get_current_user)) -> User:
-    if user.role.startswith("personnel"):
+    if user.role.startswith("personnel") or user.role == "hr_officer":
         raise HTTPException(status_code=403, detail="Not available for this role")
     return user
 

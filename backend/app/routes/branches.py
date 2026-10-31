@@ -1,3 +1,4 @@
+from sqlalchemy import or_
 from fastapi import APIRouter, Depends, Query, Form, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -17,10 +18,14 @@ def list_branches(brand_id: Optional[int] = None, scope: Optional[str] = None,
         q = q.filter(Branch.brand_id == brand_id)
     if scope == "personnel":
         q = q.filter(Branch.name.like("Personnel Office%"))
+    elif scope == "hr_officer":
+        q = q.filter(or_(Branch.name.like("Personnel Office%"), Branch.name.like("HR Office%")))
+    elif scope == "hr":
+        q = q.filter(Branch.name.like("HR Office%"))
     elif scope == "purchase":
         q = q.filter(Branch.name.like("Purchase Office%"))
     elif scope == "operating":
-        q = q.filter(~Branch.name.like("Personnel Office%"), ~Branch.name.like("Purchase Office%"))
+        q = q.filter(~Branch.name.like("Personnel Office%"), ~Branch.name.like("Purchase Office%"), ~Branch.name.like("HR Office%"))
     rows = q.all()
     return [{"id": b.id, "name": b.name, "name_ar": b.name_ar or "",
              "brand_id": b.brand_id, "is_central_kitchen": b.is_central_kitchen,

@@ -13,7 +13,12 @@ from app.utils.auth import get_current_user
 from app.routes.hr import _brand_branch_ids
 from app.routes.export import _respond
 
-router = APIRouter(prefix="/api/transfers", tags=["transfers"])
+def _no_hr_officer(user: User = Depends(get_current_user)):
+    if user.role == "hr_officer":
+        raise HTTPException(403, "Not available for this role")
+
+
+router = APIRouter(prefix="/api/transfers", tags=["transfers"], dependencies=[Depends(_no_hr_officer)])
 
 
 ITEM_ORDER = (TransferItem.sort_order.is_(None), TransferItem.sort_order, func.lower(TransferItem.name))

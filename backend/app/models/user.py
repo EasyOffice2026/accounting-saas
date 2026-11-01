@@ -19,6 +19,7 @@ class User(Base):
     allowed_brands = Column(Text, nullable=True)  # JSON array of brand ids, null = all/derive from branch
     read_only = Column(Boolean, default=False, nullable=False, server_default="0")
     current_month_only = Column(Boolean, default=False, nullable=False, server_default="0")
+    expense_category_view = Column(Boolean, default=False, nullable=False, server_default="0")  # Expenses only listed per chosen category
     editable_tabs = Column(Text, nullable=True)  # JSON array of tab keys a read_only user may still edit
 
     def get_editable_tabs(self) -> list[str]:

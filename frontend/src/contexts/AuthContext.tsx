@@ -13,6 +13,7 @@ interface UserInfo {
   read_only?: boolean;
   editable_tabs?: string[];
   current_month_only?: boolean;
+  expense_category_view?: boolean;
   accounting?: boolean;
 }
 

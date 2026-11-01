@@ -48,6 +48,7 @@ def _user_payload(db: Session, user: User) -> dict:
         "read_only": bool(user.read_only),
         "editable_tabs": user.get_editable_tabs(),
         "current_month_only": bool(user.current_month_only),
+        "expense_category_view": bool(user.expense_category_view),
         "accounting": can_use_accounting(db, user),
     }
 

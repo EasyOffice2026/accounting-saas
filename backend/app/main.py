@@ -430,6 +430,9 @@ def _migrate_columns():
             if "current_month_only" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN current_month_only BOOLEAN NOT NULL DEFAULT 0"))
                 conn.commit()
+            if "expense_category_view" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN expense_category_view BOOLEAN NOT NULL DEFAULT 0"))
+                conn.commit()
 
         # Suppliers: add category_id
         if "suppliers" in insp.get_table_names():

@@ -294,9 +294,13 @@ def _purchases_data(db, user, branch_id, brand_id=None, date_from=None, date_to=
     return header, data
 
 
-def _expenses_data(db, user, branch_id, brand_id=None, date_from=None, date_to=None):
+def _expenses_data(db, user, branch_id, brand_id=None, date_from=None, date_to=None, category_id=None):
     bmap = _branch_map(db)
     q = db.query(Expense)
+    if category_id:
+        q = q.filter(Expense.category_id == category_id)
+    elif user.expense_category_view:
+        q = q.filter(False)
     bb_ids = _brand_branch_ids(db, brand_id)
     if branch_id:
         q = q.filter(Expense.branch_id == branch_id)
@@ -488,9 +492,10 @@ def export_purchases(fmt: str, branch_id: Optional[int] = None, brand_id: Option
 
 @router.get("/expenses/{fmt}")
 def export_expenses(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[int] = None,
-                    date_from: Optional[str] = None, date_to: Optional[str] = None,
+                    date_from: Optional[str] = None, date_to: Optional[str] = None, category_id: Optional[int] = None,
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    header, data = _expenses_data(db, user, branch_id, brand_id=brand_id, date_from=date_from, date_to=date_to)
+    header, data = _expenses_data(db, user, branch_id, brand_id=brand_id, date_from=date_from, date_to=date_to,
+                                  category_id=category_id)
     return _respond(fmt, header, data, "expenses", "Expenses Report")
 
 

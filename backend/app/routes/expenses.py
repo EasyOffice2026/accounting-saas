@@ -58,6 +58,7 @@ def _guard_hr_officer(db: Session, user: User, branch_id: Optional[int]):
 @router.get("/")
 def list_expenses(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
                   date_from: Optional[str] = None, date_to: Optional[str] = None,
+                  category_id: Optional[int] = None,
                   db: Session = Depends(get_db),
                   user: User = Depends(get_current_user)):
     q = db.query(Expense)
@@ -73,6 +74,10 @@ def list_expenses(branch_id: Optional[int] = None, brand_id: Optional[int] = Non
         q = q.filter(Expense.renewal_request_id.isnot(None))
     elif user.role == "hr_officer":
         q = q.filter(Expense.branch_id.in_(_hr_office_ids(db)))
+    if user.expense_category_view and not category_id:
+        return []
+    if category_id:
+        q = q.filter(Expense.category_id == category_id)
     q = apply_date_range(q, Expense.date, date_from, date_to)
     return q.order_by(Expense.date.desc()).all()
 
@@ -201,6 +206,8 @@ def delete_expense(expense_id: int, db: Session = Depends(get_db),
 
 @router.get("/supplier-ledger")
 def expense_supplier_ledger(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.expense_category_view:
+        raise HTTPException(403, "Not available for this login")
     suppliers = db.query(Supplier).order_by(Supplier.name).all()
     branches = {b.id: b.name for b in db.query(Branch).all()}
     result = []

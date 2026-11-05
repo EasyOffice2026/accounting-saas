@@ -18,6 +18,8 @@ class Sale(Base):
     foodics_keeta = Column(Float, default=0)
     foodics_jahez = Column(Float, default=0)
     foodics_other = Column(Float, default=0)
+    foodics_snoonu = Column(Float, default=0)
+    foodics_website = Column(Float, default=0)
     # Physical data
     physical_cash = Column(Float, default=0)
     physical_knet = Column(Float, default=0)
@@ -27,6 +29,17 @@ class Sale(Base):
     physical_keeta = Column(Float, default=0)
     physical_jahez = Column(Float, default=0)
     physical_other = Column(Float, default=0)
+    physical_snoonu = Column(Float, default=0)
+    physical_website = Column(Float, default=0)  # website orders, paid through TAP
+    # Cancelled/Returns data
+    cancelled_cash = Column(Float, default=0)
+    cancelled_knet = Column(Float, default=0)
+    cancelled_link = Column(Float, default=0)
+    cancelled_talabat = Column(Float, default=0)
+    cancelled_keeta = Column(Float, default=0)
+    cancelled_jahez = Column(Float, default=0)
+    cancelled_snoonu = Column(Float, default=0)
+    cancelled_website = Column(Float, default=0)
     # Attachment
     attachment_path = Column(String, nullable=True)
     notes = Column(Text, nullable=True)

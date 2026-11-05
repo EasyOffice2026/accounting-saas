@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiFetch, apiDownload } from "../contexts/api";
+import OvertimeTab from "../components/OvertimeTab";
 import ChannelSelect, { useChannels, needsChannel, CHANNEL_START_DATE } from "../components/ChannelSelect";
 
 interface Branch { id: number; name: string; name_ar?: string; }
@@ -68,7 +69,7 @@ interface LeaveRec {
 }
 interface BrandItem { id: number; name_en: string; name_ar: string; }
 
-type Tab = "employees" | "salary" | "transfers" | "loans" | "benefits" | "deductions" | "leaves";
+type Tab = "employees" | "salary" | "overtime" | "transfers" | "loans" | "benefits" | "deductions" | "leaves";
 
 export default function HRPage() {
   const { t, i18n } = useTranslation();
@@ -175,11 +176,15 @@ export default function HRPage() {
   const [showLeft, setShowLeft] = useState(false);
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-  const isApprover = currentUser.role === "owner" || currentUser.role === "manager" || currentUser.role === "accountant";
-  const isManager = isApprover || currentUser.role === "hr_officer";
+  const isManager = ["owner", "manager", "accountant", "hr_officer"].includes(currentUser.role);
+  const isApprover = currentUser.role === "owner" || !!currentUser.hr_approver;
   const readOnly = !!currentUser.read_only && !(currentUser.editable_tabs || []).includes("hr");
   const isPersonnel = ["personnel", "personnel_manager"].includes(currentUser.role);
-  const canViewSalary = ["owner", "manager", "accountant"].includes(currentUser.role);
+  const canViewSalary = ["owner", "manager", "accountant", "hr_officer"].includes(currentUser.role);
+  const [benefitCalc, setBenefitCalc] = useState<"amount" | "days">("amount");
+  const [benefitEmp, setBenefitEmp] = useState("");
+  const [benefitDays, setBenefitDays] = useState("");
+  const [benefitAmount, setBenefitAmount] = useState("");
 
   useEffect(() => {
     apiGet("/api/branches/").then((b: any[]) => setBranches(b));
@@ -903,9 +908,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
-        {(["employees", "salary", "transfers", "loans", "benefits", "deductions", "leaves"] as Tab[]).filter(tb => {
+        {(["employees", "salary", "overtime", "transfers", "loans", "benefits", "deductions", "leaves"] as Tab[]).filter(tb => {
           if (currentUser.role === "owner") return true;
-          if (tb === "salary" && !canViewSalary) return false;
+          if ((tb === "salary" || tb === "overtime") && !canViewSalary) return false;
           if (tb === "loans" && !canViewSalary && currentUser.role !== "hr_officer") return false;
           const userTabs: string[] | null = currentUser.allowed_tabs || null;
           if (userTabs) {
@@ -914,7 +919,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
           }
           return true;
         }).map(tb => {
-          const label = tb === "benefits" ? "benefits_tab" : tb === "deductions" ? "deductions_tab" : tb === "loans" ? "advance_loan" : tb === "transfers" ? "staff_transfers" : tb === "leaves" ? "leaves_absences" : tb;
+          const label = tb === "overtime" ? "overtime_sheet" : tb === "benefits" ? "benefits_tab" : tb === "deductions" ? "deductions_tab" : tb === "loans" ? "advance_loan" : tb === "transfers" ? "staff_transfers" : tb === "leaves" ? "leaves_absences" : tb;
           return (
             <button key={tb} onClick={() => setTab(tb)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
@@ -1989,6 +1994,10 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
         </div>
       )}
 
+      {tab === "overtime" && (
+        <OvertimeTab employees={employees} canApprove={isApprover} readOnly={readOnly} onApproval={handleApproval} />
+      )}
+
       {/* Benefits Tab (Incentive, Bonus, Leave Salary, Ticket) */}
       {tab === "benefits" && (
         <div>
@@ -2002,11 +2011,30 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("employee")}</label>
-                  <select name="employee_id" required defaultValue={editingBenefit?.employee_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <select name="employee_id" required defaultValue={editingBenefit?.employee_id || ""} onChange={e => setBenefitEmp(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">{t("select_employee")}</option>
                     {employees.map(e => <option key={e.id} value={e.id}>{e.name_ar || e.name}</option>)}
                   </select>
+                  {(() => { const be = employees.find(x => String(x.id) === (benefitEmp || String(editingBenefit?.employee_id || ""))); return be ? (
+                    <p className="text-xs text-gray-600 mt-1">{t("monthly_salary")}: KD {(be.actual_salary || 0).toFixed(3)} · {t("daily_rate")}: KD {((be.actual_salary || 0) / 30).toFixed(3)}</p>) : null; })()}
                 </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("calculate_by")}</label>
+                  <select value={benefitCalc} onChange={e => setBenefitCalc(e.target.value as "amount" | "days")} className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="amount">{t("by_amount")}</option>
+                    <option value="days">{t("by_days")}</option>
+                  </select>
+                </div>
+                {benefitCalc === "days" && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("days")}</label>
+                    <input type="number" step="0.5" min="0" value={benefitDays} onChange={e => {
+                      setBenefitDays(e.target.value);
+                      const be = employees.find(x => String(x.id) === (benefitEmp || String(editingBenefit?.employee_id || "")));
+                      if (be) setBenefitAmount(((be.actual_salary || 0) / 30 * (parseFloat(e.target.value) || 0)).toFixed(3));
+                    }} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("category")}</label>
                   <select name="category" required defaultValue={editingBenefit?.category || "incentive"} className="w-full px-3 py-2 border rounded-lg text-sm">
@@ -2019,7 +2047,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("amount")}</label>
-                  <input type="number" step="0.001" name="amount" required defaultValue={editingBenefit?.amount || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  {benefitCalc === "days"
+                    ? <input type="number" step="0.001" name="amount" required value={benefitAmount} onChange={e => setBenefitAmount(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                    : <input type="number" step="0.001" name="amount" required defaultValue={editingBenefit?.amount || ""} className="w-full px-3 py-2 border rounded-lg text-sm" />}
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("frequency")}</label>

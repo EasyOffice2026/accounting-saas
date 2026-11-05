@@ -14,6 +14,7 @@ interface UserInfo {
   editable_tabs?: string[];
   current_month_only?: boolean;
   expense_category_view?: boolean;
+  hr_approver?: boolean;
   accounting?: boolean;
 }
 

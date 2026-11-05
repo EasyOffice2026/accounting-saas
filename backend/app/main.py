@@ -204,6 +204,9 @@ def _migrate_columns():
         # Salary payments: add new fields
         if "salary_payments" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("salary_payments")]
+            if "needs_approval" not in cols:
+                conn.execute(text("ALTER TABLE salary_payments ADD COLUMN needs_approval BOOLEAN NOT NULL DEFAULT 0"))
+                conn.commit()
             float_cols = [
                 "housing_allowance", "transport_allowance", "food_allowance",
                 "other_allowance", "allowances", "absence_deduction",
@@ -429,6 +432,9 @@ def _migrate_columns():
                 conn.commit()
             if "current_month_only" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN current_month_only BOOLEAN NOT NULL DEFAULT 0"))
+                conn.commit()
+            if "hr_approver" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN hr_approver BOOLEAN NOT NULL DEFAULT 0"))
                 conn.commit()
             if "expense_category_view" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN expense_category_view BOOLEAN NOT NULL DEFAULT 0"))

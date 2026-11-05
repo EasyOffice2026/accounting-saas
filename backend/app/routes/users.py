@@ -52,6 +52,7 @@ def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_u
             "editable_tabs": u.get_editable_tabs(),
             "current_month_only": bool(u.current_month_only),
             "expense_category_view": bool(u.expense_category_view),
+            "hr_approver": bool(u.hr_approver),
         }
         for u in users
     ]
@@ -69,6 +70,7 @@ def create_user(
     editable_tabs: Optional[str] = Form(None),
     current_month_only: str = Form("false"),
     expense_category_view: str = Form("false"),
+    hr_approver: str = Form("false"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -87,6 +89,7 @@ def create_user(
         read_only=_truthy(read_only),
         current_month_only=_truthy(current_month_only),
         expense_category_view=_truthy(expense_category_view),
+        hr_approver=_truthy(hr_approver),
     )
     new_user.set_editable_tabs(_parse_tabs(editable_tabs))
     new_user.set_allowed_brands(_parse_brands(allowed_brands))
@@ -110,6 +113,7 @@ def update_user(
     editable_tabs: Optional[str] = Form(None),
     current_month_only: str = Form(None),
     expense_category_view: str = Form(None),
+    hr_approver: str = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -141,6 +145,8 @@ def update_user(
         target.current_month_only = _truthy(current_month_only)
     if expense_category_view is not None:
         target.expense_category_view = _truthy(expense_category_view)
+    if hr_approver is not None:
+        target.hr_approver = _truthy(hr_approver)
     if editable_tabs is not None:
         target.set_editable_tabs(_parse_tabs(editable_tabs))
     if allowed_brands is not None:

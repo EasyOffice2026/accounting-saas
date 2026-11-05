@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_
-from datetime import date, time
+from datetime import date, time, datetime, timezone
 from typing import Optional
 import calendar
 import os
 import uuid
 
 from app.database import get_db, UPLOAD_DIR
-from app.models.hr import Brand, Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, LoanRepayment, StaffBenefitDeduction, LeaveRecord, Resignation, Contract, ContractPayment, Employer
+from app.models.hr import Brand, Employee, Attendance, OvertimeRecord, SalaryPayment, StaffTransfer, AdvanceLoan, LoanRepayment, StaffBenefitDeduction, LeaveRecord, Resignation, Contract, ContractPayment, Employer
 from app.models.branch import Branch
 from app.models.expense import Expense, ExpenseCategory
 from app.models.user import User
@@ -23,7 +23,13 @@ def _personnel_read_only(request: Request, user: User = Depends(get_current_user
 router = APIRouter(prefix="/api/hr", tags=["hr"], dependencies=[Depends(_personnel_read_only)])
 
 SALARY_VISIBLE_ROLES = ("owner", "manager", "accountant")
-HR_EDIT_ROLES = SALARY_VISIBLE_ROLES + ("hr_officer",)  # HR Officer edits HR records but never salaries
+HR_EDIT_ROLES = SALARY_VISIBLE_ROLES + ("hr_officer",)
+PAYROLL_ROLES = HR_EDIT_ROLES  # HR Officer prepares payroll; his entries need approval and he cannot pay
+
+
+def is_hr_approver(user: User) -> bool:
+    """HR approvals: Owner logins (owner, finance.manager) and logins flagged as HR approver (Operations Manager)."""
+    return user.role == "owner" or bool(getattr(user, "hr_approver", False))
 
 
 def _brand_branch_ids(db: Session, brand_id: Optional[int]) -> Optional[list]:
@@ -201,7 +207,7 @@ def list_employees(branch_id: Optional[int] = None, brand_id: Optional[int] = No
     elif bb_ids is not None:
         q = q.filter(Employee.branch_id.in_(bb_ids))
     rows = q.all()
-    hide_salary = user.role not in SALARY_VISIBLE_ROLES
+    hide_salary = user.role not in PAYROLL_ROLES
     result = []
     for emp in rows:
         d = {
@@ -282,7 +288,7 @@ def create_employee(
     health_card_expiry: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    if user.role not in SALARY_VISIBLE_ROLES:
+    if user.role not in PAYROLL_ROLES:
         salary = actual_salary = 0
         if user.branch_id:
             branch_id = user.branch_id
@@ -338,7 +344,7 @@ def update_employee(
     health_card_expiry: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    can_edit_salary = user.role in SALARY_VISIBLE_ROLES
+    can_edit_salary = user.role in PAYROLL_ROLES
     if not can_edit_salary and not (user.role == "staff" and user.branch_id) and user.role != "hr_officer":
         raise HTTPException(403, "Not authorized")
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
@@ -540,7 +546,7 @@ def list_salary_payments(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in SALARY_VISIBLE_ROLES:
+    if user.role not in PAYROLL_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized to view salary data")
     q = db.query(SalaryPayment)
     if month:
@@ -610,7 +616,7 @@ def generate_monthly_payroll(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in PAYROLL_ROLES:
         raise HTTPException(403, "Not authorized")
     year, mon = int(month.split("-")[0]), int(month.split("-")[1])
     last_day = calendar.monthrange(year, mon)[1]
@@ -756,7 +762,7 @@ def generate_monthly_payroll(
         bonus_total = sum(b.amount for b in ben_deds if b.category == "bonus")
         leave_salary_total = sum(b.amount for b in ben_deds if b.category == "leave_salary")
         ticket_total = sum(b.amount for b in ben_deds if b.category == "ticket")
-        overtime_total = sum(b.amount for b in ben_deds if b.category == "overtime")
+        overtime_total = round(sum(b.amount for b in ben_deds if b.category == "overtime") + _overtime_for_month(db, emp.id, month), 3)
         other_benefit_total = sum(b.amount for b in ben_deds if b.category == "other_benefit")
 
         # Auto-calculate deductions from StaffBenefitDeduction for this month
@@ -825,6 +831,10 @@ def generate_monthly_payroll(
             )
             db.add(sp)
             created += 1
+    if user.role == "hr_officer":
+        db.flush()
+        db.query(SalaryPayment).filter(SalaryPayment.month == month, SalaryPayment.status != "paid").update(
+            {"needs_approval": True, "approval_status": "pending_approval"}, synchronize_session=False)
     db.commit()
     return {"message": f"Generated {created} new, updated {updated} existing salary records for {month}"}
 
@@ -859,7 +869,7 @@ def update_salary_payment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in PAYROLL_ROLES:
         raise HTTPException(403, "Not authorized")
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
@@ -910,6 +920,9 @@ def update_salary_payment(
     sp.deductions = total_deduct
     sp.net_salary = net
 
+    if user.role == "hr_officer":
+        sp.needs_approval = True
+        sp.approval_status = "pending_approval"
     db.commit()
     return {"message": "Updated"}
 
@@ -920,7 +933,7 @@ def get_payslip(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in SALARY_VISIBLE_ROLES:
+    if user.role not in PAYROLL_ROLES:
         raise HTTPException(403, "Not authorized")
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
@@ -984,6 +997,8 @@ def mark_salary_paid(
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
         raise HTTPException(404, "Salary record not found")
+    if sp.needs_approval and sp.approval_status != "approved":
+        raise HTTPException(400, "This salary was prepared by the HR Officer and must be approved before payment")
     sp.status = "paid"
     sp.paid_date = date.today()
     if (sp.payment_method or "cash") != "cash":
@@ -1021,7 +1036,7 @@ def hold_salary(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in PAYROLL_ROLES:
         raise HTTPException(403, "Not authorized")
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
@@ -1039,7 +1054,7 @@ def release_salary(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in PAYROLL_ROLES:
         raise HTTPException(403, "Not authorized")
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
@@ -1057,7 +1072,7 @@ def delete_salary_payment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in PAYROLL_ROLES:
         raise HTTPException(403, "Not authorized")
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
@@ -1118,7 +1133,7 @@ def approve_transfer(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
+    if not is_hr_approver(user):
         raise HTTPException(403, "Not authorized")
     t = db.query(StaffTransfer).filter(StaffTransfer.id == transfer_id).first()
     if not t:
@@ -1139,7 +1154,7 @@ def reject_transfer(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
+    if not is_hr_approver(user):
         raise HTTPException(403, "Not authorized")
     t = db.query(StaffTransfer).filter(StaffTransfer.id == transfer_id).first()
     if not t:
@@ -1193,6 +1208,8 @@ def create_loan(
         deduction_month=deduction_month or None,
         date=date.fromisoformat(loan_date),
         notes=notes,
+        approval_status="pending_approval" if user.role == "hr_officer" else "approved",
+        approved_by=None if user.role == "hr_officer" else user.id,
     )
     db.add(loan)
     db.commit()
@@ -1423,7 +1440,7 @@ def create_benefit_deduction(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    is_mgr = user.role in HR_EDIT_ROLES
+    is_mgr = user.role in SALARY_VISIBLE_ROLES  # HR Officer entries wait for approval
     bd = StaffBenefitDeduction(
         employee_id=employee_id,
         category=category,
@@ -1529,7 +1546,7 @@ def create_leave(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    is_mgr = user.role in HR_EDIT_ROLES
+    is_mgr = user.role in SALARY_VISIBLE_ROLES  # HR Officer entries wait for approval
     sd = date.fromisoformat(start_date)
     ed = date.fromisoformat(end_date)
     days = (ed - sd).days + 1
@@ -2127,6 +2144,7 @@ APPROVAL_MODELS = {
     "advance_loan": AdvanceLoan,
     "benefit_deduction": StaffBenefitDeduction,
     "leave": LeaveRecord,
+    "overtime": OvertimeRecord,
 }
 
 MANAGER_ROLES = ("owner", "manager", "accountant")
@@ -2137,7 +2155,7 @@ def approve_hr_transaction(txn_type: str, txn_id: int,
                            db: Session = Depends(get_db),
                            user: User = Depends(get_current_user)):
     """Approve an HR transaction. Only owner/manager can approve."""
-    if user.role not in MANAGER_ROLES:
+    if not is_hr_approver(user):
         raise HTTPException(403, "Only owner/manager can approve transactions")
     model = APPROVAL_MODELS.get(txn_type)
     if not model:
@@ -2158,7 +2176,7 @@ def reject_hr_transaction(txn_type: str, txn_id: int,
                           db: Session = Depends(get_db),
                           user: User = Depends(get_current_user)):
     """Reject an HR transaction. Only owner/manager can reject."""
-    if user.role not in MANAGER_ROLES:
+    if not is_hr_approver(user):
         raise HTTPException(403, "Only owner/manager can reject transactions")
     model = APPROVAL_MODELS.get(txn_type)
     if not model:
@@ -2179,7 +2197,7 @@ def list_pending_approvals(brand_id: Optional[int] = None,
                            db: Session = Depends(get_db),
                            user: User = Depends(get_current_user)):
     """List all pending HR transactions for manager approval."""
-    if user.role not in MANAGER_ROLES:
+    if not is_hr_approver(user):
         raise HTTPException(403, "Only owner/manager can view pending approvals")
     bb_ids = _brand_branch_ids(db, brand_id)
     results = []
@@ -2207,6 +2225,12 @@ def list_pending_approvals(brand_id: Optional[int] = None,
         results.append({"type": "benefit_deduction", "id": b.id, "employee": emp.name if emp else "?",
                         "detail": f"{b.category.title()} - KD {b.amount:.3f}", "date": str(b.date)})
 
+    # Pending overtime
+    for o in db.query(OvertimeRecord).filter(OvertimeRecord.approval_status == "pending_approval").all():
+        emp = db.query(Employee).filter(Employee.id == o.employee_id).first()
+        results.append({"type": "overtime", "id": o.id, "employee": emp.name if emp else "?",
+                        "detail": f"Overtime {o.hours}h ({o.ot_type}) - KD {o.amount:.3f}", "date": str(o.date)})
+
     # Pending leaves
     q = db.query(LeaveRecord).filter(LeaveRecord.approval_status == "pending_approval")
     for l in q.all():
@@ -2215,3 +2239,136 @@ def list_pending_approvals(brand_id: Optional[int] = None,
                         "detail": f"{l.leave_type.replace('_', ' ').title()} - {l.days} days", "date": str(l.start_date)})
 
     return results
+
+# --- Overtime sheet ---
+# Kuwait Labour Law Art. 66: +25% ordinary overtime, +50% night work, +100% weekly rest day / public holiday.
+OVERTIME_MULTIPLIERS = {"weekday": 1.25, "night": 1.5, "rest_day": 2.0, "holiday": 2.0}
+OVERTIME_DAYS_DIVISOR = 30
+OVERTIME_HOURS_PER_DAY = 8
+
+
+def _ot_serialize(r: OvertimeRecord) -> dict:
+    return {
+        "id": r.id, "employee_id": r.employee_id, "date": r.date.isoformat(), "month": r.month,
+        "hours": r.hours, "ot_type": r.ot_type, "rate_multiplier": r.rate_multiplier,
+        "hourly_rate": r.hourly_rate, "amount": r.amount, "notes": r.notes or "",
+        "approval_status": r.approval_status,
+    }
+
+
+def _ot_fill(r: OvertimeRecord, emp: Employee, ot_date: date, hours: float, ot_type: str, month: str, notes: str):
+    r.employee_id = emp.id
+    r.date = ot_date
+    r.month = month or ot_date.strftime("%Y-%m")
+    r.hours = hours
+    r.ot_type = ot_type if ot_type in OVERTIME_MULTIPLIERS else "weekday"
+    r.rate_multiplier = OVERTIME_MULTIPLIERS[r.ot_type]
+    r.hourly_rate = round((emp.actual_salary or 0) / OVERTIME_DAYS_DIVISOR / OVERTIME_HOURS_PER_DAY, 3)
+    r.amount = round(hours * r.hourly_rate * r.rate_multiplier, 3)
+    r.notes = notes or None
+
+
+def _ot_query(db: Session, user: User, employee_id: Optional[int], month: Optional[str], brand_id: Optional[int]):
+    q = db.query(OvertimeRecord)
+    staff_emp_ids = _staff_emp_ids(db, user)
+    if staff_emp_ids is not None:
+        q = q.filter(OvertimeRecord.employee_id.in_(staff_emp_ids)) if staff_emp_ids else q.filter(False)
+    bb_ids = _brand_branch_ids(db, brand_id)
+    if bb_ids is not None:
+        emp_ids = [e.id for e in db.query(Employee.id).filter(Employee.branch_id.in_(bb_ids)).all()]
+        q = q.filter(OvertimeRecord.employee_id.in_(emp_ids)) if emp_ids else q.filter(False)
+    if employee_id:
+        q = q.filter(OvertimeRecord.employee_id == employee_id)
+    if month:
+        q = q.filter(OvertimeRecord.month == month)
+    return q.order_by(OvertimeRecord.date.desc(), OvertimeRecord.id.desc())
+
+
+@router.get("/overtime")
+def list_overtime(employee_id: Optional[int] = None, month: Optional[str] = None, brand_id: Optional[int] = None,
+                  db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in PAYROLL_ROLES:
+        raise HTTPException(403, "Not authorized")
+    return [_ot_serialize(r) for r in _ot_query(db, user, employee_id, month, brand_id).all()]
+
+
+@router.get("/overtime/export/{fmt}")
+def export_overtime(fmt: str, employee_id: Optional[int] = None, month: Optional[str] = None, brand_id: Optional[int] = None,
+                    lang: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in PAYROLL_ROLES:
+        raise HTTPException(403, "Not authorized")
+    from app.routes.export import _respond
+    ar = lang == "ar"
+    names = {e.id: ((e.name_ar or e.name) if ar else e.name) for e in db.query(Employee).all()}
+    types = {"weekday": ("Ordinary (+25%)", "عادي (+25%)"), "night": ("Night (+50%)", "ليلي (+50%)"),
+             "rest_day": ("Rest day (+100%)", "يوم الراحة (+100%)"), "holiday": ("Public holiday (+100%)", "عطلة رسمية (+100%)")}
+    status = {"approved": ("Approved", "معتمد"), "pending_approval": ("Pending approval", "بانتظار الموافقة"), "rejected": ("Rejected", "مرفوض")}
+    header = (["التاريخ", "الموظف", "شهر الراتب", "النوع", "الساعات", "أجر الساعة", "المعامل", "المبلغ", "الحالة", "ملاحظات"] if ar else
+              ["Date", "Employee", "Payroll Month", "Type", "Hours", "Hourly Rate", "Multiplier", "Amount", "Status", "Notes"])
+    data = [[str(r.date), names.get(r.employee_id, ""), r.month, types.get(r.ot_type, (r.ot_type, r.ot_type))[1 if ar else 0],
+             r.hours, r.hourly_rate, r.rate_multiplier, r.amount,
+             status.get(r.approval_status, (r.approval_status, r.approval_status))[1 if ar else 0], r.notes or ""]
+            for r in _ot_query(db, user, employee_id, month, brand_id).all()]
+    return _respond(fmt, header, data, "overtime", "كشف الوقت الإضافي" if ar else "Overtime Sheet")
+
+
+@router.post("/overtime")
+def create_overtime(employee_id: int = Form(...), ot_date: str = Form(...), hours: float = Form(...),
+                    ot_type: str = Form("weekday"), month: str = Form(""), notes: str = Form(""),
+                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in PAYROLL_ROLES:
+        raise HTTPException(403, "Not authorized")
+    if hours <= 0:
+        raise HTTPException(400, "Hours must be greater than zero")
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+    auto = user.role in SALARY_VISIBLE_ROLES
+    r = OvertimeRecord(approval_status="approved" if auto else "pending_approval", approved_by=user.id if auto else None,
+                       approval_date=datetime.now(timezone.utc) if auto else None, created_by=user.id)
+    _ot_fill(r, emp, date.fromisoformat(ot_date), hours, ot_type, month, notes)
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return _ot_serialize(r)
+
+
+@router.put("/overtime/{ot_id}")
+def update_overtime(ot_id: int, employee_id: int = Form(...), ot_date: str = Form(...), hours: float = Form(...),
+                    ot_type: str = Form("weekday"), month: str = Form(""), notes: str = Form(""),
+                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in PAYROLL_ROLES:
+        raise HTTPException(403, "Not authorized")
+    if hours <= 0:
+        raise HTTPException(400, "Hours must be greater than zero")
+    r = db.query(OvertimeRecord).filter(OvertimeRecord.id == ot_id).first()
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not r or not emp:
+        raise HTTPException(404, "Record not found")
+    _ot_fill(r, emp, date.fromisoformat(ot_date), hours, ot_type, month, notes)
+    if user.role not in SALARY_VISIBLE_ROLES:
+        r.approval_status, r.approved_by, r.approval_date = "pending_approval", None, None
+    db.commit()
+    return _ot_serialize(r)
+
+
+@router.delete("/overtime/{ot_id}")
+def delete_overtime(ot_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role not in PAYROLL_ROLES:
+        raise HTTPException(403, "Not authorized")
+    r = db.query(OvertimeRecord).filter(OvertimeRecord.id == ot_id).first()
+    if not r:
+        raise HTTPException(404, "Record not found")
+    if user.role == "hr_officer" and r.approval_status == "approved":
+        raise HTTPException(400, "Approved overtime can only be removed by management")
+    db.delete(r)
+    db.commit()
+    return {"message": "Deleted"}
+
+
+def _overtime_for_month(db: Session, emp_id: int, month: str) -> float:
+    total = db.query(func.coalesce(func.sum(OvertimeRecord.amount), 0)).filter(
+        OvertimeRecord.employee_id == emp_id, OvertimeRecord.month == month,
+        OvertimeRecord.approval_status == "approved").scalar()
+    return round(float(total or 0), 3)
+

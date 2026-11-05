@@ -82,6 +82,7 @@ interface UserItem {
   editable_tabs: string[];
   current_month_only: boolean;
   expense_category_view?: boolean;
+  hr_approver?: boolean;
 }
 
 interface BranchItem {
@@ -177,6 +178,7 @@ export default function SettingsPage() {
   const [uReadOnly, setUReadOnly] = useState(false);
   const [uMonthOnly, setUMonthOnly] = useState(false);
   const [uExpCat, setUExpCat] = useState(false);
+  const [uHrApprover, setUHrApprover] = useState(false);
   const [uEditableTabs, setUEditableTabs] = useState<string[]>([]);
   const [uMsg, setUMsg] = useState("");
   const [uMsgType, setUMsgType] = useState<"success" | "error">("success");
@@ -320,6 +322,7 @@ export default function SettingsPage() {
     setUReadOnly(false);
     setUMonthOnly(false);
     setUExpCat(false);
+    setUHrApprover(false);
     setUEditableTabs([]);
     setEditingUser(null);
     setShowUserForm(false);
@@ -335,6 +338,7 @@ export default function SettingsPage() {
     setUReadOnly(!!u.read_only);
     setUMonthOnly(!!u.current_month_only);
     setUExpCat(!!u.expense_category_view);
+    setUHrApprover(!!u.hr_approver);
     setUEditableTabs(u.editable_tabs || []);
     setUPassword("");
     setShowUserForm(true);
@@ -353,6 +357,7 @@ export default function SettingsPage() {
     fd.append("editable_tabs", uReadOnly ? uEditableTabs.join(",") : "");
     fd.append("current_month_only", uMonthOnly ? "true" : "false");
     fd.append("expense_category_view", uExpCat ? "true" : "false");
+    fd.append("hr_approver", uHrApprover ? "true" : "false");
 
     try {
       if (editingUser) {
@@ -472,6 +477,7 @@ export default function SettingsPage() {
   const ALL_HR_TABS = [
     { key: "hr_employees", label: "tab_hr_employees" },
     { key: "hr_salary", label: "tab_hr_salary" },
+    { key: "hr_overtime", label: "overtime_sheet" },
     { key: "hr_transfers", label: "tab_hr_transfers" },
     { key: "hr_loans", label: "tab_hr_loans" },
     { key: "hr_benefits", label: "tab_hr_benefits" },
@@ -776,6 +782,13 @@ export default function SettingsPage() {
                 {t("expense_category_view_login")}
               </label>
               <p className="text-xs text-gray-500 mt-1">{t("expense_category_view_hint")}</p>
+            </div>
+            <div>
+              <label className="inline-flex items-center gap-2 text-sm font-medium cursor-pointer">
+                <input type="checkbox" checked={uHrApprover} onChange={e => setUHrApprover(e.target.checked)} />
+                {t("hr_approver_login")}
+              </label>
+              <p className="text-xs text-gray-500 mt-1">{t("hr_approver_hint")}</p>
             </div>
             <div className="flex gap-2">
               <button type="submit"

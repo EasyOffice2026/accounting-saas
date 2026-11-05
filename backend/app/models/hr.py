@@ -91,6 +91,7 @@ class SalaryPayment(Base):
     channel_id = Column(Integer, ForeignKey("payment_channels.id"), nullable=True)
     status = Column(String, default="pending")  # pending, paid
     approval_status = Column(String, default="pending_approval")  # pending_approval, approved, rejected
+    needs_approval = Column(Boolean, default=False, nullable=False, server_default="0")  # prepared by HR Officer: payable only once approved
     approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     approval_date = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
@@ -159,6 +160,27 @@ class StaffBenefitDeduction(Base):
     approval_status = Column(String, default="pending_approval")  # pending_approval, approved, rejected
     approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     approval_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class OvertimeRecord(Base):
+    """Overtime sheet entry; approved entries feed the payroll `overtime` line for `month`."""
+    __tablename__ = "overtime_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    month = Column(String, nullable=False, index=True)  # YYYY-MM payroll month
+    hours = Column(Float, nullable=False)
+    ot_type = Column(String, default="weekday")  # weekday (x1.25), night (x1.5), rest_day / holiday (x2)
+    rate_multiplier = Column(Float, default=1.25)
+    hourly_rate = Column(Float, default=0)  # actual_salary / 30 / 8 at time of entry
+    amount = Column(Float, default=0)  # hours * hourly_rate * rate_multiplier
+    notes = Column(Text, nullable=True)
+    approval_status = Column(String, default="pending_approval")  # pending_approval, approved, rejected
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approval_date = Column(DateTime, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

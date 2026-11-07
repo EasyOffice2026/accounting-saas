@@ -180,6 +180,7 @@ export default function HRPage() {
   const isApprover = currentUser.role === "owner" || !!currentUser.hr_approver;
   const readOnly = !!currentUser.read_only && !(currentUser.editable_tabs || []).includes("hr");
   const isPersonnel = ["personnel", "personnel_manager"].includes(currentUser.role);
+  const isBranchStaff = currentUser.role === "staff" && !!currentUser.branch_id;
   const canViewSalary = ["owner", "manager", "accountant", "hr_officer"].includes(currentUser.role);
   const [benefitCalc, setBenefitCalc] = useState<"amount" | "days">("amount");
   const [benefitEmp, setBenefitEmp] = useState("");
@@ -910,6 +911,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
         {(["employees", "salary", "overtime", "transfers", "loans", "benefits", "deductions", "leaves"] as Tab[]).filter(tb => {
           if (currentUser.role === "owner") return true;
+          if (isBranchStaff) return tb === "employees";
           if ((tb === "salary" || tb === "overtime") && !canViewSalary) return false;
           if (tb === "loans" && !canViewSalary && currentUser.role !== "hr_officer") return false;
           const userTabs: string[] | null = currentUser.allowed_tabs || null;
@@ -1084,9 +1086,9 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                     <td className="px-3 py-3">{emp.health_card_expiry || "—"}</td>
                     <td className="px-3 py-3 text-center">
                       <div className="flex gap-2 justify-center">
-                        {!isPersonnel && !readOnly && <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>}
+                        {!isPersonnel && !readOnly && !isBranchStaff && <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>}
                         <button onClick={() => printEmployeeForm(emp)} className="text-purple-600 hover:underline text-xs">PDF</button>
-                        {!readOnly && isManager && (
+                        {!readOnly && (isManager || isBranchStaff) && (
                           <button onClick={() => handleDeleteEmp(emp)} className="text-red-600 hover:underline text-xs">{t("delete")}</button>
                         )}
                       </div>

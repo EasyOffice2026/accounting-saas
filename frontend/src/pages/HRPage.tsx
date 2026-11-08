@@ -877,7 +877,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
             className="px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700">
             {t("export_pdf")}
           </button>
-          {!readOnly && tab === "employees" && !isPersonnel && (
+          {!readOnly && tab === "employees" && !isPersonnel && !isBranchStaff && (
             <button onClick={() => { setShowForm(!showForm); setEditingEmp(null); }}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
               {showForm ? t("cancel") : t("add_new")}
@@ -1088,7 +1088,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                       <div className="flex gap-2 justify-center">
                         {!isPersonnel && !readOnly && !isBranchStaff && <button onClick={() => startEditEmp(emp)} className="text-blue-600 hover:underline text-xs">{t("edit")}</button>}
                         <button onClick={() => printEmployeeForm(emp)} className="text-purple-600 hover:underline text-xs">PDF</button>
-                        {!readOnly && (isManager || isBranchStaff) && (
+                        {!readOnly && isManager && (
                           <button onClick={() => handleDeleteEmp(emp)} className="text-red-600 hover:underline text-xs">{t("delete")}</button>
                         )}
                       </div>

@@ -4,7 +4,6 @@ from sqlalchemy import func, or_, and_
 from datetime import date, time, datetime, timezone
 from typing import Optional
 import calendar
-import re
 import os
 import uuid
 
@@ -20,12 +19,7 @@ def _personnel_read_only(request: Request, user: User = Depends(get_current_user
     if user.role in ("personnel", "personnel_manager") and request.method not in ("GET", "HEAD", "OPTIONS"):
         raise HTTPException(403, "Personnel Officer has view-only access to Human Resources")
     if user.role == "staff" and request.method not in ("GET", "HEAD", "OPTIONS"):
-        # Branch logins may only add or delete employees; all other HR changes are made by HR / management.
-        path = request.url.path.rstrip("/")
-        allowed = (request.method == "POST" and path == "/api/hr/employees") or (
-            request.method == "DELETE" and re.fullmatch(r"/api/hr/employees/\d+", path))
-        if not allowed:
-            raise HTTPException(403, "Branch logins can only add or delete employees")
+        raise HTTPException(403, "Branch logins have view-only access to Human Resources")
 
 
 router = APIRouter(prefix="/api/hr", tags=["hr"], dependencies=[Depends(_personnel_read_only)])
@@ -390,19 +384,24 @@ def update_employee(
     return emp
 
 
+EMPLOYEE_HISTORY_MODELS = (SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, LeaveRecord, OvertimeRecord, Resignation, Attendance)
+
+
 @router.delete("/employees/{emp_id}")
 def delete_employee(
     emp_id: int,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    is_branch = user.role == "staff" and user.branch_id
-    if user.role not in ("owner", "accountant", "hr_officer") and "hr" not in user.get_editable_tabs() and not is_branch:
+    if user.role not in ("owner", "accountant", "hr_officer") and "hr" not in user.get_editable_tabs():
         raise HTTPException(403, "Not authorized")
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(404, "Employee not found")
-    if is_branch and emp.branch_id != user.branch_id:
-        raise HTTPException(403, "Not authorized")
+    # Keep salary/HR history: an employee with history is deactivated instead of deleted.
+    if any(db.query(m).filter(m.employee_id == emp.id).first() for m in EMPLOYEE_HISTORY_MODELS):
+        emp.is_active = False
+        db.commit()
+        return {"message": "Removed (HR history kept)"}
     db.delete(emp)
     db.commit()
     return {"message": "Deleted"}

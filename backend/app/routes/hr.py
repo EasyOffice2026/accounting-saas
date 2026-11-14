@@ -623,6 +623,7 @@ def list_salary_payments(
             "deductions": 0 if hide_salary else r.deductions,
             "advance": 0 if hide_salary else r.advance,
             "net_salary": 0 if hide_salary else r.net_salary,
+            "approval_status": (r.approval_status or "pending_approval") if r.needs_approval else "approved",
             "payment_method": r.payment_method,
             "channel_id": r.channel_id,
             "status": r.status, "notes": r.notes,

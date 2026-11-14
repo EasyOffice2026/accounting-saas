@@ -1,3 +1,4 @@
+import secrets
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -155,12 +156,12 @@ def seed_renewals(db: Session):
         hr_branch(db, br.id)
 
     for username, password, full_name, role in (
-        ("mandoob", "Mandoob@2026", "Mandoob - Personnel Officer", PERSONNEL_ROLE),
-        ("personnel.manager", "PManager@2026", "Personnel Manager", PERSONNEL_MANAGER_ROLE),
+        ("mandoob", None, "Mandoob - Personnel Officer", PERSONNEL_ROLE),
+        ("personnel.manager", None, "Personnel Manager", PERSONNEL_MANAGER_ROLE),
     ):
         u = db.query(User).filter(User.username == username).first()
         if not u:
-            u = User(username=username, password_hash=hash_password(password),
+            u = User(username=username, password_hash=hash_password(password or secrets.token_urlsafe(16)),
                      full_name=full_name, role=role, branch_id=None)
             u.set_allowed_brands([b.id for b in brands] or None)
             db.add(u)

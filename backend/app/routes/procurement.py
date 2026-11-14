@@ -5,6 +5,7 @@ branch cash sheets, branch purchase totals, dashboards or reports. The only cash
 on the brand's "Purchase Office" cash box when an invoice is paid with purchase_petty_cash.
 Delivery location is free text for logistics only.
 """
+import secrets
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -102,12 +103,12 @@ def seed_procurement(db: Session):
     for br in brands:
         purchase_branch(db, br.id)
     for username, password, full_name, role in (
-        ("purchaser", "Purchaser@2026", "Purchase Officer", PURCHASE_OFFICER_ROLE),
-        ("purchase.manager", "PurManager@2026", "Purchase Manager", PURCHASE_MANAGER_ROLE),
+        ("purchaser", None, "Purchase Officer", PURCHASE_OFFICER_ROLE),
+        ("purchase.manager", None, "Purchase Manager", PURCHASE_MANAGER_ROLE),
     ):
         u = db.query(User).filter(User.username == username).first()
         if not u:
-            u = User(username=username, password_hash=hash_password(password),
+            u = User(username=username, password_hash=hash_password(password or secrets.token_urlsafe(16)),
                      full_name=full_name, role=role, branch_id=None)
             u.set_allowed_brands([b.id for b in brands] or None)
             db.add(u)

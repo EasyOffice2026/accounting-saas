@@ -11,7 +11,7 @@ from app.models.expense import Expense, ExpenseCategory
 from app.models.hr import Employee, SalaryPayment, Brand
 from app.models.cash import CashBalance
 from app.models.branch import Branch
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, get_business_user
 from app.models.user import User
 from app.routes.hr import SALARY_VISIBLE_ROLES, _brand_branch_ids, _exclude_left_employees
 from app.utils.dates import apply_date_range
@@ -477,7 +477,7 @@ def _salary_data(db, user, month, lang: str = "en", brand_id=None):
 @router.get("/sales/{fmt}")
 def export_sales(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[int] = None,
                  date_from: Optional[str] = None, date_to: Optional[str] = None,
-                 db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+                 db: Session = Depends(get_db), user: User = Depends(get_business_user)):
     header, data = _sales_data(db, user, branch_id, brand_id=brand_id, date_from=date_from, date_to=date_to)
     return _respond(fmt, header, data, "sales", "Sales Report")
 
@@ -485,7 +485,7 @@ def export_sales(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[i
 @router.get("/purchases/{fmt}")
 def export_purchases(fmt: str, branch_id: Optional[int] = None, brand_id: Optional[int] = None,
                      date_from: Optional[str] = None, date_to: Optional[str] = None,
-                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+                     db: Session = Depends(get_db), user: User = Depends(get_business_user)):
     header, data = _purchases_data(db, user, branch_id, brand_id=brand_id, date_from=date_from, date_to=date_to)
     return _respond(fmt, header, data, "purchases", "Purchases Report")
 

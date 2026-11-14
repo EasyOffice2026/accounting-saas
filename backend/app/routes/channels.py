@@ -36,9 +36,12 @@ def _manage(user: User):
         raise HTTPException(403, "Only management / accountant can manage payment channels")
 
 
-def _channel_or_404(db: Session, channel_id: int) -> PaymentChannel:
+def _channel_or_404(db: Session, channel_id: int, user: Optional[User] = None) -> PaymentChannel:
     ch = db.query(PaymentChannel).filter(PaymentChannel.id == channel_id).first()
     if not ch:
+        raise HTTPException(404, "Payment channel not found")
+    allowed = user.get_allowed_brands() if user else None
+    if allowed is not None and ch.brand_id and ch.brand_id not in allowed:
         raise HTTPException(404, "Payment channel not found")
     return ch
 
@@ -190,7 +193,7 @@ def update_channel(
     _manage(user)
     if kind not in CHANNEL_KINDS:
         raise HTTPException(400, "Invalid channel type")
-    ch = _channel_or_404(db, channel_id)
+    ch = _channel_or_404(db, channel_id, user)
     ch.name = name.strip()
     ch.name_ar = name_ar.strip() or None
     ch.kind = kind
@@ -206,7 +209,7 @@ def update_channel(
 @router.delete("/{channel_id}")
 def delete_channel(channel_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _manage(user)
-    ch = _channel_or_404(db, channel_id)
+    ch = _channel_or_404(db, channel_id, user)
     used = (
         db.query(Expense.id).filter(Expense.channel_id == ch.id).first()
         or db.query(ProcPayment.id).filter(ProcPayment.channel_id == ch.id).first()
@@ -235,7 +238,7 @@ def add_transaction(
     user: User = Depends(get_current_user),
 ):
     _manage(user)
-    ch = _channel_or_404(db, channel_id)
+    ch = _channel_or_404(db, channel_id, user)
     if txn_type not in ("deposit", "withdrawal"):
         raise HTTPException(400, "txn_type must be deposit or withdrawal")
     if amount <= 0:
@@ -362,7 +365,7 @@ def statement(
 ):
     if user.role not in STATEMENT_ROLES:
         raise HTTPException(403, "Not authorized")
-    return _statement(db, _channel_or_404(db, channel_id), date_from, date_to)
+    return _statement(db, _channel_or_404(db, channel_id, user), date_from, date_to)
 
 
 @router.get("/{channel_id}/statement/export/{fmt}")
@@ -377,7 +380,7 @@ def export_statement(
     from app.routes.export import _respond
     if user.role not in STATEMENT_ROLES:
         raise HTTPException(403, "Not authorized")
-    ch = _channel_or_404(db, channel_id)
+    ch = _channel_or_404(db, channel_id, user)
     st = _statement(db, ch, date_from, date_to)
     header = ["Date", "Source", "Description", "Branch / Head", "Reference / Notes", "DR", "CR", "Balance"]
     data = [[date_from or (str(ch.opening_date) if ch.opening_date else ""), "Opening Balance", "", "", "", "", "", f"{st['opening_balance']:.3f}"]]

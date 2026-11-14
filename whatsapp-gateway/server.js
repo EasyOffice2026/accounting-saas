@@ -141,7 +141,10 @@ app.use(express.json({ limit: "2mb" }));
 
 app.use((req, res, next) => {
   if (req.path === "/health") return next();
-  if (API_KEY && req.get("X-Api-Key") !== API_KEY) {
+  if (!API_KEY) {
+    return res.status(503).json({ error: "WHATSAPP_API_KEY is not configured" });
+  }
+  if (req.get("X-Api-Key") !== API_KEY) {
     return res.status(401).json({ error: "Unauthorized" });
   }
   next();

@@ -7,6 +7,7 @@ posted ones: new sources are posted, changed sources are reversed and posted aga
 reversed. Posted journals are never edited, so every change stays traceable."""
 import hashlib
 import json
+import threading
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
@@ -527,7 +528,17 @@ def opening_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
     return out
 
 
+_sync_lock = threading.Lock()
+
+
 def sync_ledger(db: Session, user_id: Optional[int] = None) -> dict:
+    """Manual and background syncs run one at a time so two runs can't both post the same journal."""
+    with _sync_lock:
+        db.expire_all()
+        return _sync_ledger(db, user_id)
+
+
+def _sync_ledger(db: Session, user_id: Optional[int] = None) -> dict:
     s = get_settings(db)
     result = {"posted": 0, "reposted": 0, "reversed": 0, "unchanged": 0, "skipped": []}
     if not s.start_date:

@@ -81,6 +81,12 @@ def _check_brand(user: User, brand_id: Optional[int]):
         raise HTTPException(403, "Brand not allowed")
 
 
+def _check_employee_brand(db: Session, user: User, emp: Optional[Employee]):
+    if emp is not None:
+        b = db.query(Branch).filter(Branch.id == emp.branch_id).first()
+        _check_brand(user, b.brand_id if b else None)
+
+
 def personnel_branch(db: Session, brand_id: int, create: bool = True) -> Optional[Branch]:
     """The Personnel Office cash box branch for a brand (one per brand)."""
     b = db.query(Branch).filter(Branch.brand_id == brand_id,
@@ -429,6 +435,7 @@ def list_licenses(brand_id: Optional[int] = None, branch_id: Optional[int] = Non
     _require(user)
     q = db.query(CompanyLicense)
     allowed = _brand_ids_for(user)
+    _check_brand(user, brand_id)
     if brand_id:
         q = q.filter(CompanyLicense.brand_id == brand_id)
     elif allowed is not None:
@@ -525,6 +532,7 @@ def list_documents(brand_id: Optional[int] = None, branch_id: Optional[int] = No
     if not include_left:
         eq = _exclude_left_employees(eq)
     allowed = _brand_ids_for(user)
+    _check_brand(user, brand_id)
     branches = _branch_map(db)
     if brand_id:
         eq = eq.filter(Employee.branch_id.in_([b.id for b in branches.values() if b.brand_id == brand_id]))
@@ -555,6 +563,7 @@ def create_document(employee_id: int = Form(...), type_id: int = Form(...), doc_
     emp = db.query(Employee).filter(Employee.id == employee_id).first()
     if not emp:
         raise HTTPException(404, "Employee not found")
+    _check_employee_brand(db, user, emp)
     d = EmployeeDocument(employee_id=employee_id, type_id=type_id, doc_no=doc_no or None,
                          authority=authority or None, issue_date=_d(issue_date), expiry_date=_d(expiry_date),
                          notes=notes or None, status="active",
@@ -587,6 +596,7 @@ def update_document(doc_id: int, type_id: int = Form(...), doc_no: str = Form(""
     d = db.query(EmployeeDocument).filter(EmployeeDocument.id == doc_id).first()
     if not d:
         raise HTTPException(404, "Document not found")
+    _check_employee_brand(db, user, db.query(Employee).filter(Employee.id == d.employee_id).first())
     d.type_id, d.doc_no, d.authority = type_id, doc_no or None, authority or None
     d.issue_date, d.expiry_date, d.notes, d.status = _d(issue_date), _d(expiry_date), notes or None, status
     for attr, f in (("file1", file1), ("file2", file2), ("file3", file3)):
@@ -828,6 +838,7 @@ def list_requests(brand_id: Optional[int] = None, status: Optional[str] = None, 
     _require(user)
     q = db.query(RenewalRequest)
     allowed = _brand_ids_for(user)
+    _check_brand(user, brand_id)
     if brand_id:
         q = q.filter(RenewalRequest.brand_id == brand_id)
     elif allowed is not None:

@@ -168,6 +168,11 @@ def _channels(db: Session) -> dict[int, PaymentChannel]:
     return {c.id: c for c in db.query(PaymentChannel).all()}
 
 
+def _credit_po():
+    """Cash purchases are paid from the branch cash box on the order date; only credit purchases owe a supplier."""
+    return func.coalesce(PurchaseOrder.payment_type, "cash") != "cash"
+
+
 def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
     out: list[Entry] = []
     chans = _channels(db)
@@ -204,7 +209,7 @@ def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
     # credit purchases go to suppliers when invoiced and are cleared when the invoice is paid.
     credit_po = {}
     for inv in db.query(Invoice).join(PurchaseOrder, PurchaseOrder.id == Invoice.purchase_order_id).filter(
-            PurchaseOrder.date < start, Invoice.status == "paid", Invoice.paid_date >= start).all():
+            PurchaseOrder.date < start, _credit_po(), Invoice.status == "paid", Invoice.paid_date >= start).all():
         brand = L.branch_brand.get(inv.branch_id)
         if not brand or (inv.paid_amount or 0) <= 0:
             continue
@@ -516,7 +521,7 @@ def opening_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
                                                                                 ProcPayment.date < start).scalar()
             owed[inv.supplier_id] = owed.get(inv.supplier_id, 0.0) + _r(inv.total_amount) - _r(paid)
         for inv in db.query(Invoice).join(PurchaseOrder, PurchaseOrder.id == Invoice.purchase_order_id).filter(
-                PurchaseOrder.date < start, Invoice.branch_id.in_(branch_ids)).all():
+                PurchaseOrder.date < start, _credit_po(), Invoice.branch_id.in_(branch_ids)).all():
             paid_before = inv.status == "paid" and inv.paid_date is not None and inv.paid_date < start
             owed[inv.supplier_id] = owed.get(inv.supplier_id, 0.0) + (_r(inv.total_amount) - _r(inv.paid_amount) if paid_before
                                                                       else _r(inv.total_amount))

@@ -34,12 +34,17 @@ def _reapprove_if_officer(rec, user) -> None:
         if hasattr(rec, "approval_date"):
             rec.approval_date = None
 HR_EDIT_ROLES = SALARY_VISIBLE_ROLES + ("hr_officer",)
-PAYROLL_ROLES = HR_EDIT_ROLES  # HR Officer prepares payroll; his entries need approval and he cannot pay
+PAYROLL_ROLES = HR_EDIT_ROLES  # HR Officer prepares, approves and pays salaries
 
 
 def is_hr_approver(user: User) -> bool:
     """HR approvals: Owner logins (owner, finance.manager) and logins flagged as HR approver (Operations Manager)."""
     return user.role == "owner" or bool(getattr(user, "hr_approver", False))
+
+
+def can_approve_hr(user: User, txn_type: str) -> bool:
+    """The HR Officer approves salaries himself; his other HR entries need an HR approver."""
+    return is_hr_approver(user) or (txn_type == "salary" and user.role == "hr_officer")
 
 
 def _brand_branch_ids(db: Session, brand_id: Optional[int]) -> Optional[list]:
@@ -1010,7 +1015,7 @@ def mark_salary_paid(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager", "accountant"):
+    if user.role not in ("owner", "manager", "accountant", "hr_officer"):
         raise HTTPException(403, "Not authorized")
     sp = db.query(SalaryPayment).filter(SalaryPayment.id == payment_id).first()
     if not sp:
@@ -2176,7 +2181,7 @@ def approve_hr_transaction(txn_type: str, txn_id: int,
                            db: Session = Depends(get_db),
                            user: User = Depends(get_current_user)):
     """Approve an HR transaction. Only owner/manager can approve."""
-    if not is_hr_approver(user):
+    if not can_approve_hr(user, txn_type):
         raise HTTPException(403, "Only owner/manager can approve transactions")
     model = APPROVAL_MODELS.get(txn_type)
     if not model:
@@ -2197,7 +2202,7 @@ def reject_hr_transaction(txn_type: str, txn_id: int,
                           db: Session = Depends(get_db),
                           user: User = Depends(get_current_user)):
     """Reject an HR transaction. Only owner/manager can reject."""
-    if not is_hr_approver(user):
+    if not can_approve_hr(user, txn_type):
         raise HTTPException(403, "Only owner/manager can reject transactions")
     model = APPROVAL_MODELS.get(txn_type)
     if not model:

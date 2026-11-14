@@ -249,7 +249,7 @@ export default function HRPage() {
         <span className={`px-2 py-0.5 rounded text-xs font-medium ${badge}`}>
           {s === "pending_approval" ? t("pending_approval") : t(s)}
         </span>
-        {isApprover && s === "pending_approval" && (
+        {(isApprover || (type === "salary" && currentUser.role === "hr_officer")) && s === "pending_approval" && (
           <div className="flex gap-1">
             {!readOnly && (<button onClick={() => handleApproval(type, id, "approve")}
               className="px-2 py-0.5 bg-green-500 text-white rounded text-xs hover:bg-green-600">{t("approve")}</button>)}

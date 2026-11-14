@@ -261,6 +261,8 @@ def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
         elif pm == "personnel_petty_cash" and renewal_box.get(x.renewal_request_id) in txn_branch:
             box = txn_branch[renewal_box[x.renewal_request_id]]
             e.cr(L.cashbox(box), x.amount, box)
+        elif pm == "credit":
+            e.cr(L.setting(brand, "suppliers"), x.amount, x.branch_id, "", f"supplier:{x.supplier_id}" if x.supplier_id else None)
         else:
             e.cr(chan_acc(x.channel_id, brand) or L.setting(brand, "bank_default"), x.amount, x.branch_id)
         out.append(e)

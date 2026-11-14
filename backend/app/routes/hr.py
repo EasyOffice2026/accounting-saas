@@ -25,6 +25,14 @@ def _personnel_read_only(request: Request, user: User = Depends(get_current_user
 router = APIRouter(prefix="/api/hr", tags=["hr"], dependencies=[Depends(_personnel_read_only)])
 
 SALARY_VISIBLE_ROLES = ("owner", "manager", "accountant")
+
+
+def _reapprove_if_officer(rec, user) -> None:
+    """An HR Officer's edit sends the record back for approval."""
+    if user.role not in SALARY_VISIBLE_ROLES and hasattr(rec, "approval_status"):
+        rec.approval_status, rec.approved_by = "pending_approval", None
+        if hasattr(rec, "approval_date"):
+            rec.approval_date = None
 HR_EDIT_ROLES = SALARY_VISIBLE_ROLES + ("hr_officer",)
 PAYROLL_ROLES = HR_EDIT_ROLES  # HR Officer prepares payroll; his entries need approval and he cannot pay
 
@@ -1256,6 +1264,7 @@ def update_loan(
     loan.date = date.fromisoformat(loan_date)
     loan.notes = notes
     loan.status = status
+    _reapprove_if_officer(loan, user)
     db.commit()
     return {"message": "Updated"}
 
@@ -1496,6 +1505,7 @@ def update_benefit_deduction(
     bd.month = month or None
     bd.end_month = end_month or None
     bd.notes = notes
+    _reapprove_if_officer(bd, user)
     db.commit()
     return {"message": "Updated"}
 
@@ -1611,6 +1621,7 @@ def update_leave(
     rec.is_paid = is_paid
     rec.month = month or None
     rec.notes = notes
+    _reapprove_if_officer(rec, user)
     db.commit()
     return {"message": "Updated"}
 

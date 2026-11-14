@@ -7,18 +7,27 @@ interface UserInfo {
   full_name: string;
   role: string;
   branch_id: number | null;
+  allowed_tabs: string[] | null;
+  allowed_brands: number[] | null;
+  sales_unlock_until?: string | null;
+  read_only?: boolean;
+  editable_tabs?: string[];
+  current_month_only?: boolean;
+  expense_category_view?: boolean;
+  hr_approver?: boolean;
+  accounting?: boolean;
 }
 
 interface AuthCtx {
   user: UserInfo | null;
   token: string | null;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<UserInfo>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthCtx>({
   user: null, token: null,
-  login: async () => {},
+  login: async () => { throw new Error("not ready"); },
   logout: () => {},
 });
 
@@ -34,6 +43,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (t && u) {
       setToken(t);
       setUser(JSON.parse(u));
+      fetch("/api/auth/me", { headers: { Authorization: `Bearer ${t}` } })
+        .then(r => (r.ok ? r.json() : null))
+        .then((fresh: UserInfo | null) => {
+          if (fresh) {
+            setUser(fresh);
+            localStorage.setItem("user", JSON.stringify(fresh));
+          }
+        })
+        .catch(() => {});
     }
   }, []);
 
@@ -48,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
     localStorage.setItem("token", data.access_token);
     localStorage.setItem("user", JSON.stringify(data.user));
+    return data.user as UserInfo;
   };
 
   const logout = () => {
@@ -55,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("selectedBrandId");
   };
 
   return (

@@ -82,7 +82,7 @@ def save_settings(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(status_code=403, detail="Only owner/manager can configure Foodics")
 
     s = _get_settings(db)
@@ -152,7 +152,7 @@ def save_branch_mapping(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(status_code=403, detail="Forbidden")
     existing = db.query(FoodicsBranchMapping).filter(
         FoodicsBranchMapping.foodics_branch_id == foodics_branch_id
@@ -209,7 +209,7 @@ def save_payment_mapping(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(status_code=403, detail="Forbidden")
     existing = db.query(FoodicsPaymentMapping).filter(
         FoodicsPaymentMapping.foodics_payment_id == foodics_payment_id
@@ -232,7 +232,7 @@ def save_payment_mapping(
 
 @router.post("/auto-map-payments")
 async def auto_map_payments(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(status_code=403, detail="Forbidden")
     s = _require_settings(db)
     url = f"{_base_url(s)}/payment_methods"
@@ -292,7 +292,7 @@ async def sync_sales(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(status_code=403, detail="Only owner/manager can sync")
 
     s = _require_settings(db)
@@ -416,7 +416,7 @@ async def sync_sales_range(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("owner", "manager"):
+    if user.role not in ("owner", "manager", "accountant"):
         raise HTTPException(status_code=403, detail="Only owner/manager can sync")
 
     from datetime import timedelta

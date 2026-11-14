@@ -6,7 +6,7 @@ from app.models.purchase import (
     ReceivingOrder, ReceivingItem, Invoice, DeliveryOrder,
 )
 from app.models.expense import ExpenseCategory, Expense
-from app.models.hr import Employee, Attendance, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, LeaveRecord, Resignation
+from app.models.hr import Employee, Attendance, OvertimeRecord, SalaryPayment, StaffTransfer, AdvanceLoan, StaffBenefitDeduction, LeaveRecord, Resignation
 from app.models.cash import CashTransaction, CashBalance
 from app.models.item import Item
 from app.models.settings import SmtpSettings
@@ -14,6 +14,13 @@ from app.models.payment import PaymentGatewaySettings, PaymentTransaction
 from app.models.transfer import TransferItem, TransferOrder, TransferOrderLine
 from app.models.whatsapp import WhatsAppSettings
 from app.models.foodics import FoodicsSettings, FoodicsBranchMapping, FoodicsPaymentMapping
+from app.models.renewal import (
+    RenewalType, CompanyLicense, EmployeeDocument, RenewalRequest, RenewalRequestLine, RenewalRequestLog,
+)
+from app.models.procurement import ProcOrder, ProcOrderItem, ProcInvoice, ProcPayment, ProcOrderLog
+from app.models.channel import PaymentChannel, ChannelTransaction
+from app.models.proceeds import ProceedsReceipt, ProceedsChannelMap
+from app.models.accounting import AccAccount, AccMapping, AccJournal, AccJournalLine, AccSettings
 
 __all__ = [
     "Branch", "User",
@@ -29,4 +36,9 @@ __all__ = [
     "TransferItem", "TransferOrder", "TransferOrderLine",
     "WhatsAppSettings",
     "FoodicsSettings", "FoodicsBranchMapping", "FoodicsPaymentMapping",
+    "RenewalType", "CompanyLicense", "EmployeeDocument", "RenewalRequest", "RenewalRequestLine", "RenewalRequestLog",
+    "ProcOrder", "ProcOrderItem", "ProcInvoice", "ProcPayment", "ProcOrderLog",
+    "PaymentChannel", "ChannelTransaction",
+    "ProceedsReceipt", "ProceedsChannelMap",
+    "AccAccount", "AccMapping", "AccJournal", "AccJournalLine", "AccSettings",
 ]

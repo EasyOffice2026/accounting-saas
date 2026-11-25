@@ -243,3 +243,29 @@ def test_central_receipt_goes_into_pos_stock_and_usage_leaves_inventory(db):
     code_of = {acc: code for (_, code), acc in L.by_code.items()}
     lines = sorted((code_of[ln[0]], round(ln[2], 3), round(ln[3], 3)) for ln in entry.lines)
     assert lines == [("1310", 0, 0.25), ("1310", 0, 1.5), ("5110", 1.5, 0), ("5140", 0.25, 0)]
+
+
+def test_transfer_without_counted_lines_moves_the_requested_quantity(db):
+    from app.models.hr import Brand
+    from app.models.pos import PosStockLink, PosStockPush
+    from app.models.transfer import TransferOrder, TransferOrderLine
+    from app.utils import pos_stock
+
+    db.add(Brand(id=1, name_en="Mudawwarah"))
+    db.get(Branch, 1).brand_id = 1
+    db.add(Branch(id=2, name="Central Store - Mudawwarah", brand_id=1, unit_type="central_store"))
+    db.add(PosBranchMapping(pos_branch_id="store-1", pos_branch_name="Store", local_branch_id=2))
+    db.add(PosStockLink(brand_id=1, source="transfer_item", item_id=7, pos_ingredient_id="ing-flour", factor=10))
+    db.add(TransferOrder(id=1, requesting_branch_id=1, source_branch_id=2, date=date(2026, 11, 19)))
+    db.add(TransferOrderLine(transfer_order_id=1, item_id=7, item_name="Flour bag", requested_qty=1, unit_price=3))
+    db.commit()
+
+    order = db.get(TransferOrder, 1)
+    assert pos_stock.queue_transfer(db, order, "dispatched")
+    assert pos_stock.queue_transfer(db, order, "received")
+    db.commit()
+    pushes = {p.key: json.loads(p.payload) for p in db.query(PosStockPush).all()}
+    assert pushes["transfer_dispatched:1"]["kind"] == "transfer_out"
+    assert pushes["transfer_dispatched:1"]["branchId"] == "store-1"
+    assert pushes["transfer_received:1"]["kind"] == "transfer_in"
+    assert [ln["quantity"] for p in pushes.values() for ln in p["lines"]] == ["10.000", "10.000"]

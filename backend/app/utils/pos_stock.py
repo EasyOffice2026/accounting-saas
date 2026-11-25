@@ -92,7 +92,8 @@ def queue_transfer(db: Session, order: TransferOrder, stage: str) -> bool:
     lines = []
     for ln in db.query(TransferOrderLine).filter(TransferOrderLine.transfer_order_id == order.id).all():
         link = _link(db, unit.brand_id, "transfer_item", ln.item_id)
-        qty = ln.dispatched_qty if stage == "dispatched" else (ln.received_qty if ln.received_qty is not None else ln.dispatched_qty)
+        sent = ln.dispatched_qty if ln.dispatched_qty is not None else ln.requested_qty
+        qty = sent if stage == "dispatched" else (ln.received_qty if ln.received_qty is not None else sent)
         if link:
             lines.append(_line(link, qty, ln.unit_price))
     return _queue(db, f"transfer_{stage}:{order.id}", unit.id, kind, lines, f"Transfer #{order.id} {src.name} -> {dst.name}")

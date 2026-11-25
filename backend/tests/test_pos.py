@@ -139,3 +139,34 @@ def test_clean_env_keeps_setup_and_drops_transactions(tmp_path):
     count = lambda t: db2.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
     assert (count("branches"), count("suppliers"), count("sales"), count("purchase_orders")) == (1, 1, 0, 0)
     assert sqlite3.connect(src).execute("SELECT COUNT(*) FROM sales").fetchone()[0] == 1
+
+
+def test_webhook_signature_and_wakeup(db, monkeypatch):
+    import asyncio, hashlib, hmac as _hmac
+    from fastapi import HTTPException
+    from app.routes import pos as pos_routes
+    from app.utils import pos_sync
+    s = pos_sync.get_settings(db)
+    s.api_url, s.api_key, s.auto_sync = "https://pos.test/api/v1", "posk_x", True
+    secret = pos_sync.webhook_secret(db, s)
+    assert secret and pos_sync.webhook_secret(db, s) == secret
+    woke = []
+    monkeypatch.setattr(pos_routes, "request_sync", lambda: woke.append(1))
+    body = b'{"event":"figures.changed"}'
+
+    class Req:
+        def __init__(self, sig):
+            self.headers = {"x-pos-signature": sig}
+        async def body(self):
+            return body
+
+    good = _hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    assert asyncio.run(pos_routes.pos_webhook(Req(good), db)) == {"status": "queued"}
+    assert woke == [1]
+    for bad in ("", "0" * 64):
+        try:
+            asyncio.run(pos_routes.pos_webhook(Req(bad), db))
+            raise AssertionError("accepted a bad signature")
+        except HTTPException as e:
+            assert e.status_code == 401
+    assert woke == [1]

@@ -13,6 +13,7 @@ class PosSettings(Base):
     auto_sync = Column(Boolean, default=True, nullable=False)
     import_receipts = Column(Boolean, default=True, nullable=False)
     sso_private_key = Column(Text, nullable=True)  # Ed25519 PEM, made on first use
+    webhook_secret = Column(String, nullable=True)  # the POS signs its change notices with it
     last_sync_at = Column(DateTime, nullable=True)
     last_error = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

@@ -10,7 +10,8 @@ from app.models.user import User
 from app.utils.auth import get_current_user
 from app.utils import pos_sso
 from app.utils.pos_sync import (
-    CHANNELS, PosError, client_for, get_settings, guess_channel, is_configured, sync,
+    CHANNELS, PosError, client_for, get_settings, guess_channel, is_configured, request_sync,
+    signature_ok, sync, webhook_secret,
 )
 
 router = APIRouter(prefix="/api/pos", tags=["pos"])
@@ -44,6 +45,7 @@ def read_settings(request: Request, db: Session = Depends(get_db), _=Depends(_ad
         "last_sync_at": s.last_sync_at.isoformat() + "Z" if s.last_sync_at else None,
         "last_error": s.last_error,
         "sso": {"issuer": issuer, "jwks_url": f"{issuer}/api/pos/sso/jwks.json", "audience": pos_sso.AUDIENCE},
+        "webhook": {"url": f"{issuer}/api/pos/webhook", "secret": webhook_secret(db, s)},
         "channels": CHANNELS,
     }
 
@@ -191,3 +193,15 @@ def sso(request: Request, db: Session = Depends(get_db), user: User = Depends(ge
         raise HTTPException(400, "Your user has no POS email. Ask the owner to add it in Settings > Users.")
     t = pos_sso.ticket(db, s, pos_sso.issuer_for(str(request.base_url)), user.id, user.email)
     return {"url": f"{s.web_url}/sso#ticket={t}"}
+
+
+@router.post("/webhook")
+async def pos_webhook(request: Request, db: Session = Depends(get_db)):
+    """The POS calls this after a payment, refund, void or goods receipt (no user session)."""
+    body = await request.body()
+    s = get_settings(db)
+    if not signature_ok(s.webhook_secret, body, request.headers.get("x-pos-signature", "")):
+        raise HTTPException(401, "Bad signature")
+    if is_configured(s) and s.auto_sync:
+        request_sync()
+    return {"status": "queued"}

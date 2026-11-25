@@ -446,6 +446,12 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE users ADD COLUMN email TEXT"))
                 conn.commit()
 
+        if "pos_settings" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("pos_settings")]
+            if "webhook_secret" not in cols:
+                conn.execute(text("ALTER TABLE pos_settings ADD COLUMN webhook_secret VARCHAR"))
+                conn.commit()
+
         # Suppliers: add category_id
         if "suppliers" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("suppliers")]

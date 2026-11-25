@@ -7,6 +7,7 @@ interface PosConfig {
   api_url: string; web_url: string; has_key: boolean; auto_sync: boolean; import_receipts: boolean;
   last_sync_at: string | null; last_error: string | null; channels: string[];
   sso: { issuer: string; jwks_url: string; audience: string };
+  webhook: { url: string; secret: string };
 }
 interface PosBranch { id: string; name: Name; brand: string; is_active: boolean }
 interface PosMethod { key: string; name: Name }
@@ -175,6 +176,8 @@ export default function PosSettingsPanel({ branches }: { branches: Branch[] }) {
           <div>SSO_ISSUER={cfg.sso.issuer}</div>
           <div>SSO_JWKS_URL={cfg.sso.jwks_url}</div>
           <div>SSO_AUDIENCE={cfg.sso.audience}</div>
+          <div>ACCOUNTING_WEBHOOK_URL={cfg.webhook.url}</div>
+          <div>ACCOUNTING_WEBHOOK_SECRET={cfg.webhook.secret}</div>
         </div>
       )}
     </div>

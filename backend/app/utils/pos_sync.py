@@ -1,3 +1,6 @@
+import secrets
+import hmac
+import hashlib
 """Brings the POS into Mudawwarah: each branch's day fills the Sales system figures, and goods
 received in the POS become branch (cash) purchases. The branch still closes its physical figures."""
 import logging
@@ -25,6 +28,9 @@ CHANNEL_KEYWORDS = {
 }
 MAX_RANGE_DAYS = 31
 INTERVAL_SECONDS = 900
+COALESCE_SECONDS = 2
+NOTICE_DAYS = 7
+_wake = threading.Event()
 KUWAIT = ZoneInfo("Asia/Kuwait")
 log = logging.getLogger("pos")
 
@@ -232,15 +238,38 @@ def kuwait_today() -> date:
     return datetime.now(KUWAIT).date()
 
 
+def webhook_secret(db: Session, s: PosSettings) -> str:
+    if not s.webhook_secret:
+        s.webhook_secret = secrets.token_urlsafe(32)
+        db.commit()
+    return s.webhook_secret
+
+
+def signature_ok(secret: str | None, body: bytes, signature: str) -> bool:
+    if not secret or not signature:
+        return False
+    expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature.strip().lower())
+
+
+def request_sync():
+    """Called when the POS says something changed; the worker syncs within seconds."""
+    _wake.set()
+
+
 def _loop():
     while True:
-        time.sleep(INTERVAL_SECONDS)
+        woke = _wake.wait(INTERVAL_SECONDS)
+        if woke:
+            time.sleep(COALESCE_SECONDS)  # one sync for a burst of notices
+            _wake.clear()
         db = SessionLocal()
         try:
             s = db.query(PosSettings).first()
             if is_configured(s) and s.auto_sync:
                 today = kuwait_today()
-                sync(db, today - timedelta(days=1), today)
+                # A refund can change an older day, so a notice looks a week back.
+                sync(db, today - timedelta(days=NOTICE_DAYS - 1 if woke else 1), today)
         except Exception:
             db.rollback()
             log.exception("POS sync failed")

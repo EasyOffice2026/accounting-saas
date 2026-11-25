@@ -13,6 +13,8 @@ import { useState } from "react";
 const PERSONNEL_NAV = ["dashboard", "renewals", "hr", "cash_management", "expenses"];
 const PURCHASE_NAV = ["dashboard", "procurement", "cash_management"];
 
+const POS_ITEM = { path: "#pos", icon: MonitorSmartphone, key: "pos" };
+
 const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles?: string[]; accounting?: boolean }[] = [
   { path: "/", icon: LayoutDashboard, key: "dashboard" },
   { path: "/sales", icon: ShoppingCart, key: "sales" },
@@ -123,7 +125,19 @@ export default function Layout() {
               const tabKey = item.key === "cash_management" ? "cash" : item.key === "internal_transfer" ? "transfers" : item.key === "contracts_tab" ? "contracts" : item.key;
               return user.allowed_tabs.includes(tabKey);
             })
-            .map(({ path, icon: Icon, key }) => (
+            .flatMap((item, i, shown) => {
+              const posAfter = item.key === "dashboard" || (i === 0 && !shown.some(x => x.key === "dashboard"));
+              return posAfter ? [item, POS_ITEM] : [item];
+            })
+            .map(({ path, icon: Icon, key }) => key === "pos" ? (
+            user?.pos && user.email ? (
+            <button key="pos" onClick={openPos}
+              className="w-full flex items-center gap-3 px-6 py-2.5 text-sm text-emerald-100 hover:bg-emerald-600/50 transition-colors">
+              <Icon size={20} />
+              {t("pos")}
+            </button>
+            ) : null
+            ) : (
             <Link
               key={path}
               to={path}
@@ -137,13 +151,6 @@ export default function Layout() {
               {t(key)}
             </Link>
           ))}
-          {user?.pos && user.email && (
-            <button onClick={openPos}
-              className="w-full flex items-center gap-3 px-6 py-2.5 text-sm text-emerald-100 hover:bg-emerald-600/50 transition-colors">
-              <MonitorSmartphone size={20} />
-              {t("pos")}
-            </button>
-          )}
         </nav>
         <div className="shrink-0 w-full p-4 border-t border-emerald-600">
           <div className="text-sm text-emerald-200 mb-2">{user?.full_name}</div>

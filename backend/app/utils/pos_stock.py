@@ -45,8 +45,7 @@ def _queue(db: Session, key: str, local_branch: int | None, kind: str, lines: li
     pos_branch = _pos_branch(db, local_branch)
     if not lines or not pos_branch or db.query(PosStockPush).filter(PosStockPush.key == key).first():
         return False
-    body = {"key": key, "branchId": pos_branch, "kind": kind, "note": note[:500], "lines": lines,
-            "at": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")}
+    body = {"key": key, "branchId": pos_branch, "kind": kind, "note": note[:500], "lines": lines}
     db.add(PosStockPush(key=key, payload=json.dumps(body)))
     return True
 

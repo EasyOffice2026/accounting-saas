@@ -553,7 +553,7 @@ def _migrate_columns():
 def _seed_data():
     from app.database import SessionLocal
     from app.models.branch import Branch
-from app.utils.units import infer_unit_type
+    from app.utils.units import infer_unit_type
     from app.models.user import User
     from app.models.expense import ExpenseCategory
 

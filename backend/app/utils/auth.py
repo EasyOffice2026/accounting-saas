@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -10,7 +11,7 @@ from app.database import get_db
 from app.models.user import User
 from app.utils.month_scope import limit_to_current_month
 
-SECRET_KEY = "mudawwarah-secret-key-change-in-production"
+SECRET_KEY = os.environ.get("SECRET_KEY", "mudawwarah-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 

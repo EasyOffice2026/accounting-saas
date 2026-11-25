@@ -19,6 +19,7 @@ KEEP = {
 RESET = {
     "acc_settings": {"last_sync_at": None, "last_sync_result": None},
     "branches": {"sales_unlock_until": None},
+    "payment_channels": {"opening_balance": 0},
 }
 
 

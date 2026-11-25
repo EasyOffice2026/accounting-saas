@@ -388,6 +388,11 @@ def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
     # Central Purchases (Purchase Office): invoices to suppliers, payments from channel / office petty cash.
     orders = {o.id: o for o in db.query(ProcOrder).all()}
     pinv = {i.id: i for i in db.query(ProcInvoice).all()}
+    # With inventory accounting, central purchases are stock held at the brand's central store.
+    store_of: dict[int, int] = {}
+    if inventory_on:
+        for b in db.query(Branch.id, Branch.brand_id).filter(Branch.unit_type == "central_store").order_by(Branch.id).all():
+            store_of.setdefault(b.brand_id, b.id)
     for inv in pinv.values():
         if inv.date < start:
             continue
@@ -398,7 +403,7 @@ def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
             e.dr(L.setting(brand, "opening_equity"), inv.total_amount)
         else:
             o = orders.get(inv.order_id)
-            e.dr(purchase_acc(brand, o.category_id if o else None), inv.total_amount)
+            e.dr(purchase_acc(brand, o.category_id if o else None), inv.total_amount, store_of.get(brand))
         e.cr(L.setting(brand, "suppliers"), inv.total_amount, None, "", f"supplier:{inv.supplier_id}")
         out.append(e)
     cash_box_of = {t.id: t.branch_id for t in db.query(CashTransaction.id, CashTransaction.branch_id)

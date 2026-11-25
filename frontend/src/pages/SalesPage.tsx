@@ -116,7 +116,7 @@ export default function SalesPage() {
   };
 
   useEffect(() => {
-    apiGet("/api/branches/").then(setBranches);
+    apiGet("/api/branches/?scope=sales").then(setBranches);
   }, []);
 
   useEffect(() => { loadSales(branchFilter); }, [range]);

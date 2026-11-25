@@ -446,6 +446,14 @@ def _migrate_columns():
                 conn.execute(text("ALTER TABLE users ADD COLUMN email TEXT"))
                 conn.commit()
 
+        if "branches" in insp.get_table_names():
+            if "unit_type" not in [c["name"] for c in insp.get_columns("branches")]:
+                from app.utils.units import infer_unit_type
+                conn.execute(text("ALTER TABLE branches ADD COLUMN unit_type VARCHAR NOT NULL DEFAULT 'sales'"))
+                for bid, bname, ck in conn.execute(text("SELECT id, name, is_central_kitchen FROM branches")).fetchall():
+                    conn.execute(text("UPDATE branches SET unit_type = :t WHERE id = :i"),
+                                 {"t": infer_unit_type(bname, bool(ck)), "i": bid})
+                conn.commit()
         if "pos_settings" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("pos_settings")]
             if "webhook_secret" not in cols:
@@ -545,6 +553,7 @@ def _migrate_columns():
 def _seed_data():
     from app.database import SessionLocal
     from app.models.branch import Branch
+from app.utils.units import infer_unit_type
     from app.models.user import User
     from app.models.expense import ExpenseCategory
 
@@ -553,7 +562,7 @@ def _seed_data():
         if db.query(Branch).count() > 0:
             # Add Administration branch if missing
             if not db.query(Branch).filter(Branch.name == "Administration").first():
-                db.add(Branch(name="Administration", name_ar="الإدارة", is_central_kitchen=False))
+                db.add(Branch(name="Administration", name_ar="الإدارة", is_central_kitchen=False, unit_type="administration"))
                 db.commit()
             return
 
@@ -567,7 +576,7 @@ def _seed_data():
         ]
         branches = []
         for name, name_ar, is_ck in branch_data:
-            b = Branch(name=name, name_ar=name_ar, is_central_kitchen=is_ck)
+            b = Branch(name=name, name_ar=name_ar, is_central_kitchen=is_ck, unit_type=infer_unit_type(name, is_ck))
             db.add(b)
             branches.append(b)
         db.commit()

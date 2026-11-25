@@ -108,8 +108,11 @@ def save_branch_mapping(
             db.delete(m)
             db.commit()
         return {"status": "ok"}
-    if not db.get(Branch, int(local_branch_id)):
+    local = db.get(Branch, int(local_branch_id))
+    if not local:
         raise HTTPException(404, "Branch not found")
+    if local.unit_type != "sales":
+        raise HTTPException(400, "Only a sales branch can take POS sales")
     if not m:
         m = PosBranchMapping(pos_branch_id=pos_branch_id)
         db.add(m)

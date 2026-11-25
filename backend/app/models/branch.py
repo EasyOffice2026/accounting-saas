@@ -11,6 +11,7 @@ class Branch(Base):
     name = Column(String, unique=True, nullable=False)
     name_ar = Column(String, nullable=True)
     is_central_kitchen = Column(Boolean, default=False)
+    unit_type = Column(String, nullable=False, default="sales", index=True)  # app.utils.units
     whatsapp_number = Column(String, nullable=True)
     whatsapp_group = Column(String, nullable=True)  # Group ID e.g. 120363XXX@g.us
     is_active = Column(Boolean, default=True)

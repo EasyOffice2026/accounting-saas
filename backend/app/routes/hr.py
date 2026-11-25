@@ -459,7 +459,7 @@ SALARY_EXPENSE_CATEGORY = ("Salaries", "الرواتب")
 
 def _admin_branch(db: Session, brand_id: Optional[int]) -> Optional[Branch]:
     """Administration branch of the brand (payroll expenses are booked here)."""
-    q = db.query(Branch).filter(Branch.name.like("Administration%"))
+    q = db.query(Branch).filter(Branch.unit_type == "administration")
     b = q.filter(Branch.brand_id == brand_id).order_by(Branch.id).first() if brand_id else None
     return b or q.order_by(Branch.id).first()
 

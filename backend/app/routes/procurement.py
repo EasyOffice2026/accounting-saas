@@ -62,15 +62,14 @@ def _check_brand(user: User, brand_id: Optional[int]):
 
 def purchase_branch(db: Session, brand_id: int, create: bool = True) -> Optional[Branch]:
     """The Purchase Office cash box branch for a brand (one per brand)."""
-    b = db.query(Branch).filter(Branch.brand_id == brand_id,
-                                Branch.name.like(f"{PURCHASE_BRANCH_PREFIX}%")).first()
+    b = db.query(Branch).filter(Branch.brand_id == brand_id, Branch.unit_type == "purchase_office").first()
     if b or not create:
         return b
     brand = db.query(Brand).filter(Brand.id == brand_id).first()
     suffix = f" - {brand.name_en}" if brand else ""
     suffix_ar = f" - {brand.name_ar or brand.name_en}" if brand else ""
     b = Branch(name=f"{PURCHASE_BRANCH_PREFIX}{suffix}", name_ar=f"مكتب المشتريات{suffix_ar}",
-               brand_id=brand_id, is_central_kitchen=False, is_active=True)
+               brand_id=brand_id, is_central_kitchen=False, unit_type="purchase_office", is_active=True)
     db.add(b)
     db.commit()
     db.refresh(b)
@@ -78,7 +77,7 @@ def purchase_branch(db: Session, brand_id: int, create: bool = True) -> Optional
 
 
 def is_purchase_branch(b: Branch) -> bool:
-    return (b.name or "").startswith(PURCHASE_BRANCH_PREFIX)
+    return b.unit_type == "purchase_office"
 
 
 def cash_balance(db: Session, branch_id: int) -> float:
@@ -379,8 +378,7 @@ def delivery_locations(brand_id: Optional[int] = None, db: Session = Depends(get
                        user: User = Depends(get_current_user)):
     """Operating branch names offered as delivery reference (text only, no accounting link)."""
     _require(user)
-    q = db.query(Branch).filter(Branch.is_active == True, ~Branch.name.like("Personnel Office%"),
-                                ~Branch.name.like(f"{PURCHASE_BRANCH_PREFIX}%"), ~Branch.name.like("HR Office%"))
+    q = db.query(Branch).filter(Branch.is_active == True, ~Branch.unit_type.in_(("personnel_office", "purchase_office", "hr_office")))
     if brand_id:
         q = q.filter(Branch.brand_id == brand_id)
     return [{"name": b.name, "name_ar": b.name_ar or ""} for b in q.order_by(Branch.name).all()]

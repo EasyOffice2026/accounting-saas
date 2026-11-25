@@ -80,7 +80,7 @@ def save_settings(
 
 def _build_daily_sales_report(db: Session, report_date: date) -> str:
     """Build a formatted daily sales report for all branches."""
-    branches = db.query(Branch).filter(Branch.is_central_kitchen == False).all()
+    branches = db.query(Branch).filter(Branch.unit_type == "sales").all()
     sales = db.query(Sale).filter(Sale.date == report_date).all()
     sales_by_branch = {}
     for s in sales:

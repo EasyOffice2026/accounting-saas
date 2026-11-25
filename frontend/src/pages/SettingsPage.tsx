@@ -87,12 +87,15 @@ interface UserItem {
   hr_approver?: boolean;
 }
 
+const UNIT_TYPES = ["sales", "central_store", "central_kitchen", "administration", "purchase_office", "personnel_office", "hr_office"];
+
 interface BranchItem {
   id: number;
   name: string;
   name_ar: string;
   brand_id: number | null;
   is_central_kitchen: boolean;
+  unit_type: string;
   whatsapp_number: string;
   whatsapp_group: string;
   is_active: boolean;
@@ -193,7 +196,7 @@ export default function SettingsPage() {
   const [brName, setBrName] = useState("");
   const [brNameAr, setBrNameAr] = useState("");
   const [brBrandId, setBrBrandId] = useState<string>("");
-  const [brIsCK, setBrIsCK] = useState(false);
+  const [brUnitType, setBrUnitType] = useState("sales");
   const [brWhatsApp, setBrWhatsApp] = useState("");
   const [brWhatsAppGroup, setBrWhatsAppGroup] = useState("");
   const [brMsg, setBrMsg] = useState("");
@@ -412,7 +415,7 @@ export default function SettingsPage() {
   };
 
   const resetBranchForm = () => {
-    setBrName(""); setBrNameAr(""); setBrBrandId(""); setBrIsCK(false); setBrWhatsApp(""); setBrWhatsAppGroup("");
+    setBrName(""); setBrNameAr(""); setBrBrandId(""); setBrUnitType("sales"); setBrWhatsApp(""); setBrWhatsAppGroup("");
     setEditingBranch(null); setShowBranchForm(false);
   };
 
@@ -421,7 +424,7 @@ export default function SettingsPage() {
     setBrName(b.name);
     setBrNameAr(b.name_ar);
     setBrBrandId(b.brand_id ? String(b.brand_id) : "");
-    setBrIsCK(b.is_central_kitchen);
+    setBrUnitType(b.unit_type || "sales");
     setBrWhatsApp(b.whatsapp_number || "");
     setBrWhatsAppGroup(b.whatsapp_group || "");
     setShowBranchForm(true);
@@ -432,7 +435,7 @@ export default function SettingsPage() {
     const fd = new URLSearchParams();
     fd.append("name", brName);
     fd.append("name_ar", brNameAr);
-    fd.append("is_central_kitchen", String(brIsCK));
+    fd.append("unit_type", brUnitType);
     if (brBrandId) fd.append("brand_id", brBrandId);
     fd.append("whatsapp_number", brWhatsApp);
     fd.append("whatsapp_group", brWhatsAppGroup);
@@ -600,11 +603,12 @@ export default function SettingsPage() {
                     ))}
                   </select>
                 </div>
-                <div className="flex items-center pt-6">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={brIsCK} onChange={e => setBrIsCK(e.target.checked)} />
-                    {t("central_kitchen")}
-                  </label>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t("unit_type")}</label>
+                  <select value={brUnitType} onChange={e => setBrUnitType(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    {UNIT_TYPES.map(u => <option key={u} value={u}>{t(`unit_${u}`)}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("whatsapp_number")}</label>
@@ -638,21 +642,27 @@ export default function SettingsPage() {
                   <th className="px-3 py-2 text-left">{t("branch_name_en")}</th>
                   <th className="px-3 py-2 text-left">{t("branch_name_ar")}</th>
                   <th className="px-3 py-2 text-left">{t("brand")}</th>
-                  <th className="px-3 py-2 text-left">{t("central_kitchen")}</th>
+                  <th className="px-3 py-2 text-left">{t("unit_type")}</th>
                   <th className="px-3 py-2 text-left">{t("whatsapp")}</th>
                   <th className="px-3 py-2 text-left">{t("whatsapp_group_id")}</th>
                   <th className="px-3 py-2 text-left">{t("actions")}</th>
                 </tr>
               </thead>
               <tbody>
-                {branchesList.map(b => (
+                {UNIT_TYPES.flatMap(u => {
+                  const rows = branchesList.filter(b => (b.unit_type || "sales") === u);
+                  return rows.length ? [
+                    <tr key={`h-${u}`} className="border-t bg-gray-50">
+                      <td colSpan={7} className="px-3 py-1.5 text-xs font-semibold text-gray-600">
+                        {t(`unit_${u}`)} ({rows.length})
+                      </td>
+                    </tr>,
+                    ...rows.map(b => (
                   <tr key={b.id} className="border-t">
                     <td className="px-3 py-2 font-medium">{b.name}</td>
                     <td className="px-3 py-2" dir="rtl">{b.name_ar || "—"}</td>
                     <td className="px-3 py-2">{getBrandName(b.brand_id)}</td>
-                    <td className="px-3 py-2">
-                      {b.is_central_kitchen ? <span className="text-green-600 text-xs font-medium">✓</span> : "—"}
-                    </td>
+                    <td className="px-3 py-2 text-xs">{t(`unit_${b.unit_type || "sales"}`)}</td>
                     <td className="px-3 py-2 text-xs text-gray-500">{b.whatsapp_number || "—"}</td>
                     <td className="px-3 py-2 text-xs text-gray-500">{b.whatsapp_group ? "✓" : "—"}</td>
                     <td className="px-3 py-2">
@@ -662,7 +672,9 @@ export default function SettingsPage() {
                         className="text-red-600 hover:underline text-xs">{t("delete")}</button>
                     </td>
                   </tr>
-                ))}
+                    )),
+                  ] : [];
+                })}
               </tbody>
             </table>
           </div>
@@ -1308,7 +1320,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {["owner", "manager", "accountant"].includes(currentUser?.role || "") && <PosSettingsPanel branches={branchesList} />}
+      {["owner", "manager", "accountant"].includes(currentUser?.role || "") && <PosSettingsPanel branches={branchesList.filter(b => b.unit_type === "sales")} />}
 
       {/* Foodics Integration: replaced by the POS in this environment */}
       {import.meta.env.VITE_SHOW_FOODICS === "1" && <div className="bg-white p-6 rounded-xl shadow-sm border max-w-4xl mb-6">

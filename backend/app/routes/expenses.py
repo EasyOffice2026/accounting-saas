@@ -46,7 +46,7 @@ def delete_category(category_id: int, db: Session = Depends(get_db),
 
 
 def _hr_office_ids(db: Session) -> list:
-    return [b.id for b in db.query(Branch.id).filter(Branch.name.like("HR Office%")).all()]
+    return [b.id for b in db.query(Branch.id).filter(Branch.unit_type == "hr_office").all()]
 
 
 def _guard_hr_officer(db: Session, user: User, branch_id: Optional[int]):

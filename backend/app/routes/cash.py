@@ -22,13 +22,9 @@ router = APIRouter(prefix="/api/cash", tags=["cash"])
 
 def _personnel_branch_ids(db: Session, user: User) -> list:
     from app.models.branch import Branch
-    from app.routes.renewals import PERSONNEL_BRANCH_PREFIX
-    from app.routes.procurement import PURCHASE_BRANCH_PREFIX
-    from app.routes.renewals import HR_BRANCH_PREFIX
-    from sqlalchemy import or_
-    prefixes = ([PURCHASE_BRANCH_PREFIX] if user.role.startswith("purchase")
-                else [PERSONNEL_BRANCH_PREFIX, HR_BRANCH_PREFIX] if user.role == "hr_officer" else [PERSONNEL_BRANCH_PREFIX])
-    q = db.query(Branch.id).filter(or_(*[Branch.name.like(f"{p}%") for p in prefixes]))
+    kinds = (["purchase_office"] if user.role.startswith("purchase")
+             else ["personnel_office", "hr_office"] if user.role == "hr_officer" else ["personnel_office"])
+    q = db.query(Branch.id).filter(Branch.unit_type.in_(kinds))
     allowed = user.get_allowed_brands()
     if allowed is not None:
         q = q.filter(Branch.brand_id.in_(allowed))
@@ -328,12 +324,7 @@ def _daily_rows(db: Session, user: User, target_date: date_cls, brand_id: int = 
     from app.models.hr import Brand
     q = db.query(Branch).filter(
         Branch.is_active == True,  # noqa: E712
-        Branch.is_central_kitchen == False,  # noqa: E712
-        ~Branch.name.like("Personnel Office%"),
-        ~Branch.name.like("Purchase Office%"),
-        ~Branch.name.like("HR Office%"),
-        ~Branch.name.like("Administration%"),
-        ~Branch.name.like("Central%"),
+        Branch.unit_type == "sales",
     )
     allowed = user.get_allowed_brands()
     if allowed is not None:

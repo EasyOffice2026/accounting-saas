@@ -90,15 +90,14 @@ def _check_employee_brand(db: Session, user: User, emp: Optional[Employee]):
 
 def personnel_branch(db: Session, brand_id: int, create: bool = True) -> Optional[Branch]:
     """The Personnel Office cash box branch for a brand (one per brand)."""
-    b = db.query(Branch).filter(Branch.brand_id == brand_id,
-                                Branch.name.like(f"{PERSONNEL_BRANCH_PREFIX}%")).first()
+    b = db.query(Branch).filter(Branch.brand_id == brand_id, Branch.unit_type == "personnel_office").first()
     if b or not create:
         return b
     brand = db.query(Brand).filter(Brand.id == brand_id).first()
     suffix = f" - {brand.name_en}" if brand else ""
     suffix_ar = f" - {brand.name_ar or brand.name_en}" if brand else ""
     b = Branch(name=f"{PERSONNEL_BRANCH_PREFIX}{suffix}", name_ar=f"مكتب شؤون الموظفين{suffix_ar}",
-               brand_id=brand_id, is_central_kitchen=False, is_active=True)
+               brand_id=brand_id, is_central_kitchen=False, unit_type="personnel_office", is_active=True)
     db.add(b)
     db.commit()
     db.refresh(b)
@@ -107,14 +106,14 @@ def personnel_branch(db: Session, brand_id: int, create: bool = True) -> Optiona
 
 def hr_branch(db: Session, brand_id: int, create: bool = True) -> Optional[Branch]:
     """The HR Office cash box branch for a brand (one per brand)."""
-    b = db.query(Branch).filter(Branch.brand_id == brand_id, Branch.name.like(f"{HR_BRANCH_PREFIX}%")).first()
+    b = db.query(Branch).filter(Branch.brand_id == brand_id, Branch.unit_type == "hr_office").first()
     if b or not create:
         return b
     brand = db.query(Brand).filter(Brand.id == brand_id).first()
     suffix = f" - {brand.name_en}" if brand else ""
     suffix_ar = f" - {brand.name_ar or brand.name_en}" if brand else ""
     b = Branch(name=f"{HR_BRANCH_PREFIX}{suffix}", name_ar=f"مكتب الموارد البشرية{suffix_ar}",
-               brand_id=brand_id, is_central_kitchen=False, is_active=True)
+               brand_id=brand_id, is_central_kitchen=False, unit_type="hr_office", is_active=True)
     db.add(b)
     db.commit()
     db.refresh(b)

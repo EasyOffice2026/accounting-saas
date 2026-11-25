@@ -60,7 +60,7 @@ export default function SalesProceedsPanel() {
 
   useEffect(() => {
     const q = brandId ? `&brand_id=${brandId}` : "&all_brands=1";
-    apiGet(`/api/branches/?scope=operating${q}`)
+    apiGet(`/api/branches/?scope=sales${q}`)
       .then((bs: Branch[]) => setBranches((Array.isArray(bs) ? bs : []).filter(b => !b.name.includes("Central"))))
       .catch(() => setBranches([]));
   }, [brandId]);

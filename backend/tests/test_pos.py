@@ -170,3 +170,25 @@ def test_webhook_signature_and_wakeup(db, monkeypatch):
         except HTTPException as e:
             assert e.status_code == 401
     assert woke == [1]
+
+
+def test_unit_types_split_sales_from_admin_units(db):
+    from app.models.branch import Branch
+    from app.routes.branches import list_branches
+    from app.utils.units import infer_unit_type
+    assert infer_unit_type("Al Jahra") == "sales"
+    assert infer_unit_type("Purchase Office - Mudawwarah") == "purchase_office"
+    assert infer_unit_type("HR Office - Khubuz Maraei") == "hr_office"
+    assert infer_unit_type("Personnel Office - Mudawwarah") == "personnel_office"
+    assert infer_unit_type("Administration") == "administration"
+    assert infer_unit_type("Kitchen", True) == "central_kitchen"
+    db.add_all([Branch(name="Shop A", unit_type="sales"), Branch(name="Store A", unit_type="central_store"),
+                Branch(name="Office A", unit_type="purchase_office"), Branch(name="Admin A", unit_type="administration")])
+    db.commit()
+    names = lambda scope: sorted(b["name"] for b in list_branches(scope=scope, db=db))
+    mine = {"Shop A", "Store A", "Office A", "Admin A"}
+    names_mine = lambda scope: sorted(set(names(scope)) & mine)
+    assert names_mine("sales") == ["Shop A"]
+    assert names_mine("stock") == ["Shop A", "Store A"]
+    assert names_mine("purchase") == ["Office A"]
+    assert "Office A" not in names("operating") and "Admin A" in names("operating")

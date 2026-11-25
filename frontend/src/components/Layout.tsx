@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
 import { apiFetch } from "../contexts/api";
 import { useBrand } from "../contexts/BrandContext";
+import AssistantPanel from "./AssistantPanel";
 import {
   LayoutDashboard, ShoppingCart, Package, Receipt,
   Users, LogOut, Menu, X, Banknote, Settings, ArrowLeftRight, FileText,
@@ -199,6 +200,7 @@ export default function Layout() {
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <Outlet key={selectedBrand?.id ?? (isGroupView ? "group" : "all")} />
         </main>
+        <AssistantPanel />
       </div>
     </div>
   );

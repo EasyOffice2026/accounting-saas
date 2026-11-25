@@ -12,7 +12,7 @@ from app.utils.ledger_autosync import start_ledger_autosync
 from app.utils.pos_sync import start_pos_autosync
 from app.routes import auth, branches, sales, purchases, expenses, hr, dashboard
 from app.routes import cash, items, export, email, payment, transfers, whatsapp, users
-from app.routes import foodics, pos, renewals, procurement, channels, proceeds, accounting
+from app.routes import foodics, pos, renewals, procurement, channels, proceeds, accounting, assistant
 from app.utils.auth import PurchaseScopeMiddleware
 import app.utils.month_scope  # noqa: F401 — registers the current-month query filter
 
@@ -57,6 +57,7 @@ app.include_router(procurement.router)
 app.include_router(channels.router)
 app.include_router(proceeds.router)
 app.include_router(accounting.router)
+app.include_router(assistant.router)
 
 
 @app.get("/healthz")

@@ -22,6 +22,7 @@ from app.models.procurement import ProcOrder, ProcOrderItem, ProcInvoice, ProcPa
 from app.models.channel import PaymentChannel, ChannelTransaction
 from app.models.proceeds import ProceedsReceipt, ProceedsChannelMap
 from app.models.accounting import AccAccount, AccMapping, AccJournal, AccJournalLine, AccSettings
+from app.models.assistant import AssistantLog
 
 __all__ = [
     "Branch", "User",
@@ -43,4 +44,5 @@ __all__ = [
     "PaymentChannel", "ChannelTransaction",
     "ProceedsReceipt", "ProceedsChannelMap",
     "AccAccount", "AccMapping", "AccJournal", "AccJournalLine", "AccSettings",
+    "AssistantLog",
 ]

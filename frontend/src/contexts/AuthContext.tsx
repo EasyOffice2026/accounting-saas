@@ -16,6 +16,8 @@ interface UserInfo {
   expense_category_view?: boolean;
   hr_approver?: boolean;
   accounting?: boolean;
+  email?: string | null;
+  pos?: boolean;
 }
 
 interface AuthCtx {

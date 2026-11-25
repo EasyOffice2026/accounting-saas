@@ -11,6 +11,7 @@ class User(Base):
     username = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
+    email = Column(String, nullable=True)  # signs the user in to the POS
     role = Column(String, default="staff")  # owner, admin, staff
     branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True)
     is_active = Column(Boolean, default=True)

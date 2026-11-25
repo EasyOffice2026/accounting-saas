@@ -9,9 +9,10 @@ from app.database import Base, engine, UPLOAD_DIR, SessionLocal
 from app.models import *  # noqa: F401,F403 — register all models
 from app.utils.auth import hash_password
 from app.utils.ledger_autosync import start_ledger_autosync
+from app.utils.pos_sync import start_pos_autosync
 from app.routes import auth, branches, sales, purchases, expenses, hr, dashboard
 from app.routes import cash, items, export, email, payment, transfers, whatsapp, users
-from app.routes import foodics, renewals, procurement, channels, proceeds, accounting
+from app.routes import foodics, pos, renewals, procurement, channels, proceeds, accounting
 from app.utils.auth import PurchaseScopeMiddleware
 import app.utils.month_scope  # noqa: F401 — registers the current-month query filter
 
@@ -50,6 +51,7 @@ app.include_router(transfers.router)
 app.include_router(whatsapp.router)
 app.include_router(users.router)
 app.include_router(foodics.router)
+app.include_router(pos.router)
 app.include_router(renewals.router)
 app.include_router(procurement.router)
 app.include_router(channels.router)
@@ -88,6 +90,7 @@ def startup():
     Base.metadata.create_all(bind=engine)
     _migrate_columns()
     start_ledger_autosync()
+    start_pos_autosync()
     _seed_data()
     _sync_contract_expenses()
     _seed_renewals()
@@ -438,6 +441,9 @@ def _migrate_columns():
                 conn.commit()
             if "expense_category_view" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN expense_category_view BOOLEAN NOT NULL DEFAULT 0"))
+                conn.commit()
+            if "email" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN email TEXT"))
                 conn.commit()
 
         # Suppliers: add category_id

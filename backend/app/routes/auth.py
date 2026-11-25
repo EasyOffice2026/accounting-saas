@@ -6,6 +6,7 @@ from app.models.user import User
 from app.models.branch import Branch
 from app.models.hr import Brand
 from app.utils.ledger_access import can_use_accounting
+from app.models.pos import PosSettings
 from app.utils.auth import verify_password, create_access_token, get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -51,6 +52,8 @@ def _user_payload(db: Session, user: User) -> dict:
         "expense_category_view": bool(user.expense_category_view),
         "hr_approver": user.role == "owner" or bool(user.hr_approver),
         "accounting": can_use_accounting(db, user),
+        "email": user.email,
+        "pos": bool(db.query(PosSettings).filter(PosSettings.web_url.isnot(None), PosSettings.api_key.isnot(None)).first()),
     }
 
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiFetch } from "../contexts/api";
 import BrandManagementPage from "./BrandManagementPage";
+import PosSettingsPanel from "../components/PosSettingsPanel";
 import { useAuth } from "../contexts/AuthContext";
 
 interface SmtpConfig {
@@ -73,6 +74,7 @@ interface UserItem {
   id: number;
   username: string;
   full_name: string;
+  email?: string | null;
   role: string;
   branch_id: number | null;
   is_active: boolean;
@@ -172,6 +174,7 @@ export default function SettingsPage() {
   const [uUsername, setUUsername] = useState("");
   const [uPassword, setUPassword] = useState("");
   const [uFullName, setUFullName] = useState("");
+  const [uEmail, setUEmail] = useState("");
   const [uRole, setURole] = useState("staff");
   const [uBranchId, setUBranchId] = useState<string>("");
   const [uAllowedBrands, setUAllowedBrands] = useState<number[]>([]);
@@ -316,6 +319,7 @@ export default function SettingsPage() {
     setUUsername("");
     setUPassword("");
     setUFullName("");
+    setUEmail("");
     setURole("staff");
     setUBranchId("");
     setUAllowedBrands([]);
@@ -332,6 +336,7 @@ export default function SettingsPage() {
     setEditingUser(u);
     setUUsername(u.username);
     setUFullName(u.full_name);
+    setUEmail(u.email || "");
     setURole(u.role);
     setUBranchId(u.branch_id ? String(u.branch_id) : "");
     setUAllowedBrands(u.allowed_brands || []);
@@ -349,6 +354,7 @@ export default function SettingsPage() {
     const fd = new URLSearchParams();
     fd.append("username", uUsername);
     fd.append("full_name", uFullName);
+    fd.append("email", uEmail);
     fd.append("role", uRole);
     if (uPassword) fd.append("password", uPassword);
     fd.append("branch_id", uRole === "staff" ? (uBranchId || "") : "");
@@ -703,6 +709,11 @@ export default function SettingsPage() {
                 <label className="block text-sm font-medium mb-1">{t("full_name")}</label>
                 <input value={uFullName} onChange={e => setUFullName(e.target.value)} required
                   className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Full Name" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">{t("email")}</label>
+                <input type="email" value={uEmail} onChange={e => setUEmail(e.target.value)} dir="ltr"
+                  className="w-full px-3 py-2 border rounded-lg text-sm" placeholder={t("pos_email_hint")} />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">{t("role")}</label>
@@ -1297,8 +1308,10 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Foodics Integration */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border max-w-4xl mb-6">
+      {["owner", "manager", "accountant"].includes(currentUser?.role || "") && <PosSettingsPanel branches={branchesList} />}
+
+      {/* Foodics Integration: replaced by the POS in this environment */}
+      {import.meta.env.VITE_SHOW_FOODICS === "1" && <div className="bg-white p-6 rounded-xl shadow-sm border max-w-4xl mb-6">
         <h3 className="text-lg font-semibold mb-1">{t("foodics_integration")}</h3>
         <p className="text-sm text-gray-500 mb-4">{t("foodics_integration_desc")}</p>
 
@@ -1549,7 +1562,7 @@ export default function SettingsPage() {
             <li>{t("foodics_step5")}</li>
           </ol>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

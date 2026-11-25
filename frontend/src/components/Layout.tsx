@@ -1,11 +1,12 @@
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
+import { apiFetch } from "../contexts/api";
 import { useBrand } from "../contexts/BrandContext";
 import {
   LayoutDashboard, ShoppingCart, Package, Receipt,
   Users, LogOut, Menu, X, Banknote, Settings, ArrowLeftRight, FileText,
-  Building2, ChevronDown, Globe, IdCard, ClipboardList, BookOpen,
+  Building2, ChevronDown, Globe, IdCard, ClipboardList, BookOpen, MonitorSmartphone,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -31,6 +32,17 @@ const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles
 export default function Layout() {
   const { t, i18n } = useTranslation();
   const { user, logout } = useAuth();
+  const openPos = async () => {
+    const tab = window.open("about:blank", "_blank");
+    const res = await apiFetch("/api/pos/sso", { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.url) {
+      if (tab) tab.location.href = data.url; else window.location.href = data.url;
+    } else {
+      tab?.close();
+      alert(data.detail || t("pos_open_failed"));
+    }
+  };
   const { selectedBrand, isGroupView, brands, selectBrand, setGroupView } = useBrand();
   const location = useLocation();
   const navigate = useNavigate();
@@ -125,6 +137,13 @@ export default function Layout() {
               {t(key)}
             </Link>
           ))}
+          {user?.pos && user.email && (
+            <button onClick={openPos}
+              className="w-full flex items-center gap-3 px-6 py-2.5 text-sm text-emerald-100 hover:bg-emerald-600/50 transition-colors">
+              <MonitorSmartphone size={20} />
+              {t("pos")}
+            </button>
+          )}
         </nav>
         <div className="shrink-0 w-full p-4 border-t border-emerald-600">
           <div className="text-sm text-emerald-200 mb-2">{user?.full_name}</div>

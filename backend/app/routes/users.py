@@ -43,6 +43,7 @@ def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_u
             "id": u.id,
             "username": u.username,
             "full_name": u.full_name,
+            "email": u.email,
             "role": u.role,
             "branch_id": u.branch_id,
             "is_active": u.is_active,
@@ -63,6 +64,7 @@ def create_user(
     username: str = Form(...),
     password: str = Form(...),
     full_name: str = Form(...),
+    email: str = Form(""),
     role: str = Form("staff"),
     branch_id: Optional[int] = Form(None),
     allowed_brands: Optional[str] = Form(None),
@@ -83,6 +85,7 @@ def create_user(
         username=username,
         password_hash=hash_password(password),
         full_name=full_name,
+        email=email.strip().lower() or None,
         role=role,
         branch_id=branch_id if role == "staff" else None,
         is_active=True,
@@ -105,6 +108,7 @@ def update_user(
     username: str = Form(None),
     password: str = Form(None),
     full_name: str = Form(None),
+    email: str = Form(None),
     role: str = Form(None),
     branch_id: Optional[str] = Form(None),
     allowed_brands: Optional[str] = Form(None),
@@ -131,6 +135,8 @@ def update_user(
         target.password_hash = hash_password(password)
     if full_name:
         target.full_name = full_name
+    if email is not None:
+        target.email = email.strip().lower() or None
     if role:
         target.role = role
         if role != "staff":

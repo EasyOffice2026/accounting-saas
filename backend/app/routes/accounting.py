@@ -325,6 +325,16 @@ def trial_balance_data(db: Session, brand_id: int, date_from: Optional[date], da
             "balanced": abs(tot["closing_dr"] - tot["closing_cr"]) < 0.01}
 
 
+@router.get("/stock-report")
+def stock_report(brand_id: int, date_from: str, date_to: Optional[str] = None,
+                 db: Session = Depends(get_db), _: User = Depends(get_accounting_user)):
+    from app.utils import pos_stock, pos_sync
+    s = pos_sync.get_settings(db)
+    client = pos_sync.client_for(s) if pos_sync.is_configured(s) else None
+    d_from = _d(date_from)
+    return pos_stock.stock_report(db, brand_id, d_from, _d(date_to) if date_to else d_from, client)
+
+
 @router.get("/trial-balance")
 def trial_balance(brand_id: int, date_from: Optional[str] = None, date_to: Optional[str] = None, branch_id: Optional[int] = None,
                   db: Session = Depends(get_db), user: User = Depends(get_accounting_user)):

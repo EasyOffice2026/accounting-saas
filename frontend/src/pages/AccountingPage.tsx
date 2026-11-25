@@ -20,13 +20,17 @@ type PartyOpt = { party: string; kind: string; kind_name: string; kind_name_ar: 
 type PartyRow = PartyOpt & { debit: number; credit: number; balance: number; last_date: string | null; accounts: string[] };
 type TBRow = { account_id: number; code: string; name: string; name_ar: string | null; opening_dr: number; opening_cr: number; debit: number; credit: number; closing_dr: number; closing_cr: number };
 
-const TABS = ["overview", "journals", "trial", "ledger", "payables", "receivables", "income", "balance", "reconcile", "accounts", "mapping"] as const;
+const TABS = ["overview", "journals", "trial", "ledger", "payables", "receivables", "income", "balance", "reconcile", "stock", "accounts", "mapping"] as const;
 type Tab = typeof TABS[number];
 
 const L: Record<string, [string, string]> = {
   overview: ["Overview", "نظرة عامة"], journals: ["Journals", "القيود"], trial: ["Trial Balance", "ميزان المراجعة"],
   ledger: ["Account Ledger", "كشف حساب"], income: ["Income Statement", "قائمة الدخل"], balance: ["Balance Sheet", "الميزانية العمومية"],
-  reconcile: ["Daily Check", "المطابقة اليومية"], accounts: ["Chart of Accounts", "دليل الحسابات"], mapping: ["Account Mapping", "ربط الحسابات"],
+  reconcile: ["Daily Check", "المطابقة اليومية"], stock: ["Stock & Food Cost", "المخزون وتكلفة الطعام"],
+  stock_value: ["Stock value", "قيمة المخزون"], food: ["Food", "مواد غذائية"], beverage: ["Beverage", "مشروبات"], packaging: ["Packaging", "تغليف"],
+  pos_sales: ["POS sales", "مبيعات نقاط البيع"], cost_sold: ["Cost of sales", "تكلفة المبيعات"], waste: ["Waste", "الهالك"],
+  count_difference: ["Count difference", "فروقات الجرد"], food_cost_pct: ["Food cost %", "نسبة تكلفة الطعام"],
+  stock_note: ["Stock is as of now, valued at average cost. Sales and costs are for the selected dates.", "المخزون حتى الآن بمتوسط التكلفة. المبيعات والتكاليف للفترة المحددة."], accounts: ["Chart of Accounts", "دليل الحسابات"], mapping: ["Account Mapping", "ربط الحسابات"],
   company: ["Company", "الشركة"], from: ["From", "من"], to: ["To", "إلى"], as_of: ["As of", "كما في"], branch: ["Branch", "الفرع"],
   all_branches: ["All branches", "كل الفروع"], excel: ["Excel", "إكسل"], print: ["Print / PDF", "طباعة / PDF"], sync: ["Sync now", "مزامنة الآن"],
   code: ["Code", "الرمز"], account: ["Account", "الحساب"], debit: ["Debit", "مدين"], credit: ["Credit", "دائن"], balance_col: ["Balance", "الرصيد"],
@@ -143,6 +147,7 @@ export default function AccountingPage() {
       {tab === "income" && <IncomeTab q={qs({ date_from: from, date_to: to, branch_id: branchId })} t={t} nm={nm} />}
       {tab === "balance" && <BalanceTab brandId={brandId} lang={ar ? "ar" : "en"} t={t} nm={nm} />}
       {tab === "reconcile" && <ReconcileTab q={qs({ date_from: from, date_to: to })} t={t} nm={nm} />}
+      {tab === "stock" && <StockTab q={qs({ date_from: from, date_to: to })} t={t} nm={nm} />}
       {tab === "accounts" && <AccountsTab brandId={brandId} accounts={accounts} reload={loadAccounts} t={t} nm={nm} />}
       {tab === "mapping" && <MappingTab brandId={brandId} postable={postable} t={t} nm={nm} />}
     </div>
@@ -503,6 +508,42 @@ function ReconcileTab({ q, t, nm }: { q: string; t: T; nm: NM }) {
         <tbody>
           {d.rows.map((r, i) => <tr key={i} className={Math.abs(r.difference) >= 0.01 ? "bg-red-50" : ""}><td className={td}>{t("area_" + r.area)}</td><td className={td}>{nm(r)}</td><td className={num}>{fmt(r.system)}</td><td className={num}>{fmt(r.ledger)}</td><td className={num}>{fmt(r.difference)}</td></tr>)}
           <tr><td className={td} colSpan={4}>{t("trial")}</td><td className={td}>{d.trial_balance_balanced ? t("balanced") : t("not_balanced")}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+interface StockRow { branch_id: number; name: string; name_ar: string | null; stock: Record<string, number>; stock_value: number; sales: number; cost_sold: number; waste: number; count_difference: number; food_cost_pct: number | null }
+
+function StockTab({ q, t, nm }: { q: string; t: T; nm: NM }) {
+  const [d, setD] = useState<{ rows: StockRow[]; stock_error: string | null } | null>(null);
+  useEffect(() => { apiGet(`/api/accounting/stock-report?${q}`).then(setD).catch(() => undefined); }, [q]);
+  if (!d) return null;
+  const sum = (f: (r: StockRow) => number) => d.rows.reduce((a, r) => a + f(r), 0);
+  const sales = sum(r => r.sales), sold = sum(r => r.cost_sold);
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between text-sm text-gray-600"><span>{t("stock_note")}</span><Toolbar /></div>
+      {d.stock_error && <div className="p-2 rounded bg-amber-50 text-amber-800 text-sm">{d.stock_error}</div>}
+      <table className="w-full text-sm border-collapse">
+        <thead><tr>
+          <th className={th}>{t("branch")}</th><th className={th}>{t("food")}</th><th className={th}>{t("beverage")}</th><th className={th}>{t("packaging")}</th><th className={th}>{t("stock_value")}</th>
+          <th className={th}>{t("pos_sales")}</th><th className={th}>{t("cost_sold")}</th><th className={th}>{t("waste")}</th><th className={th}>{t("count_difference")}</th><th className={th}>{t("food_cost_pct")}</th>
+        </tr></thead>
+        <tbody>
+          {d.rows.map(r => (
+            <tr key={r.branch_id}>
+              <td className={td}>{nm(r)}</td><td className={num}>{fmt(r.stock.food)}</td><td className={num}>{fmt(r.stock.beverage)}</td><td className={num}>{fmt(r.stock.packaging)}</td>
+              <td className={num}>{fmt(r.stock_value)}</td><td className={num}>{fmt(r.sales)}</td><td className={num}>{fmt(r.cost_sold)}</td><td className={num}>{fmt(r.waste)}</td>
+              <td className={num}>{fmt(r.count_difference)}</td><td className={num}>{r.food_cost_pct === null ? "" : `${r.food_cost_pct.toFixed(1)}%`}</td>
+            </tr>
+          ))}
+          <tr className="font-semibold">
+            <td className={td}>{t("total")}</td><td className={num}>{fmt(sum(r => r.stock.food))}</td><td className={num}>{fmt(sum(r => r.stock.beverage))}</td><td className={num}>{fmt(sum(r => r.stock.packaging))}</td>
+            <td className={num}>{fmt(sum(r => r.stock_value))}</td><td className={num}>{fmt(sales)}</td><td className={num}>{fmt(sold)}</td><td className={num}>{fmt(sum(r => r.waste))}</td>
+            <td className={num}>{fmt(sum(r => r.count_difference))}</td><td className={num}>{sales ? `${(sold / sales * 100).toFixed(1)}%` : ""}</td>
+          </tr>
         </tbody>
       </table>
     </div>

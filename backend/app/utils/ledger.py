@@ -430,7 +430,8 @@ def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
             continue
         value: dict[str, float] = {}
         for ln in tlines.get(o.id, []):
-            qty = ln.received_qty if o.status == "received" and ln.received_qty is not None else ln.dispatched_qty
+            sent = ln.dispatched_qty if ln.dispatched_qty is not None else ln.requested_qty
+            qty = ln.received_qty if o.status == "received" and ln.received_qty is not None else sent
             key = "transfers_packaging" if item_cat.get(ln.item_id) == "packaging" else "transfers_food"
             value[key] = value.get(key, 0.0) + (qty or 0) * (ln.unit_price or 0)
         names = f"{L.branch_name.get(src, ('',))[0]} -> {L.branch_name.get(dst, ('',))[0]}"

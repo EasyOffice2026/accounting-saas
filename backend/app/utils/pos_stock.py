@@ -136,3 +136,51 @@ def apply_costs(db: Session, costs: list[dict], d_from: date, d_to: date) -> int
 def unlinked_count(db: Session) -> int:
     return db.query(func.count(SupplierItem.id)).scalar() - db.query(func.count(func.distinct(PosStockLink.item_id))).filter(
         PosStockLink.source == "supplier_item").scalar()
+
+
+SALE_SYSTEM_FIELDS = ("cash", "knet", "link", "wamd", "talabat", "keeta", "jahez", "other", "snoonu", "website")
+
+
+def stock_report(db: Session, brand_id: int, d_from: date, d_to: date, client=None) -> dict:
+    """Stock on hand per unit (from the POS) and food cost against POS sales per sales branch."""
+    from sqlalchemy import func
+    from app.models.sale import Sale
+    from app.utils import units
+
+    unit_rows = db.query(Branch).filter(Branch.brand_id == brand_id, Branch.unit_type.in_(units.STOCK_UNITS)).all()
+    by_id = {b.id: b for b in unit_rows}
+    stock: dict[int, dict] = {}
+    stock_error = None
+    if client is not None:
+        local_of = {m.pos_branch_id: m.local_branch_id for m in db.query(PosBranchMapping).all()}
+        cat_of = {ln.pos_ingredient_id: ln.category for ln in db.query(PosStockLink).filter(PosStockLink.brand_id == brand_id).all()}
+        try:
+            for row in client.stock_on_hand().get("stock", []):
+                bid = local_of.get(row["branchId"])
+                if bid not in by_id:
+                    continue
+                s = stock.setdefault(bid, {c: 0.0 for c in CATEGORIES})
+                s[cat_of.get(row["ingredientId"], "food")] += float(row["value"])
+        except Exception as e:  # noqa: BLE001 — the food cost part still shows
+            stock_error = str(e)[:200]
+
+    sales = dict(db.query(Sale.branch_id, func.sum(sum(getattr(Sale, f"foodics_{f}") for f in SALE_SYSTEM_FIELDS)))
+                 .filter(Sale.date >= d_from, Sale.date <= d_to).group_by(Sale.branch_id).all())
+    costs: dict[int, dict] = {}
+    for c in db.query(PosStockCost).filter(PosStockCost.date >= d_from, PosStockCost.date <= d_to).all():
+        k = costs.setdefault(c.branch_id, {"sold": 0.0, "waste": 0.0, "count": 0.0})
+        k[c.kind] = k.get(c.kind, 0.0) + (c.cost or 0)
+
+    rows = []
+    for b in sorted(unit_rows, key=lambda x: (units.STOCK_UNITS.index(x.unit_type), x.name)):
+        s = stock.get(b.id, {c: 0.0 for c in CATEGORIES})
+        k = costs.get(b.id, {"sold": 0.0, "waste": 0.0, "count": 0.0})
+        sold_total = float(sales.get(b.id) or 0)
+        rows.append({
+            "branch_id": b.id, "name": b.name, "name_ar": b.name_ar, "unit_type": b.unit_type,
+            "stock": {c: round(v, 3) for c, v in s.items()}, "stock_value": round(sum(s.values()), 3),
+            "sales": round(sold_total, 3), "cost_sold": round(k["sold"], 3), "waste": round(k["waste"], 3),
+            "count_difference": round(k["count"], 3),
+            "food_cost_pct": round(k["sold"] / sold_total * 100, 1) if sold_total else None,
+        })
+    return {"rows": rows, "stock_error": stock_error}

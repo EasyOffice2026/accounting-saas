@@ -88,6 +88,9 @@ class PosClient:
     def stock_costs(self, d_from: date, d_to: date) -> dict:
         return self.get("/accounting/stock-costs", **{"from": d_from.isoformat(), "to": d_to.isoformat()})
 
+    def stock_on_hand(self) -> dict:
+        return self.get("/accounting/stock-on-hand")
+
     def structure(self) -> dict:
         return self.get("/accounting/structure")
 

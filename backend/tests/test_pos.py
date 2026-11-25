@@ -269,3 +269,35 @@ def test_transfer_without_counted_lines_moves_the_requested_quantity(db):
     assert pushes["transfer_dispatched:1"]["branchId"] == "store-1"
     assert pushes["transfer_received:1"]["kind"] == "transfer_in"
     assert [ln["quantity"] for p in pushes.values() for ln in p["lines"]] == ["10.000", "10.000"]
+
+
+def test_stock_report_values_stock_and_food_cost(db):
+    from app.models.hr import Brand
+    from app.models.pos import PosStockCost, PosStockLink
+    from app.models.sale import Sale
+    from app.utils import pos_stock
+
+    db.add(Brand(id=1, name_en="Mudawwarah"))
+    db.get(Branch, 1).brand_id = 1
+    db.add(Branch(id=2, name="Central Store - Mudawwarah", brand_id=1, unit_type="central_store"))
+    db.add(Branch(id=3, name="Administration", brand_id=1, unit_type="administration"))
+    db.add(PosBranchMapping(pos_branch_id="store-1", pos_branch_name="Store", local_branch_id=2))
+    db.add(PosStockLink(brand_id=1, source="supplier_item", item_id=5, pos_ingredient_id="ing-cola", factor=1, category="beverage"))
+    when = date(2026, 11, 20)
+    db.add(Sale(branch_id=1, date=when, foodics_cash=6, foodics_knet=4))
+    db.add(PosStockCost(branch_id=1, date=when, category="food", kind="sold", cost=3))
+    db.add(PosStockCost(branch_id=1, date=when, category="food", kind="waste", cost=0.5))
+    db.commit()
+
+    class Client:
+        def stock_on_hand(self):
+            return {"stock": [
+                {"branchId": "b-1", "ingredientId": "ing-flour", "quantity": "10.000", "value": "3.000"},
+                {"branchId": "store-1", "ingredientId": "ing-cola", "quantity": "5.000", "value": "1.250"},
+            ]}
+
+    rows = {r["branch_id"]: r for r in pos_stock.stock_report(db, 1, when, when, Client())["rows"]}
+    assert set(rows) == {1, 2}
+    assert rows[1]["stock"]["food"] == 3.0 and rows[2]["stock"]["beverage"] == 1.25
+    assert (rows[1]["sales"], rows[1]["cost_sold"], rows[1]["waste"], rows[1]["food_cost_pct"]) == (10.0, 3.0, 0.5, 30.0)
+    assert rows[2]["food_cost_pct"] is None

@@ -14,7 +14,7 @@ from app.models.payment import PaymentGatewaySettings, PaymentTransaction
 from app.models.transfer import TransferItem, TransferOrder, TransferOrderLine
 from app.models.whatsapp import WhatsAppSettings
 from app.models.foodics import FoodicsSettings, FoodicsBranchMapping, FoodicsPaymentMapping
-from app.models.pos import PosSettings, PosBranchMapping, PosPaymentMapping, PosReceipt
+from app.models.pos import PosSettings, PosBranchMapping, PosPaymentMapping, PosReceipt, PosStockLink, PosStockPush, PosStockCost
 from app.models.renewal import (
     RenewalType, CompanyLicense, EmployeeDocument, RenewalRequest, RenewalRequestLine, RenewalRequestLog,
 )

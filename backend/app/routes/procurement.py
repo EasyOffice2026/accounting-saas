@@ -642,6 +642,9 @@ def receive_order(order_id: int, received_date: str = Form(...), received: str =
         o.receiving_attachment = att
     o.total = round(total, 3)
     _log(db, o, "received", user, notes)
+    from app.utils import pos_stock, pos_sync
+    if pos_stock.queue_central_receipt(db, o):
+        pos_sync.request_sync()
     db.commit()
     return order_out(db, o, detail=True)
 

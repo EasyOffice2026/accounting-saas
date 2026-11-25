@@ -4,7 +4,7 @@ import { apiFetch, apiGet } from "../contexts/api";
 
 type Name = { en: string; ar: string };
 interface PosConfig {
-  api_url: string; web_url: string; has_key: boolean; auto_sync: boolean; import_receipts: boolean;
+  api_url: string; web_url: string; has_key: boolean; auto_sync: boolean; import_receipts: boolean; inventory_accounting: boolean;
   last_sync_at: string | null; last_error: string | null; channels: string[];
   sso: { issuer: string; jwks_url: string; audience: string };
   webhook: { url: string; secret: string };
@@ -23,6 +23,7 @@ export default function PosSettingsPanel({ branches }: { branches: Branch[] }) {
   const [apiKey, setApiKey] = useState("");
   const [autoSync, setAutoSync] = useState(true);
   const [receipts, setReceipts] = useState(true);
+  const [inventory, setInventory] = useState(false);
   const [posBranches, setPosBranches] = useState<PosBranch[]>([]);
   const [methods, setMethods] = useState<PosMethod[]>([]);
   const [branchMap, setBranchMap] = useState<Record<string, string>>({});
@@ -36,7 +37,7 @@ export default function PosSettingsPanel({ branches }: { branches: Branch[] }) {
   const load = async () => {
     const c: PosConfig = await apiGet("/api/pos/settings");
     setCfg(c);
-    setApiUrl(c.api_url); setWebUrl(c.web_url); setAutoSync(c.auto_sync); setReceipts(c.import_receipts);
+    setApiUrl(c.api_url); setWebUrl(c.web_url); setAutoSync(c.auto_sync); setReceipts(c.import_receipts); setInventory(c.inventory_accounting);
     const bm = await apiGet("/api/pos/branch-mappings");
     if (Array.isArray(bm)) setBranchMap(Object.fromEntries(bm.map((m) => [m.pos_branch_id, String(m.local_branch_id)])));
     const pm = await apiGet("/api/pos/payment-mappings");
@@ -91,7 +92,7 @@ export default function PosSettingsPanel({ branches }: { branches: Branch[] }) {
         e.preventDefault();
         const ok = await call("save", "/api/pos/settings", {
           api_url: apiUrl, web_url: webUrl, api_key: apiKey,
-          auto_sync: String(autoSync), import_receipts: String(receipts),
+          auto_sync: String(autoSync), import_receipts: String(receipts), inventory_accounting: String(inventory),
         });
         if (ok) { setApiKey(""); setMsg({ text: t("saved"), ok: true }); load(); }
       }}>
@@ -107,6 +108,7 @@ export default function PosSettingsPanel({ branches }: { branches: Branch[] }) {
         </label>
         <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />{t("pos_auto_sync")}</label>
         <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={receipts} onChange={(e) => setReceipts(e.target.checked)} />{t("pos_import_receipts")}</label>
+        <label className="text-sm flex items-center gap-2 md:col-span-2"><input type="checkbox" checked={inventory} onChange={(e) => setInventory(e.target.checked)} />{t("pos_inventory_accounting")}</label>
         <div className="md:col-span-2 flex gap-2">
           <button disabled={!!busy} className={`${button} bg-emerald-600 text-white hover:bg-emerald-700`}>{t("save")}</button>
           <button type="button" disabled={!!busy} className={`${button} bg-gray-100 hover:bg-gray-200`} onClick={async () => {

@@ -459,6 +459,9 @@ def _migrate_columns():
             if "webhook_secret" not in cols:
                 conn.execute(text("ALTER TABLE pos_settings ADD COLUMN webhook_secret VARCHAR"))
                 conn.commit()
+            if "inventory_accounting" not in cols:
+                conn.execute(text("ALTER TABLE pos_settings ADD COLUMN inventory_accounting BOOLEAN NOT NULL DEFAULT 0"))
+                conn.commit()
 
         # Suppliers: add category_id
         if "suppliers" in insp.get_table_names():

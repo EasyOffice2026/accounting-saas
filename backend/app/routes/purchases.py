@@ -457,6 +457,10 @@ def receive_order(
 
     po.status = "received"
     db.commit()
+    from app.utils import pos_stock, pos_sync
+    if pos_stock.queue_branch_receipt(db, po, ro):
+        db.commit()
+        pos_sync.request_sync()
 
     # Auto-create invoice
     inv = Invoice(

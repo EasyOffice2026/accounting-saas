@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiGet, apiFetch } from "../contexts/api";
 import BrandManagementPage from "./BrandManagementPage";
 import PosSettingsPanel from "../components/PosSettingsPanel";
+import PosStockLinksPanel from "../components/PosStockLinksPanel";
 import { useAuth } from "../contexts/AuthContext";
 
 interface SmtpConfig {
@@ -1320,7 +1321,8 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {["owner", "manager", "accountant"].includes(currentUser?.role || "") && <PosSettingsPanel branches={branchesList.filter(b => b.unit_type === "sales")} />}
+      {["owner", "manager", "accountant"].includes(currentUser?.role || "") && <PosSettingsPanel branches={branchesList.filter(b => ["sales", "central_store", "central_kitchen"].includes(b.unit_type))} />}
+      {["owner", "manager", "accountant"].includes(currentUser?.role || "") && <PosStockLinksPanel />}
 
       {/* Foodics Integration: replaced by the POS in this environment */}
       {import.meta.env.VITE_SHOW_FOODICS === "1" && <div className="bg-white p-6 rounded-xl shadow-sm border max-w-4xl mb-6">

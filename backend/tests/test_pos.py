@@ -192,3 +192,54 @@ def test_unit_types_split_sales_from_admin_units(db):
     assert names_mine("stock") == ["Shop A", "Store A"]
     assert names_mine("purchase") == ["Office A"]
     assert "Office A" not in names("operating") and "Admin A" in names("operating")
+
+
+def test_central_receipt_goes_into_pos_stock_and_usage_leaves_inventory(db):
+    from app.models.hr import Brand
+    from app.models.pos import PosStockLink, PosStockPush
+    from app.models.procurement import ProcOrder, ProcOrderItem
+    from app.models.purchase import SupplierItem
+    from app.utils import pos_stock
+    from app.utils.ledger import Ledger, build_entries, ensure_chart
+
+    db.add(Brand(id=1, name_en="Mudawwarah"))
+    db.get(Branch, 1).brand_id = 1
+    db.add(Branch(id=2, name="Central Store - Mudawwarah", brand_id=1, unit_type="central_store"))
+    db.add(PosBranchMapping(pos_branch_id="store-1", pos_branch_name="Store", local_branch_id=2))
+    db.add(Supplier(id=1, name="Mills"))
+    db.add(SupplierItem(id=5, supplier_id=1, item_name="Flour 10kg", unit_price=3))
+    db.add(PosStockLink(brand_id=1, source="supplier_item", item_id=5, pos_ingredient_id="ing-flour", factor=10))
+    db.add(ProcOrder(id=1, po_no="PO-1", brand_id=1, supplier_id=1, date=date(2026, 11, 19)))
+    db.add(ProcOrderItem(order_id=1, supplier_item_id=5, item_name="Flour 10kg", quantity=2, unit_price=3, received_qty=2))
+    db.commit()
+
+    assert pos_stock.queue_central_receipt(db, db.get(ProcOrder, 1))
+    db.commit()
+    assert not pos_stock.queue_central_receipt(db, db.get(ProcOrder, 1))
+    body = json.loads(db.query(PosStockPush).one().payload)
+    assert (body["branchId"], body["kind"]) == ("store-1", "received")
+    assert body["lines"] == [{"ingredientId": "ing-flour", "quantity": "20.000", "unitCost": "0.300"}]
+
+    posted = []
+
+    class Client:
+        def post(self, path, payload):
+            posted.append((path, payload["key"]))
+            return {}
+
+    assert pos_stock.push_pending(db, Client()) == {"stock_posted": 1, "stock_failed": 0}
+    assert posted == [("/accounting/stock", "central_receipt:1")]
+
+    when = date(2026, 11, 20)
+    pos_stock.apply_costs(db, [
+        {"branchId": "b-1", "businessDate": when.isoformat(), "ingredientId": "ing-flour", "kind": "sold", "cost": "1.500"},
+        {"branchId": "b-1", "businessDate": when.isoformat(), "ingredientId": "ing-flour", "kind": "waste", "cost": "0.250"},
+    ], when, when)
+    get_settings(db).inventory_accounting = True
+    db.commit()
+    ensure_chart(db)
+    L = Ledger(db)
+    [entry] = [e for e in build_entries(db, L, when) if e.source == "pos_stock"]
+    code_of = {acc: code for (_, code), acc in L.by_code.items()}
+    lines = sorted((code_of[ln[0]], round(ln[2], 3), round(ln[3], 3)) for ln in entry.lines)
+    assert lines == [("1310", 0, 0.25), ("1310", 0, 1.5), ("5110", 1.5, 0), ("5140", 0.25, 0)]

@@ -262,6 +262,10 @@ def dispatch_order(
 
     order.status = "dispatched"
     order.dispatched_at = datetime.now(timezone.utc)
+    db.flush()
+    from app.utils import pos_stock, pos_sync
+    if pos_stock.queue_transfer(db, order, "dispatched"):
+        pos_sync.request_sync()
     db.commit()
     return {"status": "dispatched"}
 
@@ -287,6 +291,10 @@ def receive_order(
 
     order.status = "received"
     order.received_at = datetime.now(timezone.utc)
+    db.flush()
+    from app.utils import pos_stock, pos_sync
+    if pos_stock.queue_transfer(db, order, "received"):
+        pos_sync.request_sync()
     db.commit()
     return {"status": "received"}
 

@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.branch import Branch
-from app.models.pos import PosBranchMapping, PosPaymentMapping
+from app.models.pos import PosBranchMapping, PosPaymentMapping, PosStockLink, PosStockPush
+from app.utils import units
 from app.models.user import User
 from app.utils.auth import get_current_user
 from app.utils import pos_sso
@@ -42,6 +43,7 @@ def read_settings(request: Request, db: Session = Depends(get_db), _=Depends(_ad
     return {
         "api_url": s.api_url or "", "web_url": s.web_url or "", "has_key": bool(s.api_key),
         "auto_sync": bool(s.auto_sync), "import_receipts": bool(s.import_receipts),
+        "inventory_accounting": bool(s.inventory_accounting),
         "last_sync_at": s.last_sync_at.isoformat() + "Z" if s.last_sync_at else None,
         "last_error": s.last_error,
         "sso": {"issuer": issuer, "jwks_url": f"{issuer}/api/pos/sso/jwks.json", "audience": pos_sso.AUDIENCE},
@@ -53,7 +55,7 @@ def read_settings(request: Request, db: Session = Depends(get_db), _=Depends(_ad
 @router.post("/settings")
 def save_settings(
     api_url: str = Form(""), web_url: str = Form(""), api_key: str = Form(""),
-    auto_sync: str = Form("true"), import_receipts: str = Form("true"),
+    auto_sync: str = Form("true"), import_receipts: str = Form("true"), inventory_accounting: str = Form(""),
     db: Session = Depends(get_db), _=Depends(_admin),
 ):
     s = get_settings(db)
@@ -63,6 +65,8 @@ def save_settings(
         s.api_key = api_key.strip()
     s.auto_sync = _truthy(auto_sync)
     s.import_receipts = _truthy(import_receipts)
+    if inventory_accounting:
+        s.inventory_accounting = _truthy(inventory_accounting)
     db.commit()
     return {"status": "ok"}
 
@@ -111,8 +115,8 @@ def save_branch_mapping(
     local = db.get(Branch, int(local_branch_id))
     if not local:
         raise HTTPException(404, "Branch not found")
-    if local.unit_type != "sales":
-        raise HTTPException(400, "Only a sales branch can take POS sales")
+    if local.unit_type not in units.STOCK_UNITS:
+        raise HTTPException(400, "Only a sales branch, central store or central kitchen can be linked to the POS")
     if not m:
         m = PosBranchMapping(pos_branch_id=pos_branch_id)
         db.add(m)
@@ -208,3 +212,75 @@ async def pos_webhook(request: Request, db: Session = Depends(get_db)):
     if is_configured(s) and s.auto_sync:
         request_sync()
     return {"status": "queued"}
+
+
+@router.get("/ingredients")
+def pos_ingredients(db: Session = Depends(get_db), _=Depends(_admin)):
+    return _pos_call(lambda: client_for(get_settings(db)).ingredients())
+
+
+@router.get("/stock-links")
+def list_stock_links(db: Session = Depends(get_db), _=Depends(_admin)):
+    return [{"id": ln.id, "brand_id": ln.brand_id, "source": ln.source, "item_id": ln.item_id,
+             "pos_ingredient_id": ln.pos_ingredient_id, "pos_ingredient_name": ln.pos_ingredient_name or "",
+             "factor": ln.factor, "category": ln.category} for ln in db.query(PosStockLink).all()]
+
+
+@router.post("/stock-links")
+def save_stock_link(
+    brand_id: int = Form(...), source: str = Form(...), item_id: int = Form(...),
+    pos_ingredient_id: str = Form(""), pos_ingredient_name: str = Form(""),
+    factor: float = Form(1), category: str = Form("food"),
+    db: Session = Depends(get_db), _=Depends(_admin),
+):
+    from app.utils.pos_stock import CATEGORIES
+    if source not in ("supplier_item", "transfer_item"):
+        raise HTTPException(400, "Unknown item source")
+    if category not in CATEGORIES:
+        raise HTTPException(400, "Unknown stock category")
+    if factor <= 0:
+        raise HTTPException(400, "The unit conversion must be above zero")
+    ln = db.query(PosStockLink).filter(PosStockLink.brand_id == brand_id, PosStockLink.source == source,
+                                       PosStockLink.item_id == item_id).first()
+    if not pos_ingredient_id:
+        if ln:
+            db.delete(ln)
+            db.commit()
+        return {"status": "ok"}
+    if not ln:
+        ln = PosStockLink(brand_id=brand_id, source=source, item_id=item_id)
+        db.add(ln)
+    ln.pos_ingredient_id, ln.pos_ingredient_name = pos_ingredient_id, pos_ingredient_name
+    ln.factor, ln.category = factor, category
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.get("/stock-pushes")
+def list_stock_pushes(db: Session = Depends(get_db), _=Depends(_admin)):
+    rows = db.query(PosStockPush).order_by(PosStockPush.id.desc()).limit(100).all()
+    return [{"key": p.key, "status": p.status, "error": p.error,
+             "created_at": p.created_at.isoformat() if p.created_at else None} for p in rows]
+
+
+@router.get("/stock-items")
+def stock_items(db: Session = Depends(get_db), _=Depends(_admin)):
+    """Purchase items (by supplier) and transfer items, to link each to a POS stock item."""
+    from app.models.purchase import PurchaseCategory, Supplier, SupplierItem
+    from app.models.transfer import TransferItem
+    suppliers = {x.id: x for x in db.query(Supplier).all()}
+    cats = {c.id: (c.name or "").lower() for c in db.query(PurchaseCategory).all()}
+
+    def guess(name: str) -> str:
+        return "beverage" if ("bever" in name or "drink" in name) else "packaging" if "packag" in name else "food"
+
+    items = []
+    for i in db.query(SupplierItem).filter(SupplierItem.is_active == True).all():  # noqa: E712
+        sup = suppliers.get(i.supplier_id)
+        items.append({"source": "supplier_item", "id": i.id, "name": i.item_name, "name_ar": i.item_name_ar or "",
+                      "group": sup.name if sup else "", "unit": i.unit or "",
+                      "category": guess(cats.get(sup.category_id, "") if sup else "")})
+    for i in db.query(TransferItem).filter(TransferItem.is_active == True).all():  # noqa: E712
+        items.append({"source": "transfer_item", "id": i.id, "name": i.name, "name_ar": i.name_ar or "",
+                      "group": "", "unit": i.unit or "", "category": i.category if i.category in ("food", "beverage", "packaging") else "food"})
+    return items

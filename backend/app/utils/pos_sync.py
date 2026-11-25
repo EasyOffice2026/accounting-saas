@@ -73,6 +73,21 @@ class PosClient:
             raise PosError(f"POS error {res.status_code}: {res.text[:200]}")
         return res.json()
 
+    def post(self, path: str, body: dict) -> dict:
+        with httpx.Client(timeout=30, transport=self.transport) as client:
+            res = client.post(f"{self.base}{path}", headers=self.headers, json=body)
+        if res.status_code == 401:
+            raise PosError("The POS refused the integration key")
+        if res.status_code >= 400:
+            raise PosError(f"POS error {res.status_code}: {res.text[:200]}")
+        return res.json()
+
+    def ingredients(self) -> dict:
+        return self.get("/accounting/ingredients")
+
+    def stock_costs(self, d_from: date, d_to: date) -> dict:
+        return self.get("/accounting/stock-costs", **{"from": d_from.isoformat(), "to": d_to.isoformat()})
+
     def structure(self) -> dict:
         return self.get("/accounting/structure")
 
@@ -209,16 +224,20 @@ def sync(db: Session, d_from: date, d_to: date, user_id: int | None = None,
         raise PosError("The end date is before the start date")
     s = get_settings(db)
     client = client_for(s, transport)
-    result = {"days_created": 0, "days_updated": 0, "receipts_booked": 0,
+    result = {"days_created": 0, "days_updated": 0, "receipts_booked": 0, "stock_posted": 0, "stock_failed": 0,
               "unmapped_branches": set(), "unmapped_methods": set()}
+    from app.utils import pos_stock
     try:
+        result.update(pos_stock.push_pending(db, client))
         for start, end in _chunks(d_from, d_to):
             r = apply_days(db, client.days(start, end).get("days", []), start, end, user_id)
             result["days_created"] += r["days_created"]
             result["days_updated"] += r["days_updated"]
             result["unmapped_branches"].update(r["unmapped_branches"])
             result["unmapped_methods"].update(r["unmapped_methods"])
-            if s.import_receipts:
+            if s.inventory_accounting:
+                pos_stock.apply_costs(db, client.stock_costs(start, end).get("costs", []), start, end)
+            elif s.import_receipts:
                 rr = apply_receipts(db, client.receipts(start, end).get("receipts", []), user_id)
                 result["receipts_booked"] += rr["receipts_booked"]
     except (PosError, httpx.HTTPError) as e:

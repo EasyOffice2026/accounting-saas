@@ -26,6 +26,7 @@ from app.models.purchase import PurchaseOrder, PurchaseCategory, Invoice
 from app.models.transfer import TransferOrder, TransferOrderLine, TransferItem
 from app.models.renewal import RenewalRequest
 from app.models.sale import Sale
+from app.models.pos import PosSettings, PosStockCost
 from app.utils.chart_template import CHART_TEMPLATE
 from app.utils.ledger_access import get_settings
 
@@ -70,6 +71,11 @@ EXPENSE_CATEGORY_DEFAULTS = [
 ]
 PURCHASE_CATEGORY_DEFAULTS = [("packag", "5130"), ("consum", "5130"), ("equip", "6250")]
 CHANNEL_START = date(2026, 10, 1)
+# With inventory accounting, stock bought goes to Inventory and leaves it as the POS uses it up.
+COST_TO_INVENTORY = {"5110": "1310", "5120": "1320", "5130": "1330"}
+CATEGORY_INVENTORY = {"food": "1310", "beverage": "1320", "packaging": "1330"}
+CATEGORY_COST = {"food": "5110", "beverage": "5120", "packaging": "5130"}
+STOCK_VARIANCE = "5140"
 
 
 def _r(x) -> float:
@@ -202,8 +208,19 @@ def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
 
     pcats = {c.id: c.name for c in db.query(PurchaseCategory).all()}
 
+    pos = db.query(PosSettings).first()
+    inventory_on = bool(pos and pos.inventory_accounting)
+    code_of = {acc_id: code for (_, code), acc_id in L.by_code.items()}
+
     def purchase_acc(brand: int, cat_id: Optional[int]) -> int:
-        return L.mapped(brand, "purchase_category", cat_id or 0, pcats.get(cat_id, ""), PURCHASE_CATEGORY_DEFAULTS, "5110")
+        acc = L.mapped(brand, "purchase_category", cat_id or 0, pcats.get(cat_id, ""), PURCHASE_CATEGORY_DEFAULTS, "5110")
+        inv = COST_TO_INVENTORY.get(code_of.get(acc, "")) if inventory_on else None
+        return L.code(brand, inv) if inv else acc
+
+    def transfer_acc(brand: int, key: str) -> int:
+        if inventory_on:
+            return L.code(brand, CATEGORY_INVENTORY["packaging" if key == "transfers_packaging" else "food"])
+        return L.setting(brand, key)
 
     # Branch purchases: cash purchases leave the branch cash box on the order date (as in the cash box);
     # credit purchases go to suppliers when invoiced and are cleared when the invoice is paid.
@@ -420,18 +437,41 @@ def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
         if b_src == b_dst:
             e = Entry(f"transfer:{o.id}", b_src, o.date, f"Internal transfer #{o.id} {names}"[:200], "transfer")
             for key, v in value.items():
-                e.dr(L.setting(b_src, key), v, dst)
-                e.cr(L.setting(b_src, key), v, src)
+                e.dr(transfer_acc(b_src, key), v, dst)
+                e.cr(transfer_acc(b_src, key), v, src)
             out.append(e)
             continue
         e = Entry(f"transfer:{o.id}", b_src, o.date, f"Internal transfer #{o.id} {names}"[:200], "transfer")
         d = Entry(f"transfer_in:{o.id}", b_dst, o.date, f"Internal transfer #{o.id} {names}"[:200], "transfer")
         for key, v in value.items():
             e.dr(L.setting(b_src, "related_receivable"), v, src, "", f"company:{b_dst}")
-            e.cr(L.setting(b_src, key), v, src)
-            d.dr(L.setting(b_dst, key), v, dst)
+            e.cr(transfer_acc(b_src, key), v, src)
+            d.dr(transfer_acc(b_dst, key), v, dst)
             d.cr(L.setting(b_dst, "related_payable"), v, dst, "", f"company:{b_src}")
         out += [e, d]
+
+    # Stock the POS used up at each branch in a day: recipes sold go to cost of sales, waste and
+    # count differences to stock variance, out of Inventory.
+    if inventory_on:
+        used: dict[tuple[int, date], list[PosStockCost]] = {}
+        for c in db.query(PosStockCost).filter(PosStockCost.date >= start).all():
+            used.setdefault((c.branch_id, c.date), []).append(c)
+        for (bid, d), rows in sorted(used.items()):
+            brand = L.branch_brand.get(bid)
+            if not brand:
+                continue
+            e = Entry(f"pos_stock:{bid}:{d.isoformat()}", brand, d, f"Stock used {d:%d/%m/%Y}", "pos_stock")
+            for c in rows:
+                expense = L.code(brand, CATEGORY_COST.get(c.category, "5110") if c.kind == "sold" else STOCK_VARIANCE)
+                stock = L.code(brand, CATEGORY_INVENTORY.get(c.category, "1310"))
+                memo = f"{c.kind} {c.category}"
+                if c.cost >= 0:
+                    e.dr(expense, c.cost, bid, memo)
+                    e.cr(stock, c.cost, bid, memo)
+                else:
+                    e.dr(stock, -c.cost, bid, memo)
+                    e.cr(expense, -c.cost, bid, memo)
+            out.append(e)
 
     return out
 

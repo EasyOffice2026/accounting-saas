@@ -39,7 +39,20 @@ EXTRA_ACCOUNTS = [
     ("1139", "Bank - not specified", "بنك - غير محدد", "ASSET", "bank", "1100", False, "BalancesWithBanks"),
     ("1225", "TAP receivable (website orders)", "مستحق من تاب (طلبات الموقع الإلكتروني)", "ASSET", "receivable", "1200", False, "CurrentTradeReceivables"),
     ("1280", "Due from related parties", "مستحق من أطراف ذات علاقة", "ASSET", "receivable", "1200", False, "OtherCurrentReceivables"),
+    ("4100", "Sales", "المبيعات", "REVENUE", "sales", "4000", True, "RevenueFromSaleOfGoods"),
 ]
+# Balance-sheet accounts that are kept per unit (receivables per sales branch, stock per store/kitchen/branch).
+# All revenue and expense accounts are kept per unit too.
+UNIT_SPLIT_CODES = {"1210", "1220", "1225", "1230", "1240", "1250", "1260", "1310", "1320", "1330"}
+# Sub-accounts opened automatically: per unit, per expense head, per branch sales method.
+AUTO_KINDS = ("unit", "head", "sales")
+SALES_METHODS = (("cash", "Cash", "نقدي"), ("knet", "KNET", "كي نت"), ("link", "Link", "لينك"), ("wamd", "WAMD", "ومض"),
+                 ("talabat", "Talabat", "طلبات"), ("keeta", "Keeta", "كيتا"), ("jahez", "Jahez", "جاهز"),
+                 ("snoonu", "Snoonu", "سنونو"), ("website", "Website", "الموقع الإلكتروني"), ("other", "Other", "أخرى"))
+
+
+def auto_kind(a) -> str:
+    return (a.system_key or "").split(":", 1)[0] if a and a.system_key else ""
 
 SETTING_DEFAULTS = {
     "bank_default": ("1139", "Bank payments with no payment channel", "مدفوعات بنكية بدون قناة دفع"),
@@ -92,7 +105,12 @@ class Ledger:
         self.maps: dict[tuple[int, str, str], int] = {}
         self.branch_brand = {b.id: b.brand_id for b in db.query(Branch).all()}
         self.branch_name = {b.id: (b.name, b.name_ar) for b in db.query(Branch).all()}
+        self.admin_of: dict[int, int] = {}
+        for b in db.query(Branch).filter(Branch.unit_type == "administration").order_by(Branch.id).all():
+            self.admin_of.setdefault(b.brand_id, b.id)
+        self.accs: dict[int, AccAccount] = {}
         for a in db.query(AccAccount).all():
+            self.accs[a.id] = a
             self.by_code[(a.brand_id, a.code)] = a.id
             if a.system_key:
                 self.by_key[(a.brand_id, a.system_key)] = a.id
@@ -111,7 +129,66 @@ class Ledger:
         self.db.flush()
         self.by_key[(brand_id, key)] = a.id
         self.by_code[(brand_id, code)] = a.id
+        self.accs[a.id] = a
         return a.id
+
+    def _child(self, parent_id: int, key: str, code: str, name: str, name_ar: Optional[str], header: bool = False) -> int:
+        """A sub-account opened on its first entry; it takes its type and XBRL concept from the parent."""
+        p = self.accs[parent_id]
+        if (p.brand_id, key) in self.by_key:
+            return self.by_key[(p.brand_id, key)]
+        while (p.brand_id, code) in self.by_code:
+            code += "a"
+        a = AccAccount(brand_id=p.brand_id, code=code, name=name[:200], name_ar=(name_ar or name)[:200], type=p.type,
+                       subtype=p.subtype, parent_code=p.code, is_header=header, concept=p.concept, system_key=key)
+        p.is_header = True
+        self.db.add(a)
+        self.db.flush()
+        self.by_key[(p.brand_id, key)] = a.id
+        self.by_code[(p.brand_id, code)] = a.id
+        self.accs[a.id] = a
+        return a.id
+
+    def _unit_name(self, branch_id: Optional[int]) -> tuple[str, str]:
+        if not branch_id:
+            return "Not assigned to a branch", "غير موزع على فرع"
+        n, n_ar = self.branch_name.get(branch_id, (str(branch_id), None))
+        return n, n_ar or n
+
+    def unit(self, account_id: int, branch_id: Optional[int]) -> int:
+        """The account's sub-account for one unit, e.g. 6210 Rent -> 6210-03 Rent - Al Jahra."""
+        p = self.accs[account_id]
+        n, n_ar = self._unit_name(branch_id)
+        return self._child(account_id, f"unit:{account_id}:{branch_id or 0}", f"{p.code}-{branch_id or 0:02d}",
+                           f"{p.name} - {n}", f"{p.name_ar or p.name} - {n_ar}")
+
+    def head(self, account_id: int, cat: ExpenseCategory) -> int:
+        """Every expense head has its own account under the account it is mapped to, e.g. 6270.8 Petrol."""
+        p = self.accs[account_id]
+        return self._child(account_id, f"head:{cat.id}:{account_id}", f"{p.code}.{cat.id}", cat.name, cat.name_ar)
+
+    def sales(self, brand_id: int, branch_id: int, method: int) -> int:
+        """Sales - <branch> - <payment method>, under the sales account (4100 unless mapped)."""
+        base = self.maps.get((brand_id, "setting", "sales")) or self.code(brand_id, "4100")
+        p = self.accs[base]
+        n, n_ar = self._unit_name(branch_id)
+        br = self._child(base, f"sales:{branch_id}", f"{p.code}-{branch_id:02d}", f"Sales - {n}", f"المبيعات - {n_ar}", True)
+        key, en, ar = SALES_METHODS[method]
+        return self._child(br, f"sales:{branch_id}:{key}", f"{p.code}-{branch_id:02d}-{method + 1:02d}",
+                           f"Sales - {n} - {en}", f"المبيعات - {n_ar} - {ar}")
+
+    def split_by_unit(self, e: "Entry") -> None:
+        """Moves revenue, expense, receivable and stock lines to the sub-account of their unit. Lines with no
+        unit: income and expenses go to the brand's Administration (combined), the rest to 'not assigned'."""
+        lines = []
+        for acc, bid, dr, cr, memo, party in e.lines:
+            a = self.accs.get(acc)
+            if a and auto_kind(a) in ("", "head") and (a.type in ("REVENUE", "EXPENSE") or a.code in UNIT_SPLIT_CODES):
+                if not bid and a.type in ("REVENUE", "EXPENSE"):
+                    bid = self.admin_of.get(e.brand_id)
+                acc = self.unit(acc, bid)
+            lines.append((acc, bid, dr, cr, memo, party))
+        e.lines = lines
 
     def cashbox(self, branch_id: int) -> int:
         brand = self.branch_brand[branch_id]
@@ -201,9 +278,10 @@ def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
         for m, amt in parts.items():
             e.dr(L.code(brand, RECEIVABLE_CODES[m]), amt, s.branch_id, m.upper(), f"customer:{m}")
         e.dr(L.setting(brand, "corporate_customers"), s.physical_other, s.branch_id, "Other", "customer:other")
-        total = sum(l[2] for l in e.lines)
-        e.cr(L.setting(brand, "sales"), total - _r(s.physical_website), s.branch_id)
-        e.cr(L.code(brand, "4150"), s.physical_website, s.branch_id, "Website")
+        for i, (m, label, _) in enumerate(SALES_METHODS):
+            amt = getattr(s, f"physical_{m}") or 0
+            if abs(amt) > EPS:
+                e.cr(L.sales(brand, s.branch_id, i), amt, s.branch_id, label)
         out.append(e)
 
     pcats = {c.id: c.name for c in db.query(PurchaseCategory).all()}
@@ -260,7 +338,8 @@ def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
                 out.append(p)
 
     # Expenses (including contract and renewal mirrors). Salary mirrors are handled with the salary.
-    ecats = {c.id: c.name for c in db.query(ExpenseCategory).all()}
+    ecat_rows = {c.id: c for c in db.query(ExpenseCategory).all()}
+    ecats = {c.id: c.name for c in ecat_rows.values()}
     renewal_box = {r.id: r.cash_txn_id for r in db.query(RenewalRequest).filter(RenewalRequest.cash_txn_id.isnot(None)).all()}
     txn_branch = {t.id: t.branch_id for t in db.query(CashTransaction).filter(CashTransaction.id.in_(list(renewal_box.values()) or [0])).all()}
     salary_exp: dict[int, Expense] = {}
@@ -276,6 +355,8 @@ def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
             debit = L.maps.get((brand, "expense_category", str(x.category_id))) or L.setting(brand, "renewals")
         else:
             debit = L.mapped(brand, "expense_category", x.category_id or 0, ecats.get(x.category_id, ""), EXPENSE_CATEGORY_DEFAULTS, "6270")
+        if x.category_id in ecat_rows:
+            debit = L.head(debit, ecat_rows[x.category_id])
         cc = x.cost_branch_id if x.cost_branch_id and L.branch_brand.get(x.cost_branch_id) == brand else x.branch_id
         e.dr(debit, x.amount, cc)
         pm = x.payment_method or "cash"
@@ -597,11 +678,17 @@ def opening_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
     for brand in {bb for bb in L.branch_brand.values() if bb}:
         branch_ids = [k for k, v in L.branch_brand.items() if v == brand]
         for m in PROCEEDS_METHODS:
-            due = db.query(func.coalesce(func.sum(cols[m]), 0)).filter(Sale.branch_id.in_(branch_ids), Sale.date >= CHANNEL_START,
-                                                                       Sale.date < start).scalar()
-            got = db.query(func.coalesce(func.sum(ProceedsReceipt.amount + func.coalesce(ProceedsReceipt.fees, 0)), 0)).filter(
-                ProceedsReceipt.brand_id == brand, ProceedsReceipt.method == m, ProceedsReceipt.date < start).scalar()
-            entry(brand).dr(L.code(brand, RECEIVABLE_CODES[m]), _r(due) - _r(got), None, f"{m.upper()} receivable", f"customer:{m}")
+            bal: dict[Optional[int], float] = {}
+            for bid, due in db.query(Sale.branch_id, func.coalesce(func.sum(cols[m]), 0)).filter(
+                    Sale.branch_id.in_(branch_ids), Sale.date >= CHANNEL_START, Sale.date < start).group_by(Sale.branch_id).all():
+                bal[bid] = bal.get(bid, 0.0) + _r(due)
+            for bid, got in db.query(ProceedsReceipt.branch_id, func.coalesce(func.sum(
+                    ProceedsReceipt.amount + func.coalesce(ProceedsReceipt.fees, 0)), 0)).filter(
+                    ProceedsReceipt.brand_id == brand, ProceedsReceipt.method == m, ProceedsReceipt.date < start)\
+                    .group_by(ProceedsReceipt.branch_id).all():
+                bal[bid] = bal.get(bid, 0.0) - _r(got)
+            for bid in sorted(bal, key=lambda k: k or 0):
+                entry(brand).dr(L.code(brand, RECEIVABLE_CODES[m]), bal[bid], bid, f"{m.upper()} receivable", f"customer:{m}")
         # Staff advances outstanding: approved advances before start less salary deductions booked before start.
         emp_ids = [e.id for e in db.query(Employee.id).filter(Employee.branch_id.in_(branch_ids)).all()]
         adv: dict[int, float] = {}
@@ -655,7 +742,10 @@ def _sync_ledger(db: Session, user_id: Optional[int] = None) -> dict:
         return result
     ensure_chart(db)
     L = Ledger(db)
-    expected = {e.key: e for e in build_entries(db, L, s.start_date) + opening_entries(db, L, s.start_date)}
+    entries = build_entries(db, L, s.start_date) + opening_entries(db, L, s.start_date)
+    for e in entries:
+        L.split_by_unit(e)
+    expected = {e.key: e for e in entries}
     active = {j.source_key: j for j in db.query(AccJournal).filter(AccJournal.source_key.isnot(None), AccJournal.is_active.is_(True)).all()}
     for key, e in expected.items():
         if not e.lines:

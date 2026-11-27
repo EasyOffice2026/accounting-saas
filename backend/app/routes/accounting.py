@@ -20,7 +20,7 @@ from app.models.hr import Brand, Employee
 from app.models.purchase import PurchaseCategory, Supplier
 from app.models.sale import Sale
 from app.models.user import User
-from app.utils.ledger import (EXPENSE_CATEGORY_DEFAULTS, PURCHASE_CATEGORY_DEFAULTS, SETTING_DEFAULTS, Ledger, ensure_chart,
+from app.utils.ledger import (AUTO_KINDS, auto_kind, EXPENSE_CATEGORY_DEFAULTS, PURCHASE_CATEGORY_DEFAULTS, SETTING_DEFAULTS, Ledger, ensure_chart,
                               post_journal, reverse_journal, sync_ledger, _r, EPS)
 from app.utils.ledger_access import get_accounting_user, get_settings
 
@@ -72,6 +72,19 @@ def _units(db: Session, brand_id: int, branch_id: Optional[int], layer: Optional
         return branch_id
     return [b.id for b in db.query(Branch).filter(Branch.brand_id == brand_id,
                                                    Branch.unit_type.in_(units.types_in(layer))).all()]
+
+
+def _shown(a: AccAccount, by_code: dict, detail: bool) -> AccAccount:
+    """Without detail, per-unit and per-method sub-accounts are shown in their account (expense heads stay)."""
+    while not detail and auto_kind(a) in ("unit", "sales") and a.parent_code in by_code:
+        a = by_code[a.parent_code]
+    return a
+
+
+def _chart_base(a: AccAccount, by_code: dict) -> AccAccount:
+    while auto_kind(a) in AUTO_KINDS and a.parent_code in by_code:
+        a = by_code[a.parent_code]
+    return a
 
 
 def _accounts(db: Session, brand_id: int) -> list[AccAccount]:
@@ -314,10 +327,22 @@ def reverse(journal_id: int, reason: str = Form(""), reverse_date: str = Form(""
 
 # ---------- reports ----------
 
-def trial_balance_data(db: Session, brand_id: int, date_from: Optional[date], date_to: Optional[date], branch_id: Optional[int]):
+def trial_balance_data(db: Session, brand_id: int, date_from: Optional[date], date_to: Optional[date], branch_id: Optional[int],
+                       detail: bool = True):
     accs = _accounts(db, brand_id)
+    by_code = {a.code: a for a in accs}
     opening = _sums(db, brand_id, date_from, branch_id=branch_id, before=True) if date_from else {}
     period = _sums(db, brand_id, date_from, date_to, branch_id)
+    if not detail:
+        for sums in (opening, period):
+            rolled: dict[int, tuple[float, float]] = {}
+            for a in accs:
+                if a.id in sums:
+                    k = _shown(a, by_code, False).id
+                    d0, c0 = rolled.get(k, (0.0, 0.0))
+                    rolled[k] = (d0 + sums[a.id][0], c0 + sums[a.id][1])
+            sums.clear()
+            sums.update(rolled)
     rows, tot = [], {"opening_dr": 0.0, "opening_cr": 0.0, "debit": 0.0, "credit": 0.0, "closing_dr": 0.0, "closing_cr": 0.0}
     for a in accs:
         od, oc = opening.get(a.id, (0.0, 0.0))
@@ -348,9 +373,9 @@ def stock_report(brand_id: int, date_from: str, date_to: Optional[str] = None,
 
 @router.get("/trial-balance")
 def trial_balance(brand_id: int, date_from: Optional[str] = None, date_to: Optional[str] = None, branch_id: Optional[int] = None,
-                  layer: Optional[str] = None,
+                  layer: Optional[str] = None, detail: bool = False,
                   db: Session = Depends(get_db), user: User = Depends(get_accounting_user)):
-    return trial_balance_data(db, brand_id, _d(date_from), _d(date_to), _units(db, brand_id, branch_id, layer))
+    return trial_balance_data(db, brand_id, _d(date_from), _d(date_to), _units(db, brand_id, branch_id, layer), detail)
 
 
 def ledger_data(db: Session, account_id: int, date_from: Optional[date], date_to: Optional[date], branch_id: Optional[int]):
@@ -358,8 +383,18 @@ def ledger_data(db: Session, account_id: int, date_from: Optional[date], date_to
     if not a:
         raise HTTPException(404, "Account not found")
     sign = 1 if a.type in DEBIT_NATURE else -1
+    # A header account's ledger covers all of its sub-accounts (e.g. Sales - Al Jahra: every payment method).
+    accs = {x.id: x for x in _accounts(db, a.brand_id)}
+    kids: dict[str, list[AccAccount]] = {}
+    for x in accs.values():
+        kids.setdefault(x.parent_code, []).append(x)
+    ids, todo = [a.id], [a.code]
+    while todo:
+        for x in kids.get(todo.pop(), []):
+            ids.append(x.id)
+            todo.append(x.code)
     base = db.query(AccJournalLine, AccJournal).join(AccJournal, AccJournal.id == AccJournalLine.journal_id)\
-        .filter(AccJournalLine.account_id == account_id)
+        .filter(AccJournalLine.account_id.in_(ids))
     if branch_id:
         base = base.filter(AccJournalLine.branch_id == branch_id)
     opening = 0.0
@@ -374,7 +409,8 @@ def ledger_data(db: Session, account_id: int, date_from: Optional[date], date_to
     for l, j in base.order_by(AccJournal.date, AccJournal.number, AccJournalLine.id).all():
         bal += sign * ((l.debit or 0) - (l.credit or 0))
         rows.append({"journal_id": j.id, "number": j.number, "date": str(j.date), "description": j.description, "source": j.source,
-                     "branch_id": l.branch_id, "memo": l.memo, "debit": l.debit, "credit": l.credit, "balance": _r(bal)})
+                     "branch_id": l.branch_id, "memo": l.memo, "debit": l.debit, "credit": l.credit, "balance": _r(bal),
+                     "code": accs[l.account_id].code, "name": accs[l.account_id].name, "name_ar": accs[l.account_id].name_ar})
     return {"account": _acc_json(a), "opening": _r(opening), "closing": _r(bal), "rows": rows,
             "debit": _r(sum(r["debit"] or 0 for r in rows)), "credit": _r(sum(r["credit"] or 0 for r in rows))}
 
@@ -515,33 +551,44 @@ def party_ledger(brand_id: int, party: str, date_from: Optional[str] = None, dat
     return party_ledger_data(db, brand_id, party, _d(date_from), _d(date_to))
 
 
-def _sections(accs: list[AccAccount], sums: dict, types: tuple) -> list[dict]:
+def _sections(accs: list[AccAccount], sums: dict, types: tuple, detail: bool = False) -> list[dict]:
     headers = {a.code: a for a in accs if a.is_header}
+    by_code = {a.code: a for a in accs}
     groups: dict[str, dict] = {}
+    shown: dict[str, dict] = {}
     for a in accs:
-        if a.is_header or a.type not in types:
+        if a.type not in types:
             continue
         d, c = sums.get(a.id, (0.0, 0.0))
         amt = (d - c) if a.type in DEBIT_NATURE else (c - d)
         if abs(amt) < EPS:
             continue
-        parent = a.parent_code or a.code
+        base = _chart_base(a, by_code)
+        parent = base.parent_code or base.code
+        a = _shown(a, by_code, detail)
         while parent in headers and headers[parent].parent_code and headers[parent].parent_code in headers \
                 and headers[headers[parent].parent_code].parent_code:
             parent = headers[parent].parent_code
         h = headers.get(parent)
         g = groups.setdefault(parent, {"code": parent, "name": h.name if h else parent, "name_ar": h.name_ar if h else parent,
                                        "type": a.type, "accounts": [], "total": 0.0})
-        g["accounts"].append({"account_id": a.id, "code": a.code, "name": a.name, "name_ar": a.name_ar, "amount": _r(amt)})
+        row = shown.get(a.code)
+        if not row:
+            row = shown[a.code] = {"account_id": a.id, "code": a.code, "name": a.name, "name_ar": a.name_ar, "amount": 0.0}
+            g["accounts"].append(row)
+        row["amount"] = _r(row["amount"] + amt)
         g["total"] = _r(g["total"] + amt)
+    for g in groups.values():
+        g["accounts"] = [r for r in sorted(g["accounts"], key=lambda r: r["code"]) if abs(r["amount"]) >= EPS]
     return [groups[k] for k in sorted(groups)]
 
 
-def income_statement_data(db: Session, brand_id: int, date_from: Optional[date], date_to: Optional[date], branch_id: Optional[int]):
+def income_statement_data(db: Session, brand_id: int, date_from: Optional[date], date_to: Optional[date], branch_id: Optional[int],
+                          detail: bool = False):
     accs = _accounts(db, brand_id)
     sums = _sums(db, brand_id, date_from, date_to, branch_id)
-    rev = _sections(accs, sums, ("REVENUE",))
-    exp = _sections(accs, sums, ("EXPENSE",))
+    rev = _sections(accs, sums, ("REVENUE",), detail)
+    exp = _sections(accs, sums, ("EXPENSE",), detail)
     revenue = _r(sum(g["total"] for g in rev))
     cos = _r(sum(g["total"] for g in exp if g["code"] == "5000"))
     opex = _r(sum(g["total"] for g in exp if g["code"] != "5000"))
@@ -551,9 +598,9 @@ def income_statement_data(db: Session, brand_id: int, date_from: Optional[date],
 
 @router.get("/income-statement")
 def income_statement(brand_id: int, date_from: Optional[str] = None, date_to: Optional[str] = None, branch_id: Optional[int] = None,
-                     layer: Optional[str] = None,
+                     layer: Optional[str] = None, detail: bool = False,
                      db: Session = Depends(get_db), user: User = Depends(get_accounting_user)):
-    return income_statement_data(db, brand_id, _d(date_from), _d(date_to), _units(db, brand_id, branch_id, layer))
+    return income_statement_data(db, brand_id, _d(date_from), _d(date_to), _units(db, brand_id, branch_id, layer), detail)
 
 
 def balance_sheet_data(db: Session, brand_id: int, as_of: date):
@@ -686,14 +733,15 @@ def _xlsx(title: str, subtitle: str, header: list[str], rows: list[list], rtl: b
 @router.get("/export/{report}")
 def export_report(report: str, brand_id: int, lang: str = "en", date_from: Optional[str] = None, date_to: Optional[str] = None,
                   as_of: Optional[str] = None, account_id: Optional[int] = None, branch_id: Optional[int] = None,
-                  side: str = "payable", party: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_accounting_user)):
+                  side: str = "payable", party: Optional[str] = None, layer: Optional[str] = None, detail: bool = False,
+                  db: Session = Depends(get_db), user: User = Depends(get_accounting_user)):
     ar = lang == "ar"
     b = _brand(db, brand_id)
     company = (b.name_ar or b.name_en) if ar else b.name_en
     nm = (lambda o: (o.get("name_ar") or o.get("name")) if ar else o.get("name"))
     period = f"{date_from or ''} - {date_to or ''}"
     if report == "trial-balance":
-        d = trial_balance_data(db, brand_id, _d(date_from), _d(date_to), branch_id)
+        d = trial_balance_data(db, brand_id, _d(date_from), _d(date_to), _units(db, brand_id, branch_id, layer), detail)
         hdr = ["الرمز", "الحساب", "افتتاحي مدين", "افتتاحي دائن", "مدين", "دائن", "ختامي مدين", "ختامي دائن"] if ar else \
             ["Code", "Account", "Opening Dr", "Opening Cr", "Debit", "Credit", "Closing Dr", "Closing Cr"]
         rows = [[r["code"], nm(r), r["opening_dr"], r["opening_cr"], r["debit"], r["credit"], r["closing_dr"], r["closing_cr"]]
@@ -706,7 +754,9 @@ def export_report(report: str, brand_id: int, lang: str = "en", date_from: Optio
         d = ledger_data(db, account_id, _d(date_from), _d(date_to), branch_id)
         hdr = ["التاريخ", "رقم القيد", "البيان", "مدين", "دائن", "الرصيد"] if ar else ["Date", "Journal", "Description", "Debit", "Credit", "Balance"]
         rows = [["", "", "رصيد افتتاحي" if ar else "Opening balance", None, None, d["opening"]]]
-        rows += [[r["date"], r["number"], r["description"], r["debit"], r["credit"], r["balance"]] for r in d["rows"]]
+        multi = d["account"]["is_header"]
+        rows += [[r["date"], r["number"], (f"{r['code']} {nm(r)} - " if multi else "") + r["description"], r["debit"], r["credit"],
+                  r["balance"]] for r in d["rows"]]
         rows.append(["**" + ("الإجمالي" if ar else "Total"), "", "", d["debit"], d["credit"], d["closing"]])
         a = d["account"]
         return _xlsx(("كشف حساب" if ar else "Account Ledger"), f"{company} {a['code']} {nm(a)} {period}", hdr, rows, ar)
@@ -729,7 +779,7 @@ def export_report(report: str, brand_id: int, lang: str = "en", date_from: Optio
         rows.append(["**" + ("الإجمالي" if ar else "Total"), "", "", "", d["debit"], d["credit"], d["closing"]])
         return _xlsx(("كشف حساب" if ar else "Statement of account"), f"{company} {nm(d)} {period}", hdr, rows, ar)
     if report == "income-statement":
-        d = income_statement_data(db, brand_id, _d(date_from), _d(date_to), branch_id)
+        d = income_statement_data(db, brand_id, _d(date_from), _d(date_to), _units(db, brand_id, branch_id, layer), detail)
         rows = []
         for g in d["revenue"] + d["expenses"]:
             rows.append(["**" + nm(g), None])

@@ -25,7 +25,7 @@ const TABS = ["overview", "journals", "trial", "ledger", "payables", "receivable
 type Tab = typeof TABS[number];
 
 const L: Record<string, [string, string]> = {
-  overview: ["Overview", "نظرة عامة"], journals: ["Journals", "القيود"], trial: ["Trial Balance", "ميزان المراجعة"],
+  overview: ["Overview", "نظرة عامة"], branch_accounts: ["Show branch accounts", "عرض حسابات الفروع"], journals: ["Journals", "القيود"], trial: ["Trial Balance", "ميزان المراجعة"],
   ledger: ["Account Ledger", "كشف حساب"], income: ["Income Statement", "قائمة الدخل"], balance: ["Balance Sheet", "الميزانية العمومية"],
   reconcile: ["Daily Check", "المطابقة اليومية"], stock: ["Stock & Food Cost", "المخزون وتكلفة الطعام"],
   stock_value: ["Stock value", "قيمة المخزون"], food: ["Food", "مواد غذائية"], beverage: ["Beverage", "مشروبات"], packaging: ["Packaging", "تغليف"],
@@ -146,7 +146,7 @@ export default function AccountingPage() {
       {tab === "overview" && ov && <OverviewTab ov={!isGroupView && selectedBrand ? { ...ov, brands: ov.brands.filter(b => b.id === brandId) } : ov} t={t} reload={loadOverview} setErr={setErr} />}
       {tab === "journals" && <JournalsTab brandId={brandId} from={from} to={to} t={t} nm={nm} postable={postable} branches={branches} branchName={branchName} reloadAccounts={loadAccounts} />}
       {tab === "trial" && <TrialTab q={qs({ date_from: from, date_to: to, branch_id: branchId, layer })} t={t} nm={nm} />}
-      {tab === "ledger" && <LedgerTab key={brandId} brandId={brandId} from={from} to={to} branchId={branchId} lang={ar ? "ar" : "en"} postable={accounts.filter(a => !a.is_header)} t={t} nm={nm} branchName={branchName} />}
+      {tab === "ledger" && <LedgerTab key={brandId} brandId={brandId} from={from} to={to} branchId={branchId} lang={ar ? "ar" : "en"} postable={accounts} t={t} nm={nm} branchName={branchName} />}
       {(tab === "payables" || tab === "receivables") && <PartiesTab key={`${brandId}-${tab}`} brandId={brandId} side={tab === "payables" ? "payable" : "receivable"} from={from} to={to} lang={ar ? "ar" : "en"} t={t} nm={nm} branchName={branchName} />}
       {tab === "income" && <IncomeTab q={qs({ date_from: from, date_to: to, branch_id: branchId, layer })} t={t} nm={nm} />}
       {tab === "balance" && <BalanceTab brandId={brandId} lang={ar ? "ar" : "en"} t={t} nm={nm} />}
@@ -330,13 +330,19 @@ function JournalForm({ brandId, postable, branches, t, nm, done }: { brandId: nu
   );
 }
 
-function TrialTab({ q, t, nm }: { q: string; t: T; nm: NM }) {
+function DetailToggle({ on, set, t }: { on: boolean; set: (v: boolean) => void; t: T }) {
+  return <label className="text-sm flex items-center gap-1 print:hidden"><input type="checkbox" checked={on} onChange={e => set(e.target.checked)} />{t("branch_accounts")}</label>;
+}
+
+function TrialTab({ q: q0, t, nm }: { q: string; t: T; nm: NM }) {
   const [d, setD] = useState<{ rows: TBRow[]; totals: Record<string, number>; balanced: boolean } | null>(null);
+  const [detail, setDetail] = useState(false);
+  const q = `${q0}&detail=${detail}`;
   useEffect(() => { apiGet(`/api/accounting/trial-balance?${q}`).then(setD).catch(() => undefined); }, [q]);
   if (!d) return null;
   return (
     <div className="space-y-2">
-      <div className="flex justify-between"><span className={d.balanced ? "text-emerald-700" : "text-red-700 font-bold"}>{d.balanced ? t("balanced") : t("not_balanced")}</span><Toolbar excel={`/api/accounting/export/trial-balance?${q}`} filename="Trial_Balance.xlsx" /></div>
+      <div className="flex justify-between"><span className={d.balanced ? "text-emerald-700" : "text-red-700 font-bold"}>{d.balanced ? t("balanced") : t("not_balanced")}</span><div className="flex items-center gap-3"><DetailToggle on={detail} set={setDetail} t={t} /><Toolbar excel={`/api/accounting/export/trial-balance?${q}`} filename="Trial_Balance.xlsx" /></div></div>
       <table className="w-full text-sm border-collapse">
         <thead><tr><th className={th}>{t("code")}</th><th className={th}>{t("account")}</th><th className={th}>{t("opening")} {t("debit")}</th><th className={th}>{t("opening")} {t("credit")}</th><th className={th}>{t("debit")}</th><th className={th}>{t("credit")}</th><th className={th}>{t("closing")} {t("debit")}</th><th className={th}>{t("closing")} {t("credit")}</th></tr></thead>
         <tbody>
@@ -350,7 +356,8 @@ function TrialTab({ q, t, nm }: { q: string; t: T; nm: NM }) {
 
 function LedgerTab({ brandId, from, to, branchId, lang, postable, t, nm, branchName }: { brandId: number; from: string; to: string; branchId: string; lang: string; postable: Account[]; t: T; nm: NM; branchName: (id: number | null) => string }) {
   const [acc, setAcc] = useState("");
-  const [d, setD] = useState<{ opening: number; closing: number; debit: number; credit: number; rows: { journal_id: number; number: number; date: string; description: string; branch_id: number | null; debit: number; credit: number; balance: number }[] } | null>(null);
+  const [d, setD] = useState<{ opening: number; closing: number; debit: number; credit: number; rows: { journal_id: number; number: number; date: string; description: string; branch_id: number | null; debit: number; credit: number; balance: number; code: string; name: string; name_ar: string | null }[] } | null>(null);
+  const multi = !!postable.find(a => String(a.id) === acc)?.is_header;
   const p = new URLSearchParams({ brand_id: String(brandId), account_id: acc, date_from: from, date_to: to, lang });
   if (branchId) p.set("branch_id", branchId);
   const q = p.toString();
@@ -360,17 +367,17 @@ function LedgerTab({ brandId, from, to, branchId, lang, postable, t, nm, branchN
       <div className="flex flex-wrap justify-between gap-2">
         <select className="border rounded px-2 py-1 min-w-[300px] print:hidden" value={acc} onChange={e => setAcc(e.target.value)}>
           <option value="">{t("choose_account")}</option>
-          {postable.map(a => <option key={a.id} value={a.id}>{a.code} {nm(a)}</option>)}
+          {postable.map(a => <option key={a.id} value={a.id} className={a.is_header ? "font-semibold" : ""}>{a.code} {nm(a)}</option>)}
         </select>
         {acc && <Toolbar excel={`/api/accounting/export/ledger?${q}`} filename="Account_Ledger.xlsx" />}
       </div>
       {acc && d && (
         <table className="w-full text-sm border-collapse">
-          <thead><tr><th className={th}>{t("date")}</th><th className={th}>{t("no")}</th><th className={th}>{t("description")}</th><th className={th}>{t("branch")}</th><th className={th}>{t("debit")}</th><th className={th}>{t("credit")}</th><th className={th}>{t("balance_col")}</th></tr></thead>
+          <thead><tr><th className={th}>{t("date")}</th><th className={th}>{t("no")}</th><th className={th}>{t("description")}</th>{multi && <th className={th}>{t("account")}</th>}<th className={th}>{t("branch")}</th><th className={th}>{t("debit")}</th><th className={th}>{t("credit")}</th><th className={th}>{t("balance_col")}</th></tr></thead>
           <tbody>
-            <tr className="italic"><td className={td} colSpan={6}>{t("opening")}</td><td className={num}>{fmt(d.opening)}</td></tr>
-            {d.rows.map((r, i) => <tr key={i}><td className={td}>{r.date}</td><td className={td}>{r.number}</td><td className={td}>{r.description}</td><td className={td}>{branchName(r.branch_id)}</td><td className={num}>{r.debit ? fmt(r.debit) : ""}</td><td className={num}>{r.credit ? fmt(r.credit) : ""}</td><td className={num}>{fmt(r.balance)}</td></tr>)}
-            <tr className="font-bold"><td className={td} colSpan={4}>{t("total")}</td><td className={num}>{fmt(d.debit)}</td><td className={num}>{fmt(d.credit)}</td><td className={num}>{fmt(d.closing)}</td></tr>
+            <tr className="italic"><td className={td} colSpan={multi ? 7 : 6}>{t("opening")}</td><td className={num}>{fmt(d.opening)}</td></tr>
+            {d.rows.map((r, i) => <tr key={i}><td className={td}>{r.date}</td><td className={td}>{r.number}</td><td className={td}>{r.description}</td>{multi && <td className={td}>{r.code} {nm(r)}</td>}<td className={td}>{branchName(r.branch_id)}</td><td className={num}>{r.debit ? fmt(r.debit) : ""}</td><td className={num}>{r.credit ? fmt(r.credit) : ""}</td><td className={num}>{fmt(r.balance)}</td></tr>)}
+            <tr className="font-bold"><td className={td} colSpan={multi ? 5 : 4}>{t("total")}</td><td className={num}>{fmt(d.debit)}</td><td className={num}>{fmt(d.credit)}</td><td className={num}>{fmt(d.closing)}</td></tr>
           </tbody>
         </table>
       )}
@@ -451,13 +458,15 @@ function Groups({ groups, nm, t }: { groups: Group[]; nm: NM; t: T }) {
   );
 }
 
-function IncomeTab({ q, t, nm }: { q: string; t: T; nm: NM }) {
+function IncomeTab({ q: q0, t, nm }: { q: string; t: T; nm: NM }) {
   const [d, setD] = useState<{ revenue: Group[]; expenses: Group[]; gross_profit: number; net_profit: number } | null>(null);
+  const [detail, setDetail] = useState(false);
+  const q = `${q0}&detail=${detail}`;
   useEffect(() => { apiGet(`/api/accounting/income-statement?${q}`).then(setD).catch(() => undefined); }, [q]);
   if (!d) return null;
   return (
     <div className="space-y-2 max-w-3xl">
-      <div className="flex justify-end"><Toolbar excel={`/api/accounting/export/income-statement?${q}`} filename="Income_Statement.xlsx" /></div>
+      <div className="flex justify-end items-center gap-3"><DetailToggle on={detail} set={setDetail} t={t} /><Toolbar excel={`/api/accounting/export/income-statement?${q}`} filename="Income_Statement.xlsx" /></div>
       <table className="w-full text-sm border-collapse">
         <thead><tr><th className={th}>{t("item")}</th><th className={th}>KWD</th></tr></thead>
         <Groups groups={d.revenue} nm={nm} t={t} />

@@ -7,7 +7,7 @@ import { DollarSign, ShoppingCart, Receipt, Users, ArrowLeftRight, Truck } from 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 interface BranchData {
-  branch_id: number; branch_name: string;
+  branch_id: number; branch_name: string; branch_name_ar?: string; layer?: string;
   sales: number; purchases: number; expenses: number; transfers: number;
 }
 
@@ -25,7 +25,7 @@ interface DashboardData {
 const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
 
 export default function DashboardPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [paymentMsg, setPaymentMsg] = useState("");
@@ -105,7 +105,7 @@ export default function DashboardPage() {
             <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border p-4">
               <h3 className="font-semibold text-gray-700 mb-3">{t("branch_performance")}</h3>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={data.branch_data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <BarChart data={data.branch_data.filter(b => (b.layer || "sales") === "sales")} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="branch_name" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
@@ -152,23 +152,42 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.branch_data.map((b, i) => {
-                  const net = b.sales - b.purchases - b.expenses - b.transfers;
-                  return (
-                    <tr key={b.branch_id} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium">
-                        <span className="inline-block w-3 h-3 rounded-full mr-2" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                        {b.branch_name}
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-emerald-600">KD {b.sales.toFixed(3)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-blue-600">KD {b.purchases.toFixed(3)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-orange-600">KD {b.expenses.toFixed(3)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-violet-600">KD {b.transfers.toFixed(3)}</td>
-                      <td className={`px-4 py-3 text-right font-mono font-bold ${net >= 0 ? "text-green-600" : "text-red-600"}`}>
-                        KD {net.toFixed(3)}
-                      </td>
-                    </tr>
-                  );
+                {(["sales", "administrative"] as const).flatMap(layer => {
+                  const rows = data.branch_data.filter(b => (b.layer || "sales") === layer);
+                  if (!rows.length) return [];
+                  const sum = (k: "sales" | "purchases" | "expenses" | "transfers") => rows.reduce((a, b) => a + b[k], 0);
+                  const subNet = sum("sales") - sum("purchases") - sum("expenses") - sum("transfers");
+                  return [
+                    <tr key={`h-${layer}`} className="bg-gray-200 border-b">
+                      <td colSpan={6} className="px-4 py-2 font-bold text-gray-800">{t(`layer_${layer}`)} ({rows.length})</td>
+                    </tr>,
+                    ...rows.map((b, i) => {
+                      const net = b.sales - b.purchases - b.expenses - b.transfers;
+                      return (
+                        <tr key={b.branch_id} className="border-b hover:bg-gray-50">
+                          <td className="px-4 py-3 font-medium">
+                            <span className="inline-block w-3 h-3 rounded-full mr-2" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                            {i18n.language === "ar" ? (b.branch_name_ar || b.branch_name) : b.branch_name}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-emerald-600">KD {b.sales.toFixed(3)}</td>
+                          <td className="px-4 py-3 text-right font-mono text-blue-600">KD {b.purchases.toFixed(3)}</td>
+                          <td className="px-4 py-3 text-right font-mono text-orange-600">KD {b.expenses.toFixed(3)}</td>
+                          <td className="px-4 py-3 text-right font-mono text-violet-600">KD {b.transfers.toFixed(3)}</td>
+                          <td className={`px-4 py-3 text-right font-mono font-bold ${net >= 0 ? "text-green-600" : "text-red-600"}`}>
+                            KD {net.toFixed(3)}
+                          </td>
+                        </tr>
+                      );
+                    }),
+                    <tr key={`s-${layer}`} className="bg-gray-50 border-b font-semibold">
+                      <td className="px-4 py-2">{t("subtotal")} — {t(`layer_${layer}`)}</td>
+                      <td className="px-4 py-2 text-right font-mono text-emerald-700">KD {sum("sales").toFixed(3)}</td>
+                      <td className="px-4 py-2 text-right font-mono text-blue-700">KD {sum("purchases").toFixed(3)}</td>
+                      <td className="px-4 py-2 text-right font-mono text-orange-700">KD {sum("expenses").toFixed(3)}</td>
+                      <td className="px-4 py-2 text-right font-mono text-violet-700">KD {sum("transfers").toFixed(3)}</td>
+                      <td className={`px-4 py-2 text-right font-mono ${subNet >= 0 ? "text-green-700" : "text-red-700"}`}>KD {subNet.toFixed(3)}</td>
+                    </tr>,
+                  ];
                 })}
                 <tr className="bg-gray-50 font-bold">
                   <td className="px-4 py-3">{t("total")}</td>

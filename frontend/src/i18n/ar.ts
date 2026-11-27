@@ -663,6 +663,7 @@ export default {
   unit_central_kitchen: "مطبخ مركزي",
   unit_accounts_office: "الحسابات",
   charged_to_branch: "يُحمَّل على الفرع (للوحدات الإدارية)",
+  subtotal: "المجموع الفرعي",
   layer_sales: "وحدات المبيعات",
   layer_administrative: "الوحدات الإدارية",
   combined_costs: "المصاريف المشتركة",

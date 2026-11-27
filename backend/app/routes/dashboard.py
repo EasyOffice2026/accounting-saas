@@ -16,6 +16,7 @@ from app.utils.auth import get_current_user, get_business_user
 from app.routes.hr import _brand_branch_ids, _exclude_left_employees
 from app.routes.procurement import PURCHASED_STATUSES
 from app.utils.dates import apply_date_range
+from app.utils import units
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(get_business_user)])
 
@@ -106,12 +107,17 @@ def dashboard(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
         branch_data.append({
             "branch_id": b.id,
             "branch_name": b.name,
+            "branch_name_ar": b.name_ar or "",
+            "unit_type": b.unit_type,
+            "layer": units.layer_of(b.unit_type),
             "sales": round(sales_by_branch.get(b.id, 0), 3),
             "purchases": round(purchases_by_branch.get(b.id, 0), 3),
             "expenses": round(expenses_by_branch.get(b.id, 0), 3),
             "transfers": round(transfers_by_branch.get(b.id, 0), 3),
         })
 
+    branch_data.sort(key=lambda r: (r["layer"] != units.LAYER_SALES, units.UNIT_TYPES.index(r["unit_type"])
+                                    if r["unit_type"] in units.UNIT_TYPES else 99, r["branch_id"]))
     total_transfers = sum(b["transfers"] for b in branch_data)
 
     return {

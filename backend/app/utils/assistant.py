@@ -228,10 +228,12 @@ def purchase_report(db, scope, date_from, date_to, item=None, supplier=None, cat
 
 
 def stock_report(db, scope, brand_id, date_from, date_to):
-    from app.utils import pos_stock
+    from app.utils import pos_stock, pos_sync
     d1, d2 = _d(date_from, "date_from"), _d(date_to, "date_to")
     scope.check_brand(brand_id)
-    r = pos_stock.stock_report(db, brand_id, d1, d2)
+    s = pos_sync.get_settings(db)
+    client = pos_sync.client_for(s) if pos_sync.is_configured(s) else None
+    r = pos_stock.stock_report(db, brand_id, d1, d2, client)
     rows = [x for x in r.get("rows", []) if x.get("branch_id") in scope.branches]
     return {"rows": rows, "stock_error": r.get("stock_error")}, {"from": d1.isoformat(), "to": d2.isoformat(),
                                                                "brand": brand_id}
@@ -292,7 +294,7 @@ def _system_prompt(db, scope, lang):
                       for c in db.query(ExpenseCategory).filter(ExpenseCategory.is_active == True))  # noqa: E712
     pcats = "; ".join(f"{c.id}={c.name}" for c in db.query(PurchaseCategory).all())
     return f"""You are the reporting assistant of a restaurant group in Kuwait (Mudawwarah system).
-Today is {now.date().isoformat()} ({now.strftime('%A')}), Kuwait time. Money is KWD with 3 decimals.
+Today is {now.date().isoformat()} ({now.strftime('%A')}), Kuwait time. Money is KWD: always write amounts with exactly 3 decimals, e.g. 3.750 KWD.
 Answer only from the reports you call. Never guess or estimate a figure; if a report has no data, say so.
 You cannot change any data. If asked to, say you can only read reports.
 Resolve dates yourself: "last month" is the previous calendar month; "this month" is the 1st to today.

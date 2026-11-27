@@ -12,7 +12,9 @@ from app.models.branch import Branch
 from app.models.pos import PosBranchMapping, PosStockCost, PosStockLink, PosStockPush
 from app.models.procurement import ProcOrder, ProcOrderItem
 from app.models.purchase import PurchaseOrder, ReceivingItem, ReceivingOrder, SupplierItem
-from app.models.transfer import TransferOrder, TransferOrderLine
+from app.models.transfer import TransferItem, TransferOrder, TransferOrderLine
+from app.models.inventory import (OpeningStock, OpeningStockLine, ProductionOrder, ProductionOrderLine, StockItem,
+                                  StockItemPos)
 
 CATEGORIES = ("food", "beverage", "packaging")
 
@@ -22,9 +24,26 @@ def _pos_branch(db: Session, local_id: int | None) -> str | None:
     return m.pos_branch_id if m else None
 
 
+def item_pos(db: Session, brand_id: int | None, stock_item_id: int | None) -> tuple[str, str] | None:
+    """(POS ingredient id, category) of an item master entry in a brand."""
+    if not brand_id or not stock_item_id:
+        return None
+    item = db.get(StockItem, stock_item_id)
+    m = db.query(StockItemPos).filter(StockItemPos.brand_id == brand_id, StockItemPos.stock_item_id == stock_item_id).first()
+    return (m.pos_ingredient_id, item.category) if item and m else None
+
+
 def _link(db: Session, brand_id: int | None, source: str, item_id: int | None) -> PosStockLink | None:
+    """The POS stock item a supplier or transfer item is: through the item master, else a direct link.
+    The returned link is never added to the session."""
     if not brand_id or not item_id:
         return None
+    row = db.get(SupplierItem if source == "supplier_item" else TransferItem, item_id)
+    if row is not None and row.stock_item_id:
+        found = item_pos(db, brand_id, row.stock_item_id)
+        if found:
+            return PosStockLink(brand_id=brand_id, source=source, item_id=item_id, pos_ingredient_id=found[0],
+                                factor=row.stock_factor or 1, category=found[1])
     return db.query(PosStockLink).filter(PosStockLink.brand_id == brand_id, PosStockLink.source == source,
                                          PosStockLink.item_id == item_id).first()
 
@@ -99,11 +118,119 @@ def queue_transfer(db: Session, order: TransferOrder, stage: str) -> bool:
     return _queue(db, f"transfer_{stage}:{order.id}", unit.id, kind, lines, f"Transfer #{order.id} {src.name} -> {dst.name}")
 
 
+def _queue_post(db: Session, key: str, path: str, body: dict) -> bool:
+    if db.query(PosStockPush).filter(PosStockPush.key == key).first():
+        return False
+    db.add(PosStockPush(key=key, path=path, payload=json.dumps({"key": key, **body})))
+    return True
+
+
+def category_map(db: Session, brand_id: int | None = None) -> dict[str, str]:
+    """POS ingredient id -> food / beverage / packaging."""
+    q = db.query(PosStockLink)
+    if brand_id:
+        q = q.filter(PosStockLink.brand_id == brand_id)
+    cats = {ln.pos_ingredient_id: ln.category for ln in q.all()}
+    q = db.query(StockItemPos.pos_ingredient_id, StockItem.category).join(StockItem, StockItem.id == StockItemPos.stock_item_id)
+    if brand_id:
+        q = q.filter(StockItemPos.brand_id == brand_id)
+    cats.update(dict(q.all()))
+    return cats
+
+
+def queue_production(db: Session, order: ProductionOrder) -> bool:
+    """A Central Kitchen batch: its ingredients leave the kitchen's stock and the prepared item comes in."""
+    unit = db.get(Branch, order.branch_id)
+    pos_branch = _pos_branch(db, order.branch_id)
+    out = item_pos(db, unit.brand_id if unit else None, order.stock_item_id)
+    if not unit or not pos_branch or not out:
+        return False
+    inputs = []
+    for ln in db.query(ProductionOrderLine).filter(ProductionOrderLine.order_id == order.id).all():
+        found = item_pos(db, unit.brand_id, ln.stock_item_id)
+        if found and ln.quantity > 0:
+            inputs.append({"ingredientId": found[0], "quantity": f"{round(ln.quantity, 3):.3f}"})
+    if not inputs:
+        return False
+    return _queue_post(db, f"production:{order.id}", "/accounting/production", {
+        "branchId": pos_branch, "outputIngredientId": out[0], "outputQuantity": f"{round(order.output_qty, 3):.3f}",
+        "inputs": inputs, "note": f"Production #{order.id}"})
+
+
+def queue_opening(db: Session, opening: OpeningStock) -> bool:
+    unit = db.get(Branch, opening.branch_id)
+    lines = []
+    for ln in db.query(OpeningStockLine).filter(OpeningStockLine.opening_id == opening.id).all():
+        found = item_pos(db, unit.brand_id if unit else None, ln.stock_item_id)
+        if found and ln.quantity > 0:
+            lines.append({"ingredientId": found[0], "quantity": f"{round(ln.quantity, 3):.3f}",
+                          "unitCost": f"{round(ln.unit_cost or 0, 3):.3f}"})
+    return _queue(db, f"opening_stock:{opening.id}", opening.branch_id, "received", lines, f"Opening stock #{opening.id}")
+
+
+def queue_invoice_difference(db: Session, o: ProcOrder, invoice_id: int, invoice_total: float) -> bool:
+    """A central purchase invoice that differs from what was received: the difference is spread over the
+    received lines by value and corrects the stock cost in the POS."""
+    store = central_store(db, o.brand_id)
+    pos_branch = _pos_branch(db, store.id) if store else None
+    items = db.query(ProcOrderItem).filter(ProcOrderItem.order_id == o.id).all()
+    received = sum(it.received_total or 0 for it in items)
+    diff = round((invoice_total or 0) - received, 3)
+    if not pos_branch or received <= 0 or abs(diff) < 0.0005:
+        return False
+    lines, left = [], diff
+    linked = [(it, _link(db, o.brand_id, "supplier_item", it.supplier_item_id)) for it in items if (it.received_total or 0) > 0]
+    linked = [(it, ln) for it, ln in linked if ln]
+    for n, (it, ln) in enumerate(linked):
+        amount = left if n == len(linked) - 1 and len(linked) == len([i for i in items if (i.received_total or 0) > 0]) \
+            else round(diff * (it.received_total or 0) / received, 3)
+        left = round(left - amount, 3)
+        qty = round((it.received_qty or 0) * (ln.factor or 1), 3)
+        if qty > 0 and abs(amount) >= 0.0005:
+            lines.append({"ingredientId": ln.pos_ingredient_id, "receivedQuantity": f"{qty:.3f}", "amount": f"{amount:.3f}"})
+    if not lines:
+        return False
+    return _queue_post(db, f"revalue:proc_invoice:{invoice_id}", "/accounting/revalue", {
+        "branchId": pos_branch, "lines": lines, "note": f"Invoice price, central purchase {o.po_no or o.id}"})
+
+
+def price_transfer(db: Session, order: TransferOrder, client) -> None:
+    """Value each line at the sender's average cost in the POS (kept as entered if the POS can't be read)."""
+    src = db.get(Branch, order.source_branch_id)
+    if not src or client is None:
+        return
+    try:
+        costs = {i["id"]: float(i["costPerUnit"]) for i in client.ingredients().get("ingredients", [])}
+    except Exception:  # noqa: BLE001
+        return
+    for ln in db.query(TransferOrderLine).filter(TransferOrderLine.transfer_order_id == order.id).all():
+        link = _link(db, src.brand_id, "transfer_item", ln.item_id)
+        cost = costs.get(link.pos_ingredient_id) if link else None
+        if cost:
+            ln.unit_price = round(cost * (link.factor or 1), 3)
+
+
+def _after_push(db: Session, p: PosStockPush, res: dict) -> None:
+    if p.key.startswith("production:"):
+        order = db.get(ProductionOrder, int(p.key.split(":")[1]))
+        if order:
+            order.cost, order.unit_cost = float(res.get("cost") or 0), float(res.get("unitCost") or 0)
+            per = {i["ingredientId"]: float(i["cost"]) for i in res.get("inputs", [])}
+            unit = db.get(Branch, order.branch_id)
+            for ln in db.query(ProductionOrderLine).filter(ProductionOrderLine.order_id == order.id).all():
+                found = item_pos(db, unit.brand_id if unit else None, ln.stock_item_id)
+                if found:
+                    ln.cost = per.get(found[0])
+
+
 def push_pending(db: Session, client) -> dict:
     sent = failed = 0
     for p in db.query(PosStockPush).filter(PosStockPush.status != "done").order_by(PosStockPush.id).all():
         try:
-            client.post("/accounting/stock", json.loads(p.payload))
+            res = client.post(p.path or "/accounting/stock", json.loads(p.payload)) or {}
+            if p.path:
+                p.result = json.dumps(res)
+                _after_push(db, p, res)
             p.status, p.error, p.pushed_at = "done", None, datetime.now(timezone.utc).replace(tzinfo=None)
             sent += 1
         except Exception as e:  # noqa: BLE001 — kept for the next run, with the reason shown
@@ -115,11 +242,11 @@ def push_pending(db: Session, client) -> dict:
 
 def apply_costs(db: Session, costs: list[dict], d_from: date, d_to: date) -> int:
     branch_map = {m.pos_branch_id: m.local_branch_id for m in db.query(PosBranchMapping).all()}
-    category_of = {ln.pos_ingredient_id: ln.category for ln in db.query(PosStockLink).all()}
+    category_of = category_map(db)
     totals: dict[tuple, float] = defaultdict(float)
     for c in costs:
         local = branch_map.get(c["branchId"])
-        if not local:
+        if not local or c["kind"] not in ("sold", "waste", "count"):
             continue
         cat = category_of.get(c["ingredientId"], "food")
         totals[(local, date.fromisoformat(c["businessDate"]), cat, c["kind"])] += float(c["cost"])
@@ -134,8 +261,8 @@ def apply_costs(db: Session, costs: list[dict], d_from: date, d_to: date) -> int
 
 
 def unlinked_count(db: Session) -> int:
-    return db.query(func.count(SupplierItem.id)).scalar() - db.query(func.count(func.distinct(PosStockLink.item_id))).filter(
-        PosStockLink.source == "supplier_item").scalar()
+    linked = {i for (i,) in db.query(PosStockLink.item_id).filter(PosStockLink.source == "supplier_item").all()}
+    return sum(1 for (i, s) in db.query(SupplierItem.id, SupplierItem.stock_item_id).all() if not s and i not in linked)
 
 
 SALE_SYSTEM_FIELDS = ("cash", "knet", "link", "wamd", "talabat", "keeta", "jahez", "other", "snoonu", "website")
@@ -153,7 +280,7 @@ def stock_report(db: Session, brand_id: int, d_from: date, d_to: date, client=No
     stock_error = None
     if client is not None:
         local_of = {m.pos_branch_id: m.local_branch_id for m in db.query(PosBranchMapping).all()}
-        cat_of = {ln.pos_ingredient_id: ln.category for ln in db.query(PosStockLink).filter(PosStockLink.brand_id == brand_id).all()}
+        cat_of = category_map(db, brand_id)
         try:
             for row in client.stock_on_hand().get("stock", []):
                 bid = local_of.get(row["branchId"])
@@ -184,3 +311,40 @@ def stock_report(db: Session, brand_id: int, d_from: date, d_to: date, client=No
             "food_cost_pct": round(k["sold"] / sold_total * 100, 1) if sold_total else None,
         })
     return {"rows": rows, "stock_error": stock_error}
+
+
+def pos_brands(db: Session, client) -> dict[int, str]:
+    """Mudawwarah brand id -> POS brand id, through the linked branches."""
+    brand_of_branch = {br["id"]: b["id"] for b in client.structure().get("brands", []) for br in b.get("branches", [])}
+    out: dict[int, str] = {}
+    for m in db.query(PosBranchMapping).all():
+        local = db.get(Branch, m.local_branch_id)
+        if local and local.brand_id and m.pos_branch_id in brand_of_branch:
+            out.setdefault(local.brand_id, brand_of_branch[m.pos_branch_id])
+    return out
+
+
+def sync_items(db: Session, client, items: list[StockItem] | None = None) -> dict:
+    """Make each item master entry a POS stock item in every brand (and keep its name and state there)."""
+    brands = pos_brands(db, client)
+    done = failed = 0
+    error = None
+    for it in items if items is not None else db.query(StockItem).all():
+        for local, pos_brand in brands.items():
+            m = db.query(StockItemPos).filter(StockItemPos.brand_id == local, StockItemPos.stock_item_id == it.id).first()
+            if not m and not it.is_active:
+                continue
+            body = {"brandId": pos_brand, "name": {"en": it.name[:120], "ar": (it.name_ar or "")[:120]}, "unit": it.unit,
+                    "isActive": bool(it.is_active)}
+            if m:
+                body["id"] = m.pos_ingredient_id
+            try:
+                res = client.post("/accounting/ingredients", body)
+            except Exception as e:  # noqa: BLE001 — shown, and retried on the next sync
+                failed, error = failed + 1, str(e)[:200]
+                continue
+            if not m:
+                db.add(StockItemPos(brand_id=local, stock_item_id=it.id, pos_ingredient_id=res["id"]))
+            done += 1
+    db.commit()
+    return {"synced": done, "failed": failed, "error": error}

@@ -264,6 +264,9 @@ def dispatch_order(
     order.dispatched_at = datetime.now(timezone.utc)
     db.flush()
     from app.utils import pos_stock, pos_sync
+    ps = pos_sync.get_settings(db)
+    if pos_sync.is_configured(ps):
+        pos_stock.price_transfer(db, order, pos_sync.client_for(ps))
     if pos_stock.queue_transfer(db, order, "dispatched"):
         pos_sync.request_sync()
     db.commit()

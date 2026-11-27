@@ -701,6 +701,10 @@ def create_invoice(order_id: int, invoice_number: str = Form(""), invoice_date: 
     db.add(inv)
     o.status, o.total = "invoiced", amount
     _log(db, o, "invoiced", user, invoice_number)
+    db.flush()
+    from app.utils import pos_stock, pos_sync
+    if pos_stock.queue_invoice_difference(db, o, inv.id, amount):
+        pos_sync.request_sync()
     db.commit()
     return invoice_out(db, inv)
 

@@ -46,3 +46,5 @@ __all__ = [
     "AccAccount", "AccMapping", "AccJournal", "AccJournalLine", "AccSettings",
     "AssistantLog",
 ]
+from app.models.inventory import (StockItem, StockItemPos, ProductionRecipe, ProductionRecipeLine, ProductionOrder,
+    ProductionOrderLine, OpeningStock, OpeningStockLine)

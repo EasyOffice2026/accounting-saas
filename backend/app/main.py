@@ -12,7 +12,7 @@ from app.utils.ledger_autosync import start_ledger_autosync
 from app.utils.pos_sync import start_pos_autosync
 from app.routes import auth, branches, sales, purchases, expenses, hr, dashboard
 from app.routes import cash, items, export, email, payment, transfers, whatsapp, users
-from app.routes import foodics, pos, renewals, procurement, channels, proceeds, accounting, assistant
+from app.routes import foodics, pos, renewals, procurement, channels, proceeds, accounting, assistant, inventory
 from app.utils.auth import PurchaseScopeMiddleware
 import app.utils.month_scope  # noqa: F401 — registers the current-month query filter
 
@@ -58,6 +58,7 @@ app.include_router(channels.router)
 app.include_router(proceeds.router)
 app.include_router(accounting.router)
 app.include_router(assistant.router)
+app.include_router(inventory.router)
 
 
 @app.get("/healthz")
@@ -455,6 +456,20 @@ def _migrate_columns():
                     conn.execute(text("UPDATE branches SET unit_type = :t WHERE id = :i"),
                                  {"t": infer_unit_type(bname, bool(ck)), "i": bid})
                 conn.commit()
+        for tbl in ("supplier_items", "transfer_items"):
+            if tbl in insp.get_table_names():
+                cols = [c["name"] for c in insp.get_columns(tbl)]
+                if "stock_item_id" not in cols:
+                    conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN stock_item_id INTEGER"))
+                if "stock_factor" not in cols:
+                    conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN stock_factor FLOAT"))
+                conn.commit()
+        if "pos_stock_pushes" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("pos_stock_pushes")]
+            for col in ("path", "result"):
+                if col not in cols:
+                    conn.execute(text(f"ALTER TABLE pos_stock_pushes ADD COLUMN {col} TEXT"))
+            conn.commit()
         if "pos_settings" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("pos_settings")]
             if "webhook_secret" not in cols:

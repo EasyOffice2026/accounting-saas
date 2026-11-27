@@ -479,6 +479,61 @@ def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
                     e.cr(expense, -c.cost, bid, memo)
             out.append(e)
 
+        out += _stock_entries(db, L, start)
+
+    return out
+
+
+def _stock_entries(db: Session, L: "Ledger", start: date) -> list["Entry"]:
+    """Central Kitchen production (value moves from the ingredients to the prepared item, no expense),
+    opening stock, and invoice price differences on stock already used (to cost of sales)."""
+    import json as _json
+    from app.models.inventory import OpeningStock, OpeningStockLine, ProductionOrder, ProductionOrderLine, StockItem
+    from app.models.pos import PosStockPush
+    from app.utils.pos_stock import category_map, central_store
+
+    out: list[Entry] = []
+    cat = {i.id: i.category for i in db.query(StockItem.id, StockItem.category).all()}
+    inv_acc = lambda brand, c: L.code(brand, CATEGORY_INVENTORY.get(c or "food", "1310"))
+    for o in db.query(ProductionOrder).filter(ProductionOrder.date >= start, ProductionOrder.cost.isnot(None)).all():
+        brand = L.branch_brand.get(o.branch_id)
+        if not brand:
+            continue
+        e = Entry(f"production:{o.id}", brand, o.date, f"Central Kitchen production #{o.id}", "production")
+        e.dr(inv_acc(brand, cat.get(o.stock_item_id)), o.cost, o.branch_id, "produced")
+        for ln in db.query(ProductionOrderLine).filter(ProductionOrderLine.order_id == o.id).all():
+            e.cr(inv_acc(brand, cat.get(ln.stock_item_id)), ln.cost or 0, o.branch_id, "used in production")
+        if e.balanced():
+            out.append(e)
+    for op in db.query(OpeningStock).filter(OpeningStock.date >= start).all():
+        brand = L.branch_brand.get(op.branch_id)
+        if not brand:
+            continue
+        e = Entry(f"opening_stock:{op.id}", brand, op.date, f"Opening stock #{op.id}", "opening")
+        total = 0.0
+        for ln in db.query(OpeningStockLine).filter(OpeningStockLine.opening_id == op.id).all():
+            v = _r((ln.quantity or 0) * (ln.unit_cost or 0))
+            e.dr(inv_acc(brand, cat.get(ln.stock_item_id)), v, op.branch_id, "opening stock")
+            total += v
+        e.cr(L.setting(brand, "opening_equity"), total, None, "Opening stock")
+        if e.balanced():
+            out.append(e)
+    pushes = db.query(PosStockPush).filter(PosStockPush.key.like("revalue:proc_invoice:%"), PosStockPush.status == "done").all()
+    for p in pushes:
+        inv = db.get(ProcInvoice, int(p.key.rsplit(":", 1)[1]))
+        if not inv or inv.date < start or not p.result:
+            continue
+        brand, store = inv.brand_id, central_store(db, inv.brand_id)
+        cats = category_map(db, brand)
+        e = Entry(p.key, brand, inv.date, f"Invoice price on stock already used, invoice {inv.invoice_number or inv.id}"[:200],
+                  "stock_revalue")
+        for ln in _json.loads(p.result).get("lines", []):
+            c = cats.get(ln["ingredientId"], "food")
+            amount = float(ln.get("unapplied") or 0)
+            e.dr(L.code(brand, CATEGORY_COST.get(c, "5110")), amount, store.id if store else None, "invoice price")
+            e.cr(inv_acc(brand, c), amount, store.id if store else None, "invoice price")
+        if e.balanced():
+            out.append(e)
     return out
 
 

@@ -12,6 +12,8 @@ class TransferItem(Base):
     unit = Column(String, default="pcs")
     unit_price = Column(Float, default=0)
     opening_stock = Column(Float, default=0)
+    stock_item_id = Column(Integer, nullable=True)  # item master entry this is
+    stock_factor = Column(Float, nullable=True)  # item-master units in one of these
     category = Column(String, default="food")  # food, packaging
     sort_order = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True)

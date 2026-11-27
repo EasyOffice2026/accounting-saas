@@ -68,6 +68,8 @@ class SupplierItem(Base):
     packaging = Column(String, nullable=True)  # e.g. "6x1.5L", "Box of 24", "10kg bag"
     unit = Column(String, default="pcs")  # pcs, kg, box, carton, pack, liter
     unit_price = Column(Float, nullable=False, default=0)
+    stock_item_id = Column(Integer, nullable=True)  # item master entry this is
+    stock_factor = Column(Float, nullable=True)  # item-master units in one of these
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

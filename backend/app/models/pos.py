@@ -74,6 +74,8 @@ class PosStockPush(Base):
     key = Column(String, nullable=False, unique=True)
     payload = Column(Text, nullable=False)
     status = Column(String, nullable=False, default="pending")  # pending, done, error
+    path = Column(String, nullable=True)  # POS endpoint; empty is /accounting/stock
+    result = Column(Text, nullable=True)  # what the POS worked out (production cost, revaluation split)
     error = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     pushed_at = Column(DateTime, nullable=True)

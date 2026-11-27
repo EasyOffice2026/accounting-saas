@@ -33,6 +33,7 @@ def list_branches(brand_id: Optional[int] = None, scope: Optional[str] = None,
         "sales": [units.SALES],
         "stock": list(units.STOCK_UNITS),
         "central_store": [units.CENTRAL_STORE],
+        "administrative": list(units.types_in(units.LAYER_ADMIN)),
     }
     if scope in scopes:
         q = q.filter(Branch.unit_type.in_(scopes[scope]))
@@ -41,6 +42,7 @@ def list_branches(brand_id: Optional[int] = None, scope: Optional[str] = None,
     rows = q.all()
     return [{"id": b.id, "name": b.name, "name_ar": b.name_ar or "",
              "brand_id": b.brand_id, "is_central_kitchen": b.is_central_kitchen, "unit_type": b.unit_type,
+             "layer": units.layer_of(b.unit_type),
              "whatsapp_number": b.whatsapp_number or "",
              "whatsapp_group": b.whatsapp_group or "",
              "is_active": b.is_active} for b in rows]

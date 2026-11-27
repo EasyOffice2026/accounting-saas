@@ -4,6 +4,7 @@ import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 import DateRangeFilter, { type DateRange, dateRangeParams } from "../components/DateRangeFilter";
 import ProcurementPage from "./ProcurementPage";
+import UnitOptions from "../components/UnitOptions";
 
 interface PurchaseCategoryI { id: number; name: string; name_ar: string | null; is_active: boolean; }
 interface Supplier { id: number; name: string; email: string; whatsapp: string; whatsapp_group?: string; payment_type: string; category_id?: number | null; }
@@ -584,11 +585,7 @@ export default function PurchasesPage() {
               onChange={e => { setBranchFilter(e.target.value); loadOrders(e.target.value); }}
               className="px-3 py-2 border rounded-lg text-sm">
               <option value="">{t("all_branches")}</option>
-              {branches.map(b => (
-                <option key={b.id} value={b.id}>
-                  {i18n.language === "ar" ? (b.name_ar || b.name) : b.name}
-                </option>
-              ))}
+              <UnitOptions units={branches} />
             </select>
           )}
           <DateRangeFilter value={range} onChange={setRange} />
@@ -607,7 +604,7 @@ export default function PurchasesPage() {
                   <div>
                     <label className="block text-sm font-medium mb-1">{t("branch")}</label>
                     <select name="branch_id" required className="w-full px-3 py-2 border rounded-lg text-sm" defaultValue={editingOrder?.branch_id || ""}>
-                      {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
+                      <UnitOptions units={branches} />
                     </select>
                   </div>
                 )}

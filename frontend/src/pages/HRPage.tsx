@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiFetch, apiDownload } from "../contexts/api";
 import OvertimeTab from "../components/OvertimeTab";
 import ChannelSelect, { useChannels, needsChannel, CHANNEL_START_DATE } from "../components/ChannelSelect";
+import UnitOptions from "../components/UnitOptions";
 
 interface Branch { id: number; name: string; name_ar?: string; }
 interface Employee {
@@ -891,11 +892,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
           <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
             className="px-3 py-2 border rounded-lg text-sm">
             <option value="">{t("all_branches")}</option>
-            {branches.map(b => (
-              <option key={b.id} value={b.id}>
-                {i18n.language === "ar" ? (b.name_ar || b.name) : b.name}
-              </option>
-            ))}
+            <UnitOptions units={branches} />
           </select>
         </div>
       )}
@@ -947,7 +944,7 @@ ${slip.advance > 0 ? `<div class="row"><span>Advance / سلفة</span><span clas
                 <div>
                   <label className="block text-sm font-medium mb-1">{t("branch")}</label>
                   <select name="branch_id" required defaultValue={editingEmp?.branch_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
-                    {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
+                    <UnitOptions units={branches} />
                   </select>
                 </div>
                 ) : (

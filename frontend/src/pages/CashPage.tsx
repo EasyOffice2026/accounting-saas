@@ -6,6 +6,7 @@ import PaymentChannelsPanel from "../components/PaymentChannelsPanel";
 import DailyCashSummary from "../components/DailyCashSummary";
 import SalesProceedsPanel from "../components/SalesProceedsPanel";
 import { useChannels, channelLabel, CHANNEL_START_DATE } from "../components/ChannelSelect";
+import UnitOptions from "../components/UnitOptions";
 
 const DAILY_ROLES = ["owner", "manager", "accountant"];
 
@@ -158,11 +159,7 @@ export default function CashPage() {
             <label className="block text-xs text-gray-500 mb-1">{t("branch")}</label>
             <select value={branchId} onChange={e => setBranchId(e.target.value)}
               className="px-3 py-2 border rounded-lg text-sm">
-              {branches.map(b => (
-                <option key={b.id} value={b.id}>
-                  {i18n.language === "ar" ? b.name_ar || b.name : b.name}
-                </option>
-              ))}
+              <UnitOptions units={branches} />
             </select>
           </div>
         )}

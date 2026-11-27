@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiFetch, apiPost, apiDownload } from "../contexts/api";
 import ChannelSelect, { useChannels, channelLabel } from "../components/ChannelSelect";
+import UnitOptions from "../components/UnitOptions";
 
 interface Branch { id: number; name: string; name_ar?: string; }
 
@@ -461,9 +462,7 @@ export default function ContractsPage() {
               <select name="branch_id" required
                 defaultValue={editing?.branch_id || branches.find(b => /administration/i.test(b.name))?.id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                 <option value="">{t("select_branch")}</option>
-                {branches.map(b => (
-                  <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>
-                ))}
+                <UnitOptions units={branches} />
               </select>
             </div>
             <div>

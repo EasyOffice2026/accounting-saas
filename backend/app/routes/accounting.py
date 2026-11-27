@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.accounting import AccAccount, AccMapping, AccJournal, AccJournalLine
 from app.models.branch import Branch
+from app.utils import units
 from app.models.channel import PaymentChannel
 from app.models.expense import Expense, ExpenseCategory
 from app.models.hr import Brand, Employee
@@ -47,7 +48,7 @@ def _acc_json(a: AccAccount) -> dict:
 
 
 def _sums(db: Session, brand_id: int, date_from: Optional[date] = None, date_to: Optional[date] = None,
-          branch_id: Optional[int] = None, before: bool = False) -> dict[int, tuple[float, float]]:
+          branch_id=None, before: bool = False) -> dict[int, tuple[float, float]]:
     q = db.query(AccJournalLine.account_id, func.coalesce(func.sum(AccJournalLine.debit), 0),
                  func.coalesce(func.sum(AccJournalLine.credit), 0)).join(AccJournal, AccJournal.id == AccJournalLine.journal_id)\
         .filter(AccJournal.brand_id == brand_id)
@@ -58,9 +59,19 @@ def _sums(db: Session, brand_id: int, date_from: Optional[date] = None, date_to:
             q = q.filter(AccJournal.date >= date_from)
         if date_to:
             q = q.filter(AccJournal.date <= date_to)
-    if branch_id:
+    if isinstance(branch_id, (list, tuple)):
+        q = q.filter(AccJournalLine.branch_id.in_(branch_id))
+    elif branch_id:
         q = q.filter(AccJournalLine.branch_id == branch_id)
     return {a: (float(d), float(c)) for a, d, c in q.group_by(AccJournalLine.account_id).all()}
+
+
+def _units(db: Session, brand_id: int, branch_id: Optional[int], layer: Optional[str]):
+    """One unit, or every unit of a layer (sales units / administrative units) of the brand."""
+    if branch_id or layer not in units.LAYERS:
+        return branch_id
+    return [b.id for b in db.query(Branch).filter(Branch.brand_id == brand_id,
+                                                   Branch.unit_type.in_(units.types_in(layer))).all()]
 
 
 def _accounts(db: Session, brand_id: int) -> list[AccAccount]:
@@ -84,7 +95,7 @@ def overview(db: Session = Depends(get_db), user: User = Depends(get_accounting_
         "last_sync_at": s.last_sync_at.isoformat() + "Z" if s.last_sync_at else None,
         "last_sync_result": json.loads(s.last_sync_result) if s.last_sync_result else None,
         "brands": [{"id": b.id, "name_en": b.name_en, "name_ar": b.name_ar, "journals": counts.get(b.id, 0)} for b in brands],
-        "branches": [{"id": b.id, "name": b.name, "name_ar": b.name_ar, "brand_id": b.brand_id} for b in db.query(Branch).order_by(Branch.id)],
+        "branches": [{"id": b.id, "name": b.name, "name_ar": b.name_ar, "brand_id": b.brand_id, "unit_type": b.unit_type} for b in db.query(Branch).order_by(Branch.id)],
     }
 
 
@@ -337,8 +348,9 @@ def stock_report(brand_id: int, date_from: str, date_to: Optional[str] = None,
 
 @router.get("/trial-balance")
 def trial_balance(brand_id: int, date_from: Optional[str] = None, date_to: Optional[str] = None, branch_id: Optional[int] = None,
+                  layer: Optional[str] = None,
                   db: Session = Depends(get_db), user: User = Depends(get_accounting_user)):
-    return trial_balance_data(db, brand_id, _d(date_from), _d(date_to), branch_id)
+    return trial_balance_data(db, brand_id, _d(date_from), _d(date_to), _units(db, brand_id, branch_id, layer))
 
 
 def ledger_data(db: Session, account_id: int, date_from: Optional[date], date_to: Optional[date], branch_id: Optional[int]):
@@ -539,8 +551,9 @@ def income_statement_data(db: Session, brand_id: int, date_from: Optional[date],
 
 @router.get("/income-statement")
 def income_statement(brand_id: int, date_from: Optional[str] = None, date_to: Optional[str] = None, branch_id: Optional[int] = None,
+                     layer: Optional[str] = None,
                      db: Session = Depends(get_db), user: User = Depends(get_accounting_user)):
-    return income_statement_data(db, brand_id, _d(date_from), _d(date_to), branch_id)
+    return income_statement_data(db, brand_id, _d(date_from), _d(date_to), _units(db, brand_id, branch_id, layer))
 
 
 def balance_sheet_data(db: Session, brand_id: int, as_of: date):

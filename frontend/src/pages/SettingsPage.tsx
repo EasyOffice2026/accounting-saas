@@ -88,7 +88,8 @@ interface UserItem {
   hr_approver?: boolean;
 }
 
-const UNIT_TYPES = ["sales", "central_store", "central_kitchen", "administration", "purchase_office", "personnel_office", "hr_office"];
+const UNIT_TYPES = ["sales", "administration", "accounts_office", "purchase_office", "hr_office", "personnel_office", "central_store", "central_kitchen"];
+const LAYER_STARTS: Record<string, string> = { sales: "layer_sales", administration: "layer_administrative" };
 
 interface BranchItem {
   id: number;
@@ -652,7 +653,12 @@ export default function SettingsPage() {
               <tbody>
                 {UNIT_TYPES.flatMap(u => {
                   const rows = branchesList.filter(b => (b.unit_type || "sales") === u);
-                  return rows.length ? [
+                  const layerRow = LAYER_STARTS[u] ? [
+                    <tr key={`l-${u}`} className="border-t bg-gray-200">
+                      <td colSpan={7} className="px-3 py-2 text-sm font-bold text-gray-800">{t(LAYER_STARTS[u])}</td>
+                    </tr>,
+                  ] : [];
+                  return [...layerRow, ...(rows.length ? [
                     <tr key={`h-${u}`} className="border-t bg-gray-50">
                       <td colSpan={7} className="px-3 py-1.5 text-xs font-semibold text-gray-600">
                         {t(`unit_${u}`)} ({rows.length})
@@ -674,7 +680,7 @@ export default function SettingsPage() {
                     </td>
                   </tr>
                     )),
-                  ] : [];
+                  ] : [])];
                 })}
               </tbody>
             </table>

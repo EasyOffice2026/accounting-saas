@@ -2,9 +2,10 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiGet, apiPost, apiDownload } from "../contexts/api";
 import { useBrand } from "../contexts/BrandContext";
+import UnitOptions from "../components/UnitOptions";
 
 type Brand = { id: number; name_en: string; name_ar: string | null; journals: number };
-type Branch = { id: number; name: string; name_ar: string | null; brand_id: number | null };
+type Branch = { id: number; name: string; name_ar: string | null; brand_id: number | null; unit_type?: string | null };
 type Overview = {
   start_date: string | null; auto_sync: boolean; user_ids: number[];
   users: { id: number; username: string; full_name: string }[];
@@ -86,6 +87,7 @@ export default function AccountingPage() {
 
   const branches = useMemo(() => (ov?.branches || []).filter(b => b.brand_id === brandId), [ov, brandId]);
   const branchId = branches.some(b => String(b.id) === branchSel) ? branchSel : "";
+  const layer = ["layer:sales", "layer:administrative"].includes(branchSel) ? branchSel.slice(6) : "";
   const branchName = (id: number | null) => { const b = ov?.branches.find(x => x.id === id); return b ? nm(b) : ""; };
   const postable = accounts.filter(a => !a.is_header && a.is_active);
 
@@ -130,9 +132,11 @@ export default function AccountingPage() {
           <div><div className="text-xs">{t("to")}</div><input type="date" className="border rounded px-2 py-1" value={to} onChange={e => setTo(e.target.value)} /></div>
           {["trial", "ledger", "income"].includes(tab) && (
             <div><div className="text-xs">{t("branch")}</div>
-              <select className="border rounded px-2 py-1" value={branchId} onChange={e => setBranchId(e.target.value)}>
+              <select className="border rounded px-2 py-1" value={branchId || (layer && tab !== "ledger" ? branchSel : "")} onChange={e => setBranchId(e.target.value)}>
                 <option value="">{t("all_branches")}</option>
-                {branches.map(b => <option key={b.id} value={b.id}>{nm(b)}</option>)}
+                {tab !== "ledger" && <option value="layer:sales">{t("all_sales_units")}</option>}
+                {tab !== "ledger" && <option value="layer:administrative">{t("all_administrative_units")}</option>}
+                <UnitOptions units={branches} />
               </select>
             </div>
           )}
@@ -141,10 +145,10 @@ export default function AccountingPage() {
 
       {tab === "overview" && ov && <OverviewTab ov={!isGroupView && selectedBrand ? { ...ov, brands: ov.brands.filter(b => b.id === brandId) } : ov} t={t} reload={loadOverview} setErr={setErr} />}
       {tab === "journals" && <JournalsTab brandId={brandId} from={from} to={to} t={t} nm={nm} postable={postable} branches={branches} branchName={branchName} reloadAccounts={loadAccounts} />}
-      {tab === "trial" && <TrialTab q={qs({ date_from: from, date_to: to, branch_id: branchId })} t={t} nm={nm} />}
+      {tab === "trial" && <TrialTab q={qs({ date_from: from, date_to: to, branch_id: branchId, layer })} t={t} nm={nm} />}
       {tab === "ledger" && <LedgerTab key={brandId} brandId={brandId} from={from} to={to} branchId={branchId} lang={ar ? "ar" : "en"} postable={accounts.filter(a => !a.is_header)} t={t} nm={nm} branchName={branchName} />}
       {(tab === "payables" || tab === "receivables") && <PartiesTab key={`${brandId}-${tab}`} brandId={brandId} side={tab === "payables" ? "payable" : "receivable"} from={from} to={to} lang={ar ? "ar" : "en"} t={t} nm={nm} branchName={branchName} />}
-      {tab === "income" && <IncomeTab q={qs({ date_from: from, date_to: to, branch_id: branchId })} t={t} nm={nm} />}
+      {tab === "income" && <IncomeTab q={qs({ date_from: from, date_to: to, branch_id: branchId, layer })} t={t} nm={nm} />}
       {tab === "balance" && <BalanceTab brandId={brandId} lang={ar ? "ar" : "en"} t={t} nm={nm} />}
       {tab === "reconcile" && <ReconcileTab q={qs({ date_from: from, date_to: to })} t={t} nm={nm} />}
       {tab === "stock" && <StockTab q={qs({ date_from: from, date_to: to })} t={t} nm={nm} />}
@@ -304,7 +308,7 @@ function JournalForm({ brandId, postable, branches, t, nm, done }: { brandId: nu
             {postable.map(a => <option key={a.id} value={a.id}>{a.code} {nm(a)}</option>)}
           </select>
           <select className="border rounded px-2 py-1" value={l.branch_id} onChange={e => set(i, "branch_id", e.target.value)}>
-            <option value="">-</option>{branches.map(b => <option key={b.id} value={b.id}>{nm(b)}</option>)}
+            <option value="">-</option><UnitOptions units={branches} />
           </select>
           <input className="border rounded px-2 py-1 w-28" placeholder={t("debit")} value={l.debit} onChange={e => set(i, "debit", e.target.value)} />
           <input className="border rounded px-2 py-1 w-28" placeholder={t("credit")} value={l.credit} onChange={e => set(i, "credit", e.target.value)} />

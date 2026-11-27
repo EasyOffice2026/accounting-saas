@@ -4,6 +4,7 @@ import { apiGet, apiPost, apiDownload, apiFetch } from "../contexts/api";
 import { useAuth } from "../contexts/AuthContext";
 import DateRangeFilter, { type DateRange, dateRangeParams } from "../components/DateRangeFilter";
 import ChannelSelect, { useChannels, channelLabel } from "../components/ChannelSelect";
+import UnitOptions from "../components/UnitOptions";
 
 interface Branch { id: number; name: string; name_ar?: string; }
 interface Category { id: number; name: string; name_ar: string; }
@@ -206,11 +207,7 @@ export default function ExpensesPage() {
               onChange={e => { setBranchFilter(e.target.value); loadExpenses(e.target.value); }}
               className="px-3 py-2 border rounded-lg text-sm">
               <option value="">{t("all_branches")}</option>
-              {branches.map(b => (
-                <option key={b.id} value={b.id}>
-                  {i18n.language === "ar" ? (b.name_ar || b.name) : b.name}
-                </option>
-              ))}
+              <UnitOptions units={branches} />
             </select>
           )}
           <select value={categoryFilter}
@@ -237,7 +234,7 @@ export default function ExpensesPage() {
                   <div>
                     <label className="block text-sm font-medium mb-1">{t("branch")}</label>
                     <select name="branch_id" required defaultValue={editingExpense?.branch_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
-                      {branches.map(b => <option key={b.id} value={b.id}>{i18n.language === "ar" ? (b.name_ar || b.name) : b.name}</option>)}
+                      <UnitOptions units={branches} />
                     </select>
                   </div>
                 )}

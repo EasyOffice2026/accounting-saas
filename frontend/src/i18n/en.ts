@@ -273,6 +273,7 @@ export default {
   tap_step2: "Go to Dashboard → Developers → API Keys",
   tap_step3: "Copy your Secret Key (starts with sk_test_ for sandbox or sk_live_ for production)",
   tap_step4: "Paste the Secret Key above and select the appropriate mode",
+  inventory_costing: "Inventory & Costing",
   internal_transfer: "Internal Transfer",
   food_items: "Food Items",
   packaging_items: "Packaging Items",

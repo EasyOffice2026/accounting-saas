@@ -13,6 +13,7 @@ import HRPage from "./pages/HRPage";
 import CashPage from "./pages/CashPage";
 import SettingsPage from "./pages/SettingsPage";
 import TransfersPage from "./pages/TransfersPage";
+import InventoryPage from "./pages/InventoryPage";
 import ContractsPage from "./pages/ContractsPage";
 import RenewalsPage from "./pages/RenewalsPage";
 import PurchaseDashboardPage from "./pages/PurchaseDashboardPage";
@@ -63,6 +64,7 @@ function ProtectedRoutes() {
         <Route path="/renewals" element={isPurchase ? <Navigate to="/" /> : <RenewalsPage />} />
         <Route path="/cash" element={<CashPage />} />
         <Route path="/transfers" element={restricted ? <Navigate to="/" /> : <TransfersPage />} />
+        <Route path="/inventory" element={restricted ? <Navigate to="/" /> : <InventoryPage />} />
         <Route path="/contracts" element={restricted ? <Navigate to="/" /> : <ContractsPage />} />
         <Route path="/accounting" element={user?.accounting ? <AccountingPage /> : <Navigate to="/" />} />
         <Route path="/settings" element={restricted ? <Navigate to="/" /> : <SettingsPage />} />

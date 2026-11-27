@@ -7,7 +7,7 @@ import AssistantPanel from "./AssistantPanel";
 import {
   LayoutDashboard, ShoppingCart, Package, Receipt,
   Users, LogOut, Menu, X, Banknote, Settings, ArrowLeftRight, FileText,
-  Building2, ChevronDown, Globe, IdCard, ClipboardList, BookOpen, MonitorSmartphone,
+  Building2, ChevronDown, Globe, IdCard, ClipboardList, BookOpen, MonitorSmartphone, Boxes,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -27,6 +27,7 @@ const navItems: { path: string; icon: typeof LayoutDashboard; key: string; roles
 
   { path: "/cash", icon: Banknote, key: "cash_management" },
   { path: "/transfers", icon: ArrowLeftRight, key: "internal_transfer" },
+  { path: "/inventory", icon: Boxes, key: "inventory_costing" },
   { path: "/contracts", icon: FileText, key: "contracts_tab", roles: ["owner", "manager", "accountant"] },
   { path: "/accounting", icon: BookOpen, key: "accounting", accounting: true },
   { path: "/settings", icon: Settings, key: "settings", roles: ["owner", "manager", "accountant"] },

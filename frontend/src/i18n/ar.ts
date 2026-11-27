@@ -273,6 +273,7 @@ export default {
   tap_step2: "اذهب إلى لوحة التحكم → المطورين → مفاتيح API",
   tap_step3: "انسخ المفتاح السري (sk_test_ للتجريبي أو sk_live_ للفعلي)",
   tap_step4: "الصق المفتاح السري أعلاه واختر الوضع المناسب",
+  inventory_costing: "المخزون والتكلفة",
   internal_transfer: "التحويل الداخلي",
   food_items: "المواد الغذائية",
   packaging_items: "مواد التغليف",

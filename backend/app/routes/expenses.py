@@ -8,6 +8,7 @@ from app.database import get_db, UPLOAD_DIR
 from app.models.expense import ExpenseCategory, Expense
 from app.models.purchase import Supplier
 from app.models.branch import Branch
+from app.utils import units
 from app.models.user import User
 from app.utils.auth import get_current_user
 from app.routes.hr import _brand_branch_ids
@@ -55,6 +56,17 @@ def _guard_hr_officer(db: Session, user: User, branch_id: Optional[int]):
         raise HTTPException(403, "HR Officer can only record expenses on the HR Office petty cash")
 
 
+def _cost_branch(db: Session, branch_id: int, cost_branch_id: str) -> Optional[int]:
+    """Sales units carry their own costs; an administrative unit may charge a cost to one sales branch."""
+    unit = db.query(Branch).filter(Branch.id == branch_id).first()
+    if not cost_branch_id or not unit or units.layer_of(unit.unit_type) == units.LAYER_SALES:
+        return None
+    target = db.query(Branch).filter(Branch.id == int(cost_branch_id)).first()
+    if not target or target.unit_type != units.SALES or target.brand_id != unit.brand_id:
+        raise HTTPException(400, "Charge the cost to a sales branch of the same brand")
+    return target.id
+
+
 @router.get("/")
 def list_expenses(branch_id: Optional[int] = None, brand_id: Optional[int] = None,
                   date_from: Optional[str] = None, date_to: Optional[str] = None,
@@ -88,7 +100,7 @@ def create_expense(
     description: str = Form(...), amount: float = Form(...),
     category_id: Optional[int] = Form(None), supplier_id: Optional[int] = Form(None),
     payment_method: str = Form("cash"), notes: str = Form(""),
-    channel_id: str = Form(""),
+    channel_id: str = Form(""), cost_branch_id: str = Form(""),
     attachment: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
@@ -110,6 +122,7 @@ def create_expense(
         description=description, amount=amount,
         payment_method=payment_method, notes=notes, channel_id=channel_id,
         attachment_path=attachment_path, created_by=user.id,
+        cost_branch_id=_cost_branch(db, branch_id, cost_branch_id),
     )
     db.add(exp)
     db.commit()
@@ -147,7 +160,7 @@ def update_expense(
     description: str = Form(...), amount: float = Form(...),
     category_id: Optional[int] = Form(None), supplier_id: Optional[int] = Form(None),
     payment_method: str = Form("cash"), notes: str = Form(""),
-    channel_id: str = Form(""),
+    channel_id: str = Form(""), cost_branch_id: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     exp = db.query(Expense).filter(Expense.id == expense_id).first()
@@ -166,6 +179,7 @@ def update_expense(
     _guard_hr_officer(db, user, exp.branch_id)
     _guard_hr_officer(db, user, branch_id)
     exp.branch_id = branch_id
+    exp.cost_branch_id = _cost_branch(db, branch_id, cost_branch_id)
     exp.category_id = category_id
     exp.supplier_id = supplier_id if supplier_id else None
     exp.date = date.fromisoformat(expense_date)

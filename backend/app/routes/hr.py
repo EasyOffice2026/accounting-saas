@@ -458,10 +458,14 @@ SALARY_EXPENSE_CATEGORY = ("Salaries", "الرواتب")
 
 
 def _admin_branch(db: Session, brand_id: Optional[int]) -> Optional[Branch]:
-    """Administration branch of the brand (payroll expenses are booked here)."""
-    q = db.query(Branch).filter(Branch.unit_type == "administration")
-    b = q.filter(Branch.brand_id == brand_id).order_by(Branch.id).first() if brand_id else None
-    return b or q.order_by(Branch.id).first()
+    """Unit payroll expenses are booked under: the brand's HR office, else its Administration. The salary
+    cost itself still goes to the employee's own branch in the ledger."""
+    for kind in ("hr_office", "administration"):
+        q = db.query(Branch).filter(Branch.unit_type == kind)
+        b = q.filter(Branch.brand_id == brand_id).order_by(Branch.id).first() if brand_id else None
+        if b:
+            return b
+    return db.query(Branch).filter(Branch.unit_type == "administration").order_by(Branch.id).first()
 
 
 def _payroll_month_end(month: Optional[str]) -> Optional[date]:
@@ -497,6 +501,7 @@ def _sync_salary_expense(db: Session, sp: SalaryPayment):
         exp = Expense(salary_payment_id=sp.id)
         db.add(exp)
     exp.branch_id = admin.id
+    exp.cost_branch_id = emp_branch.id if emp_branch and emp_branch.unit_type == "sales" else None
     exp.category_id = cat.id
     exp.date = _payroll_month_end(sp.month) or sp.paid_date or date.today()
     exp.description = f"Salary {sp.month} — {emp.name if emp else ''}".strip(" —")

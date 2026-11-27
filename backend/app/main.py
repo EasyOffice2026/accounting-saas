@@ -359,6 +359,9 @@ def _migrate_columns():
             if "salary_payment_id" not in cols:
                 conn.execute(text("ALTER TABLE expenses ADD COLUMN salary_payment_id INTEGER REFERENCES salary_payments(id)"))
                 conn.commit()
+            if "cost_branch_id" not in cols:
+                conn.execute(text("ALTER TABLE expenses ADD COLUMN cost_branch_id INTEGER REFERENCES branches(id)"))
+                conn.commit()
 
         # Payment channels (banks/cards): channel_id on every payment record
         for tbl in ["expenses", "salary_payments", "contract_payments", "renewal_requests", "proc_payments", "cash_transactions"]:

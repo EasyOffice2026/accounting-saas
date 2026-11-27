@@ -708,8 +708,9 @@ def personnel_dashboard(brand_id: Optional[int] = None, db: Session = Depends(ge
     if brand_id:
         ex = ex.filter(Expense.branch_id.in_([b.id for b in branches.values() if b.brand_id == brand_id]))
     spend_month = ex.filter(Expense.date >= month_start).with_entities(func.coalesce(func.sum(Expense.amount), 0)).scalar() or 0
+    charged = func.coalesce(Expense.cost_branch_id, Expense.branch_id)
     spend_by_branch = [{"branch_id": bid, "branch_name": branches[bid].name if bid in branches else "", "amount": round(float(a), 3)}
-                       for bid, a in ex.with_entities(Expense.branch_id, func.sum(Expense.amount)).group_by(Expense.branch_id).all()]
+                       for bid, a in ex.with_entities(charged, func.sum(Expense.amount)).group_by(charged).all()]
     spend_by_branch.sort(key=lambda x: -x["amount"])
 
     upcoming = sorted(expired + due_30 + due_90, key=lambda x: (x["days_remaining"] if x["days_remaining"] is not None else 9999))[:10]
@@ -1098,9 +1099,14 @@ def pay_request(req_id: int, paid_date: str = Form(""), receipt_no: str = Form("
     pb = personnel_branch(db, r.brand_id)
     emp = db.query(Employee).filter(Employee.id == r.employee_id).first() if r.employee_id else None
     lic = db.query(CompanyLicense).filter(CompanyLicense.id == r.license_id).first() if r.license_id else None
-    exp_branch_id = emp.branch_id if emp else (lic.branch_id if lic else None)
-    if r.common_expense or not exp_branch_id:
-        exp_branch_id = pb.id
+    # Paid by the Personnel Office; charged to the employee's (or licence's) sales branch. Common costs stay
+    # with the office's brand Administration.
+    cost_branch_id = emp.branch_id if emp else (lic.branch_id if lic else None)
+    cost_unit = db.query(Branch).filter(Branch.id == cost_branch_id).first() if cost_branch_id else None
+    if r.common_expense or not cost_unit or cost_unit.unit_type != "sales":
+        admin = db.query(Branch).filter(Branch.unit_type == "administration", Branch.brand_id == r.brand_id).first()
+        cost_branch_id = admin.id if admin else None
+    exp_branch_id = pb.id if pb else cost_branch_id
     subject = emp.name if emp else (lic.name if lic else (r.new_emp_name or ""))
     types = _type_map(db)
 
@@ -1116,7 +1122,8 @@ def pay_request(req_id: int, paid_date: str = Form(""), receipt_no: str = Form("
             exp = Expense(branch_id=exp_branch_id, category_id=cat.id, date=pd,
                           description=f"{r.request_no} · {t.name if t else 'Renewal'} · {subject}",
                           amount=round(amt, 3), payment_method=payment_method, channel_id=r.channel_id,
-                          notes=(ln.description or None), created_by=user.id, renewal_request_id=r.id)
+                          notes=(ln.description or None), created_by=user.id, renewal_request_id=r.id,
+                          cost_branch_id=cost_branch_id if cost_branch_id != exp_branch_id else None)
             db.add(exp)
             db.flush()
             ln.expense_id = exp.id

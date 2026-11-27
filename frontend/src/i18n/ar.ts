@@ -662,6 +662,7 @@ export default {
   unit_central_store: "مخزن مركزي",
   unit_central_kitchen: "مطبخ مركزي",
   unit_accounts_office: "الحسابات",
+  charged_to_branch: "يُحمَّل على الفرع (للوحدات الإدارية)",
   layer_sales: "وحدات المبيعات",
   layer_administrative: "الوحدات الإدارية",
   combined_costs: "المصاريف المشتركة",

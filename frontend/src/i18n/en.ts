@@ -662,6 +662,7 @@ export default {
   unit_central_store: "Central store",
   unit_central_kitchen: "Central kitchen",
   unit_accounts_office: "Accounts",
+  charged_to_branch: "Charged to branch (administrative units)",
   layer_sales: "Sales Units",
   layer_administrative: "Administrative Units",
   combined_costs: "combined costs",

@@ -6,13 +6,14 @@ import DateRangeFilter, { type DateRange, dateRangeParams } from "../components/
 import ChannelSelect, { useChannels, channelLabel } from "../components/ChannelSelect";
 import UnitOptions from "../components/UnitOptions";
 
-interface Branch { id: number; name: string; name_ar?: string; }
+interface Branch { id: number; name: string; name_ar?: string; unit_type?: string; }
 interface Category { id: number; name: string; name_ar: string; }
 interface Supplier { id: number; name: string; whatsapp?: string; whatsapp_group?: string; }
 interface Expense {
   id: number; branch_id: number; category_id: number; date: string;
   description: string; amount: number; payment_method: string; supplier_id?: number;
   channel_id?: number | null;
+  cost_branch_id?: number | null;
   attachment_path?: string | null;
   contract_payment_id?: number | null;
   salary_payment_id?: number | null;
@@ -238,6 +239,15 @@ export default function ExpensesPage() {
                     </select>
                   </div>
                 )}
+                {!user?.branch_id && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">{t("charged_to_branch")}</label>
+                    <select name="cost_branch_id" defaultValue={editingExpense?.cost_branch_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
+                      <option value="">—</option>
+                      {branches.filter(b => (b.unit_type || "sales") === "sales").map(b => <option key={b.id} value={b.id}>{branchName(b.id)}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-sm font-medium">{t("category")}</label>
@@ -338,7 +348,7 @@ export default function ExpensesPage() {
                 ) : expenses.map(exp => (
                   <tr key={exp.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{exp.date}</td>
-                    <td className="px-4 py-3">{branchName(exp.branch_id)}</td>
+                    <td className="px-4 py-3">{branchName(exp.branch_id)}{exp.cost_branch_id ? <div className="text-xs text-gray-500">→ {branchName(exp.cost_branch_id)}</div> : null}</td>
                     <td className="px-4 py-3">{catName(exp.category_id)}</td>
                     <td className="px-4 py-3">{supplierName(exp.supplier_id)}</td>
                     <td className="px-4 py-3">{exp.description}</td>

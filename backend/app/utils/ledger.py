@@ -276,7 +276,8 @@ def build_entries(db: Session, L: Ledger, start: date) -> list[Entry]:
             debit = L.maps.get((brand, "expense_category", str(x.category_id))) or L.setting(brand, "renewals")
         else:
             debit = L.mapped(brand, "expense_category", x.category_id or 0, ecats.get(x.category_id, ""), EXPENSE_CATEGORY_DEFAULTS, "6270")
-        e.dr(debit, x.amount, x.branch_id)
+        cc = x.cost_branch_id if x.cost_branch_id and L.branch_brand.get(x.cost_branch_id) == brand else x.branch_id
+        e.dr(debit, x.amount, cc)
         pm = x.payment_method or "cash"
         if pm == "cash":
             e.cr(L.cashbox(x.branch_id), x.amount, x.branch_id)

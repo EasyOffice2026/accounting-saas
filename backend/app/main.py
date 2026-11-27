@@ -347,6 +347,9 @@ def _migrate_columns():
                     ) WHERE branch_id IS NULL AND brand_id IS NOT NULL
                 """))
                 conn.commit()
+            if "cost_branch_id" not in cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN cost_branch_id INTEGER REFERENCES branches(id)"))
+                conn.commit()
 
         if "expenses" in insp.get_table_names():
             cols = [c["name"] for c in insp.get_columns("expenses")]

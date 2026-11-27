@@ -4,11 +4,12 @@ import { apiGet, apiFetch, apiPost, apiDownload } from "../contexts/api";
 import ChannelSelect, { useChannels, channelLabel } from "../components/ChannelSelect";
 import UnitOptions from "../components/UnitOptions";
 
-interface Branch { id: number; name: string; name_ar?: string; }
+interface Branch { id: number; name: string; name_ar?: string; unit_type?: string; }
 
 interface ContractRecord {
   id: number; name: string; kind: string; place: string; period: string;
   branch_id: number | null;
+  cost_branch_id?: number | null;
   value: number; start_date: string; end_date: string;
   monthly_payment: number; payment_day: number;
   notes: string; status: string; created_at: string;
@@ -466,6 +467,13 @@ export default function ContractsPage() {
               </select>
             </div>
             <div>
+              <label className="block text-sm font-medium mb-1">{t("charged_to_branch")}</label>
+              <select name="cost_branch_id" defaultValue={editing?.cost_branch_id || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
+                <option value="">—</option>
+                {branches.filter(b => (b.unit_type || "sales") === "sales").map(b => <option key={b.id} value={b.id}>{branchName(b.id)}</option>)}
+              </select>
+            </div>
+            <div>
               <label className="block text-sm font-medium mb-1">{t("contract_period")}</label>
               <select name="period" defaultValue={editing?.period || ""} className="w-full px-3 py-2 border rounded-lg text-sm">
                 <option value="">{t("select")}</option>
@@ -538,7 +546,7 @@ export default function ContractsPage() {
               <tr className="border-b hover:bg-gray-50">
                 <td className="px-3 py-3 font-medium">{c.name}</td>
                 <td className="px-3 py-3">{c.kind ? (CONTRACT_TYPE_KEYS[c.kind] ? t(CONTRACT_TYPE_KEYS[c.kind]) : c.kind) : "—"}</td>
-                <td className="px-3 py-3">{branchName(c.branch_id)}</td>
+                <td className="px-3 py-3">{branchName(c.branch_id)}{c.cost_branch_id ? <div className="text-xs text-gray-500">→ {branchName(c.cost_branch_id)}</div> : null}</td>
                 <td className="px-3 py-3">{c.period ? t(c.period) : "—"}</td>
                 <td className="px-3 py-3 text-right">{c.value}</td>
                 <td className="px-3 py-3 text-center">

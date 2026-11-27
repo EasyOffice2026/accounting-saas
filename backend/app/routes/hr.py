@@ -1873,6 +1873,7 @@ def _sync_payment_expense(db: Session, p: ContractPayment, c: Contract):
         exp = Expense(contract_payment_id=p.id)
         db.add(exp)
     exp.branch_id = c.branch_id
+    exp.cost_branch_id = c.cost_branch_id
     exp.category_id = cat.id
     exp.date = _payroll_month_end(f"{p.due_date:%Y-%m}") or p.due_date
     exp.description = f"{c.name} — {p.due_date:%b %Y}"
@@ -1887,9 +1888,14 @@ def _sync_contract_expenses(db: Session, c: Contract):
         _sync_payment_expense(db, p, c)
 
 
+def _charged_branch(db: Session, branch_id: Optional[int], cost_branch_id: str) -> Optional[int]:
+    from app.routes.expenses import _cost_branch
+    return _cost_branch(db, branch_id, cost_branch_id) if branch_id else None
+
+
 def _contract_to_dict(c):
     return {
-        "id": c.id, "brand_id": c.brand_id, "branch_id": c.branch_id,
+        "id": c.id, "brand_id": c.brand_id, "branch_id": c.branch_id, "cost_branch_id": c.cost_branch_id,
         "name": c.name or "", "kind": c.kind or "",
         "place": c.place or "", "period": c.period or "", "value": c.value or 0,
         "start_date": str(c.start_date) if c.start_date else "",
@@ -1922,7 +1928,7 @@ def create_contract(
     payment_day: int = Form(1), notes: str = Form(""),
     status: str = Form("active"),
     brand_id: Optional[int] = Form(None),
-    branch_id: Optional[int] = Form(None),
+    branch_id: Optional[int] = Form(None), cost_branch_id: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if user.role not in SALARY_VISIBLE_ROLES:
@@ -1933,6 +1939,7 @@ def create_contract(
         value=value, monthly_payment=monthly_payment,
         payment_day=payment_day, notes=notes or None, status=status,
         brand_id=brand_id, branch_id=branch_id,
+        cost_branch_id=_charged_branch(db, branch_id, cost_branch_id),
         start_date=date.fromisoformat(start_date) if start_date else None,
         end_date=date.fromisoformat(end_date) if end_date else None,
     )
@@ -1952,7 +1959,7 @@ def update_contract(
     end_date: str = Form(""), monthly_payment: float = Form(0),
     payment_day: int = Form(1), notes: str = Form(""),
     status: str = Form("active"),
-    branch_id: Optional[int] = Form(None),
+    branch_id: Optional[int] = Form(None), cost_branch_id: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if user.role not in SALARY_VISIBLE_ROLES:
@@ -1962,6 +1969,7 @@ def update_contract(
         raise HTTPException(404, "Contract not found")
     c.name = name
     c.branch_id = branch_id
+    c.cost_branch_id = _charged_branch(db, branch_id, cost_branch_id)
     c.kind = kind or None
     c.place = place or None
     c.period = period or None

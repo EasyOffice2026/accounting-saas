@@ -260,6 +260,7 @@ class Contract(Base):
     id = Column(Integer, primary_key=True, index=True)
     brand_id = Column(Integer, ForeignKey("brands.id"), nullable=True)
     branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True)
+    cost_branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True)  # sales branch carrying the cost
     name = Column(String, nullable=False)
     kind = Column(String, nullable=True)
     place = Column(String, nullable=True)
